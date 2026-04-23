@@ -1,0 +1,44 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway-alb
+  cloud:
+    gateway:
+      httpclient:
+        # TỐI ƯU 1: Giới hạn thời gian chờ (Fail-Fast Mechanism)
+        connect-timeout: 2000 # 2 giây để thiết lập kết nối TCP
+        response-timeout: 8s  # Tối đa 8 giây để chờ backend trả lời (bạn đang để 8s ở file gốc)
+        pool:
+          type: elastic
+          max-connections: 1000 # Mở rộng sức chứa connection pool cho tải cao
+      # ĐÃ XÓA KHỐI ROUTES Ở ĐÂY ĐỂ CHUYỂN SANG JAVA BEAN
+    loadbalancer:
+      cache:
+        # TỐI ƯU 2: Làm mới danh sách máy chủ nhanh hơn
+        ttl: 5s # Thời gian sống của cache (mặc định 35s là quá lâu)
+
+alb:
+  # adaptive, round-robin, random, least-connections
+  strategy: least-connections
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # TỐI ƯU 3: Bảo mật (Nguyên tắc Least Privilege)
+        include: health, info, metrics, prometheus 
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: http://localhost:8761/eureka/
+    # TỐI ƯU 4: Tăng tốc độ đồng bộ Service Discovery
+    registry-fetch-interval-seconds: 5 # Mặc định 30s
+  instance:
+    prefer-ip-address: true
+    lease-renewal-interval-in-seconds: 10 # Gửi nhịp tim (Heartbeat) nhanh hơn

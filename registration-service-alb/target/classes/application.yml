@@ -1,0 +1,46 @@
+server:
+  port: ${PORT:8081} # Sẽ đổi port khi chạy nhiều instance
+  tomcat:
+    threads:
+      max: 500        # [TỐI ƯU 1] Mở rộng trần luồng xử lý để gánh bão 500 users (Mặc định chỉ có 200)
+      min-spare: 50   # [TỐI ƯU 2] Luôn giữ sẵn 50 luồng chờ sẵn để phản xạ nhanh với bão tải
+    accept-count: 200 # [TỐI ƯU 3] Tăng hàng đợi kết nối ở tầng OS/TCP để không rớt mạng khi luồng bận
+
+spring:
+  application:
+    name: REGISTRATION-SERVICE-ALB
+    
+  # [TỐI ƯU 4] NẾU SERVICE NÀY CÓ GỌI DATABASE (MySQL/PostgreSQL), HÃY BỎ COMMENT ĐOẠN NÀY:
+  # datasource:
+  #   hikari:
+  #     maximum-pool-size: 50  # Mặc định là 10, rất dễ gây kẹt cổ chai (bottleneck) ở DB khi có bão
+  #     minimum-idle: 10
+  #     connection-timeout: 30000
+
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: http://localhost:8761/eureka/
+  instance:
+    instance-id: ${spring.application.name}:${server.port}
+    prefer-ip-address: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # [TỐI ƯU 5] Đừng dùng "*". Chỉ mở đúng các cổng Grafana/Prometheus cần để tránh lộ lọt bảo mật và hao tài nguyên
+        include: "health,info,prometheus,metrics" 
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    enable:
+      # [TỐI ƯU 6] Tắt bớt các metric cồng kềnh lấy liên tục gây hao CPU. 
+      # (CHÚ Ý: Nếu Dashboard Grafana của bạn ĐANG VẼ biểu đồ RAM/GC/Tomcat, hãy đổi 2 dòng này thành true)
+      jvm: false    
+      tomcat: false 
+  observations:
+    http:
+      server:
+        requests:
+          enabled: true
