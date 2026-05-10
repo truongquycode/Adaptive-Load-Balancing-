@@ -37,7 +37,7 @@ public class MetricsPoller {
     private final SlidingWindowManager windowManager;
     private final WebClient.Builder webClientBuilder;
     private final InflightTracker inflightTracker;
-    private final InstanceCircuitBreaker circuitBreaker; // THÊM MỚI
+    private final InstanceCircuitBreaker circuitBreaker;
 
     private final Map<String, Double> latencyValues = new ConcurrentHashMap<>();
     private final Map<String, Double> queueValues   = new ConcurrentHashMap<>();
@@ -46,21 +46,25 @@ public class MetricsPoller {
     private final Set<String> registeredGauges = ConcurrentHashMap.newKeySet();
     private final AtomicBoolean isPolling = new AtomicBoolean(false);
 
+    //bộ nhớ dùng để tính delta giữa hai lần liên tiếp
     private record TrafficState(double count, double totalTimeSec, double lastLatency) {}
 
     @Scheduled(fixedRateString = "${alb.polling.interval:1000}")
     public void pollMetrics() {
+    	//chống chu kỳ poll bị chồng lấp nhau
         if (!isPolling.compareAndSet(false, true)) {
             log.debug("Poll cycle skipped — previous cycle still running");
             return;
         }
 
+        //tránh hệ thống bị khóa vĩnh viễn vì flag không bao giờ được reset
         List<ServiceInstance> instances = discoveryClient.getInstances("REGISTRATION-SERVICE-ALB");
         if (instances.isEmpty()) {
             isPolling.set(false);
             return;
         }
 
+        //dọn dẹp instance cũ
         List<String> activeIds = instances.stream()
             .map(ServiceInstance::getInstanceId).toList();
         trafficStates.keySet().retainAll(activeIds);
@@ -75,7 +79,7 @@ public class MetricsPoller {
             String instanceId = instance.getInstanceId();
             String url = instance.getUri().toString() + "/api/alb-metrics";
 
-            // THÊM MỚI: Kiểm tra circuit state trước khi poll
+            // Kiểm tra circuit state trước khi poll
             // Nếu circuit đang OPEN, bỏ qua HTTP call nhưng vẫn áp dụng penalty
             CircuitState state = circuitBreaker.evaluateState(instanceId);
             if (state == CircuitState.OPEN) {
@@ -84,29 +88,30 @@ public class MetricsPoller {
                 return Mono.<Void>empty();
             }
 
-            return webClient.get().uri(url).retrieve()
-                .bodyToMono(JsonNode.class)
-                .timeout(Duration.ofMillis(1500))
+            return webClient.get().uri(url)
+            		.retrieve().bodyToMono(JsonNode.class) //gửi GET request và parse response thành cây JSON
+                .timeout(Duration.ofMillis(800))
                 .doOnNext(node -> {
-                    // THÊM MỚI: Ghi nhận thành công trước khi xử lý metrics
+                    // Ghi nhận thành công trước khi xử lý metrics
                     circuitBreaker.recordSuccess(instanceId);
                     processMetrics(instanceId, node);
                 })
                 .onErrorResume(e -> {
-                    // THÊM MỚI: Ghi nhận thất bại để circuit breaker theo dõi
+                    //Ghi nhận thất bại để circuit breaker theo dõi
                     circuitBreaker.recordFailure(instanceId);
                     log.debug("Timeout/lỗi kết nối tới {} — lần thất bại: {}",
                         instanceId, e.getMessage());
                     return Mono.empty();
                 })
-                .then();
+              //chuyển Mono<JsonNode> thành Mono<Void> — đồng nhất kiểu dữ liệu để Mono.when() có thể xử lý tất cả
+                .then(); 
         }).toList();
 
         Mono.when(polls).doFinally(signal -> isPolling.set(false)).subscribe();
     }
 
     /**
-     * THÊM MỚI: Áp dụng penalty tối đa cho instance có circuit đang OPEN.
+     * Áp dụng penalty tối đa cho instance có circuit đang OPEN.
      * Instance này không được chọn bởi AdaptiveLoadBalancer vì finalScore rất cao.
      */
     private void applyCircuitOpenPenalty(String instanceId) {
