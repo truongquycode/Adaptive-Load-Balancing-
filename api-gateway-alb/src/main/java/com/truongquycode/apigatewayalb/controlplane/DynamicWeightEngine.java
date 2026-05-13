@@ -77,14 +77,29 @@ public class DynamicWeightEngine {
             ewm[j] = Math.max(0.0, 1.0 - (-k * sumEntropy));
             sumEwm += ewm[j];
         }
+        
+     // Normalize EWM
+        double[] ewmNorm = new double[3];
+        for (int j = 0; j < 3; j++) {
+            ewmNorm[j] = (sumEwm == 0) ? (1.0 / 3.0) : (ewm[j] / sumEwm);
+        }
 
+        // BLEND: 70% EWM + 30% AHP — tránh weight về 0 khi metric uniform
+        double blendFactor = 0.7;
+        double[] blended = new double[3];
+        for (int j = 0; j < 3; j++) {
+            blended[j] = blendFactor * ewmNorm[j] + (1 - blendFactor) * ahpWeights[j];
+        }
+
+        // Fusion AHP × blended rồi normalize
         double sumFusion = 0;
         double[] fusion = new double[3];
         for (int j = 0; j < 3; j++) {
-            ewm[j] = (sumEwm == 0) ? (1.0 / 3.0) : (ewm[j] / sumEwm);
-            fusion[j] = ahpWeights[j] * ewm[j];
+            fusion[j] = ahpWeights[j] * blended[j];
             sumFusion += fusion[j];
         }
+
+        
 
         this.alpha = fusion[0] / sumFusion;
         this.beta = fusion[1] / sumFusion;

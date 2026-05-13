@@ -15,7 +15,7 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class ScoreCalculator {
 
-    private static final double SCORE_NULL_INSTANCE = Double.MAX_VALUE;
+    private static final double SCORE_NULL_INSTANCE = 20.0;
 
     private final SlidingWindowManager windowManager;
     private final DynamicWeightEngine   weightEngine;

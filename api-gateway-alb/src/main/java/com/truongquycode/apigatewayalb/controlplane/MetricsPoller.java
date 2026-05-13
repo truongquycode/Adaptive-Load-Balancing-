@@ -46,6 +46,7 @@ public class MetricsPoller {
     private final Set<String> registeredGauges = ConcurrentHashMap.newKeySet();
     private final Set<String> registeredRoutingGauges  = ConcurrentHashMap.newKeySet();
     private final AtomicBoolean isPolling = new AtomicBoolean(false);
+    private static final double CIRCUIT_OPEN_SCORE = 20.0;
 
     //bộ nhớ dùng để tính delta giữa hai lần liên tiếp
     private record TrafficState(double count, double totalTimeSec, double lastLatency) {}
@@ -126,13 +127,13 @@ public class MetricsPoller {
             1.0,   // normCpu     — worst case
             1.0,   // baseScore   — worst case
             1.5,   // pidPenalty  — vượt ngưỡng lambda
-            Double.MAX_VALUE / 2, // finalScore — loại khỏi routing
+            CIRCUIT_OPEN_SCORE, // finalScore — loại khỏi routing
             System.currentTimeMillis()
         );
         metricsCache.putScore(instanceId, penaltyScore);
 
         // Vẫn expose Prometheus để quan sát trên Grafana
-        scoreValues.put(instanceId, Double.MAX_VALUE / 2);
+        scoreValues.put(instanceId, CIRCUIT_OPEN_SCORE);
         if (registeredGauges.add(instanceId)) {
             Gauge.builder("alb.final.score", scoreValues,
                     map -> map.getOrDefault(instanceId, 0.0))
