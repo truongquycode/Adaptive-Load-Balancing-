@@ -2,6 +2,10 @@ package com.truongquycode.apigatewayalb.controlplane;
 
 import com.truongquycode.apigatewayalb.model.InstanceMetrics;
 import com.truongquycode.apigatewayalb.util.MetricsCache;
+
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -14,12 +18,29 @@ import java.util.List;
 @RequiredArgsConstructor
 public class DynamicWeightEngine {
     private final MetricsCache cache;
+    private final MeterRegistry registry;
     private final double[] ahpWeights = {0.5, 0.3, 0.2};
     private volatile double alpha = 0.5, beta = 0.3, gamma = 0.2;
+    
+    @PostConstruct
+    public void registerMetrics() {                // THÊM toàn bộ method này
+        Gauge.builder("alb.mcdm.weight", () -> alpha)
+            .tag("criterion", "latency")
+            .description("MCDM weight alpha — trọng số latency (AHP-EWM fusion)")
+            .register(registry);
+        Gauge.builder("alb.mcdm.weight", () -> beta)
+            .tag("criterion", "queue")
+            .description("MCDM weight beta — trọng số queue length")
+            .register(registry);
+        Gauge.builder("alb.mcdm.weight", () -> gamma)
+            .tag("criterion", "cpu")
+            .description("MCDM weight gamma — trọng số CPU")
+            .register(registry);
+    }
 
     @Scheduled(fixedRateString = "${alb.weights.update-interval:5000}")
-    public void computeMCDMWeights() {
-        // FIX: Đổi từ getAll() thành getAllMetrics()
+    public void computeMCDMWeights() {	
+        // Đổi từ getAll() thành getAllMetrics()
         List<InstanceMetrics> instances = cache.getAllMetrics(); 
         int n = instances.size();
         if (n < 2) return;

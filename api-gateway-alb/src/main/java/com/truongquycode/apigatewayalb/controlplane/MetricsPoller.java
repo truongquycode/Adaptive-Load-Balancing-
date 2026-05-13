@@ -44,6 +44,7 @@ public class MetricsPoller {
     private final Map<String, Double> scoreValues   = new ConcurrentHashMap<>();
     private final Map<String, TrafficState> trafficStates = new ConcurrentHashMap<>();
     private final Set<String> registeredGauges = ConcurrentHashMap.newKeySet();
+    private final Set<String> registeredRoutingGauges  = ConcurrentHashMap.newKeySet();
     private final AtomicBoolean isPolling = new AtomicBoolean(false);
 
     //bộ nhớ dùng để tính delta giữa hai lần liên tiếp
@@ -207,6 +208,18 @@ public class MetricsPoller {
                     () -> (double) circuitBreaker.getStateValue(id))
                 .tag("backend", id)
                 .description("0=CLOSED, 1=HALF_OPEN, 2=OPEN")
+                .register(registry);
+        }
+     // THÊM: gauge routing score — lazy eval tại scrape time
+        if (registeredRoutingGauges.add(id)) {
+            final String capturedId = id;
+            Gauge.builder("alb.routing.score", () -> {
+                    double finalScore    = scoreValues.getOrDefault(capturedId, 0.5);
+                    double localInflight = inflightTracker.getInflight(capturedId);
+                    return finalScore + 0.4 * Math.log(1.0 + localInflight);
+                })
+                .tag("backend", capturedId)
+                .description("finalScore(MCDM+PID) + inflightPenalty — score thực tế P2C dùng để chọn instance")
                 .register(registry);
         }
     }

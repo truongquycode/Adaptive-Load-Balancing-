@@ -38,7 +38,12 @@ public class ScoreCalculator {
         // Lấy latency thực, fallback về p50 nếu chưa có dữ liệu
         double lRaw    = current.getLatency() > 0 ? current.getLatency() : snap.p50();
         double ewmaLat = ewmaSmoother.smooth(
-            instanceId, lRaw, props.getEwma().getTau(), snap.p50());
+        	    instanceId, lRaw,
+        	    props.getEwma().getTauMin(),
+        	    props.getEwma().getTauMax(),
+        	    props.getEwma().getK(),
+        	    snap.p50()
+        	);
 
         // --- BaseScore: MCDM (AHP-EWM fusion) ---
         double nL = norm.normalizeLatency(ewmaLat, snap.p5(), snap.p95());

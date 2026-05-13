@@ -26,7 +26,22 @@
   ],
   "properties": [
     {
+      "name": "alb.ewma.k",
+      "type": "java.lang.Double",
+      "sourceType": "com.truongquycode.apigatewayalb.config.AlbProperties$Ewma"
+    },
+    {
       "name": "alb.ewma.tau",
+      "type": "java.lang.Double",
+      "sourceType": "com.truongquycode.apigatewayalb.config.AlbProperties$Ewma"
+    },
+    {
+      "name": "alb.ewma.tau-max",
+      "type": "java.lang.Double",
+      "sourceType": "com.truongquycode.apigatewayalb.config.AlbProperties$Ewma"
+    },
+    {
+      "name": "alb.ewma.tau-min",
       "type": "java.lang.Double",
       "sourceType": "com.truongquycode.apigatewayalb.config.AlbProperties$Ewma"
     },

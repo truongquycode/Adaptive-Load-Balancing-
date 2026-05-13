@@ -10,6 +10,6 @@ public class PidConfig {
     private double tauD = 3.0;
     private double minI = -1.0; // Thu hẹp anti-windup vì error đã nhỏ
     private double maxI = 5.0;
-    private double lambda = 1.5; // Penalty weight tăng lên
-    private double kappa = 1.5;  // Tanh scaling: penalty sẽ đạt 0.5 khi u ≈ 0.22
+    private double lambda = 0.8; // Penalty weight tăng lên
+    private double kappa = 1.0;  // Tanh scaling: penalty sẽ đạt 0.5 khi u ≈ 0.22
 }
