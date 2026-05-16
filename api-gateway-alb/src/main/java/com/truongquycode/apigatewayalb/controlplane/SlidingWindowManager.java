@@ -20,8 +20,8 @@ public class SlidingWindowManager {
 	private final Histogram[] globalPair = { new Histogram(1, 60000, 2), new Histogram(1, 60000, 2) };
 	private final AtomicInteger globalActiveIdx = new AtomicInteger(0);
 
-	private static final int WINDOW_SIZE = 150;
-	private static final int GLOBAL_WIN_SIZE = 450;
+	private static final int WINDOW_SIZE = 20; //150-> 20
+	private static final int GLOBAL_WIN_SIZE = 60; //450->60
 
 	public void addMetrics(String instanceId, double lat, double queue) {
 		long latVal = Math.min(Math.max(1, (long) lat), 60000);

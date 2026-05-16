@@ -9,41 +9,45 @@
       "name": "alb.ewma",
       "type": "com.truongquycode.apigatewayalb.config.AlbProperties$Ewma",
       "sourceType": "com.truongquycode.apigatewayalb.config.AlbProperties",
-      "sourceMethod": "public com.truongquycode.apigatewayalb.config.AlbProperties.Ewma getEwma() "
+      "sourceMethod": "getEwma()"
     },
     {
       "name": "alb.polling",
       "type": "com.truongquycode.apigatewayalb.config.AlbProperties$Polling",
       "sourceType": "com.truongquycode.apigatewayalb.config.AlbProperties",
-      "sourceMethod": "public com.truongquycode.apigatewayalb.config.AlbProperties.Polling getPolling() "
+      "sourceMethod": "getPolling()"
     },
     {
       "name": "alb.weights",
       "type": "com.truongquycode.apigatewayalb.config.AlbProperties$Weights",
       "sourceType": "com.truongquycode.apigatewayalb.config.AlbProperties",
-      "sourceMethod": "public com.truongquycode.apigatewayalb.config.AlbProperties.Weights getWeights() "
+      "sourceMethod": "getWeights()"
     }
   ],
   "properties": [
     {
       "name": "alb.ewma.k",
       "type": "java.lang.Double",
-      "sourceType": "com.truongquycode.apigatewayalb.config.AlbProperties$Ewma"
+      "sourceType": "com.truongquycode.apigatewayalb.config.AlbProperties$Ewma",
+      "defaultValue": 2
     },
     {
       "name": "alb.ewma.tau",
       "type": "java.lang.Double",
-      "sourceType": "com.truongquycode.apigatewayalb.config.AlbProperties$Ewma"
+      "sourceType": "com.truongquycode.apigatewayalb.config.AlbProperties$Ewma",
+      "defaultValue": 3000
     },
     {
       "name": "alb.ewma.tau-max",
       "type": "java.lang.Double",
-      "sourceType": "com.truongquycode.apigatewayalb.config.AlbProperties$Ewma"
+      "sourceType": "com.truongquycode.apigatewayalb.config.AlbProperties$Ewma",
+      "defaultValue": 5000
     },
     {
       "name": "alb.ewma.tau-min",
       "type": "java.lang.Double",
-      "sourceType": "com.truongquycode.apigatewayalb.config.AlbProperties$Ewma"
+      "sourceType": "com.truongquycode.apigatewayalb.config.AlbProperties$Ewma",
+      "defaultValue": 500
     },
     {
       "name": "alb.pid",
@@ -53,17 +57,20 @@
     {
       "name": "alb.polling.interval",
       "type": "java.lang.Long",
-      "sourceType": "com.truongquycode.apigatewayalb.config.AlbProperties$Polling"
+      "sourceType": "com.truongquycode.apigatewayalb.config.AlbProperties$Polling",
+      "defaultValue": 1000
     },
     {
       "name": "alb.strategy",
       "type": "java.lang.String",
-      "sourceType": "com.truongquycode.apigatewayalb.config.AlbProperties"
+      "sourceType": "com.truongquycode.apigatewayalb.config.AlbProperties",
+      "defaultValue": "adaptive"
     },
     {
       "name": "alb.weights.update-interval",
       "type": "java.lang.Long",
-      "sourceType": "com.truongquycode.apigatewayalb.config.AlbProperties$Weights"
+      "sourceType": "com.truongquycode.apigatewayalb.config.AlbProperties$Weights",
+      "defaultValue": 5000
     }
   ],
   "hints": []

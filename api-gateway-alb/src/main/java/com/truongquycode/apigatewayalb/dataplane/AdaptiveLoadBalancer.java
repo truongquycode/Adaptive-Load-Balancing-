@@ -76,6 +76,7 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
         int localInflight = inflightTracker.getInflight(instanceId);
         
         // Dùng hàm log để tránh penalty tuyến tính quá cứng khi có bão tải
+        //sửa từ 0.4 -> 0.1
         double inflightPenalty = 0.4 * Math.log(1.0 + localInflight);
         
         return baseScore + inflightPenalty;

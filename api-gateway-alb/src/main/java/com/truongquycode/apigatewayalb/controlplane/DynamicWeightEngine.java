@@ -99,7 +99,6 @@ public class DynamicWeightEngine {
             sumFusion += fusion[j];
         }
 
-        
 
         this.alpha = fusion[0] / sumFusion;
         this.beta = fusion[1] / sumFusion;

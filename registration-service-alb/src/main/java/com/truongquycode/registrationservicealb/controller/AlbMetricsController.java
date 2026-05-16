@@ -24,15 +24,9 @@ public class AlbMetricsController {
     public Map<String, Double> getMetrics() {
         Map<String, Double> metrics = new HashMap<>();
 
-        // CPU usage: process.cpu.usage ∈ [0,1], đo riêng JVM process
-        try {
-            metrics.put("cpu", registry.get("process.cpu.usage").gauge().value());
-        } catch (Exception e) {
-            metrics.put("cpu", 0.0);
-        }
+        try { metrics.put("cpu", registry.get("process.cpu.usage").gauge().value()); } 
+        catch (Exception e) { metrics.put("cpu", 0.0); }
 
-        // Chỉ lấy timer của /api/register — loại trừ /api/alb-metrics và các endpoint phụ
-        // Tránh self-measurement pollution làm sai lệch L_raw tính trong MetricsPoller
         try {
             Timer timer = registry.get("http.server.requests")
                 .tag("uri", "/api/register")
@@ -45,15 +39,8 @@ public class AlbMetricsController {
             metrics.put("totalTime", 0.0);
         }
 
-        // Inflight queue đo bởi RegistrationServiceMetricsFilter
-        // Sau khi exclude /api/alb-metrics khỏi filter, giá trị này chỉ phản ánh
-        // các request nghiệp vụ thực sự đang được xử lý
-        try {
-            metrics.put("queue",
-                registry.get("http.server.requests.inflight").gauge().value());
-        } catch (Exception e) {
-            metrics.put("queue", 0.0);
-        }
+        try { metrics.put("queue", registry.get("http.server.requests.inflight").gauge().value()); } 
+        catch (Exception e) { metrics.put("queue", 0.0); }
 
         return metrics;
     }

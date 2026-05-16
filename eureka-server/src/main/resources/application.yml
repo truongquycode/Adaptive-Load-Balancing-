@@ -3,9 +3,9 @@ server:
 
 eureka:
   instance:
-    hostname: localhost
+    hostname: ${EUREKA_HOSTNAME:localhost}    # ← thêm biến env
   client:
-    register-with-eureka: false # Báo cho Eureka biết không cần tự đăng ký chính nó
-    fetch-registry: false       # Không cần tải về bản ghi danh bạ
+    register-with-eureka: false
+    fetch-registry: false
     service-url:
       defaultZone: http://${eureka.instance.hostname}:${server.port}/eureka/
