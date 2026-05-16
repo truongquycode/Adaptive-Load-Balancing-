@@ -1,0 +1,97 @@
+version: '3.8'
+
+networks:
+  alb-network:
+    driver: bridge
+
+services:
+
+  # ─── Eureka Service Discovery ──────────────────────────
+  eureka-server:
+    build: 
+      context: .
+      dockerfile: eureka-server/Dockerfile
+    container_name: eureka-server
+    environment:
+      - EUREKA_HOSTNAME=eureka-server
+    ports:
+      - "8761:8761"
+    networks:
+      - alb-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8761/actuator/health | grep UP || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  # ─── Registration Service Instance 1 ───────────────────
+  registration-8081:
+    build: 
+      context: .
+      dockerfile: registration-service-alb/Dockerfile
+    container_name: registration-8081
+    environment:
+      - PORT=8081
+      - EUREKA_URL=http://eureka-server:8761/eureka/
+    ports:
+      - "8081:8081"
+    networks:
+      - alb-network
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+    restart: on-failure
+
+  # ─── Registration Service Instance 2 ───────────────────
+  registration-8082:
+    build: 
+      context: .
+      dockerfile: registration-service-alb/Dockerfile
+    container_name: registration-8082
+    environment:
+      - PORT=8082
+      - EUREKA_URL=http://eureka-server:8761/eureka/
+    ports:
+      - "8082:8082"
+    networks:
+      - alb-network
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+    restart: on-failure
+
+  # ─── Registration Service Instance 3 (Chaos Target) ────
+  registration-8083:
+    build: 
+      context: .
+      dockerfile: registration-service-alb/Dockerfile
+    container_name: registration-8083
+    environment:
+      - PORT=8083
+      - EUREKA_URL=http://eureka-server:8761/eureka/
+    ports:
+      - "8083:8083"
+    networks:
+      - alb-network
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+    restart: on-failure
+
+  # ─── API Gateway ALB ────────────────────────────────────
+  api-gateway-alb:
+    build: 
+      context: .
+      dockerfile: api-gateway-alb/Dockerfile
+    container_name: api-gateway-alb
+    environment:
+      - EUREKA_URL=http://eureka-server:8761/eureka/
+    ports:
+      - "8080:8080"
+    networks:
+      - alb-network
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+    restart: on-failure
