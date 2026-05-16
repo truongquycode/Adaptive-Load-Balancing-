@@ -1,0 +1,19 @@
+name: CI/CD Auto Deploy to Ubuntu
+
+# Kịch bản này sẽ kích hoạt mỗi khi có code được push lên nhánh main
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  deploy:
+    # Báo cho GitHub biết hãy giao việc này cho "đặc vụ" đang cài trên server của bạn
+    runs-on: self-hosted 
+
+    steps:
+      - name: Execute deployment commands
+        run: |
+          cd ~/Adaptive-Load-Balancing-
+          git pull origin main
+          docker compose build
+          docker compose up -d
