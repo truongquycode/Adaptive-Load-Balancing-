@@ -6,6 +6,7 @@
 [![Spring Cloud](https://img.shields.io/badge/Spring_Cloud-2023.0.1-6DB33F?style=for-the-badge&logo=spring&logoColor=white)](https://spring.io/projects/spring-cloud)
 [![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
 [![Prometheus](https://img.shields.io/badge/Prometheus-E6522C?style=for-the-badge&logo=prometheus&logoColor=white)](https://prometheus.io/)
+[![Grafana](https://img.shields.io/badge/Grafana-F46800?style=for-the-badge&logo=grafana&logoColor=white)](https://grafana.com/)
 [![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-2088FF?style=for-the-badge&logo=github-actions&logoColor=white)](https://github.com/features/actions)
 
 Một hệ thống API Gateway tích hợp cơ chế Adaptive Load Balancer tiên tiến dành cho kiến trúc Microservices. Dự án không chỉ dừng lại ở các thuật toán định tuyến cơ bản mà còn áp dụng thu thập số liệu thời gian thực thông qua HTTP REST, phân tích đa tiêu chí (MCDM), bộ điều khiển PID và làm mịn chuỗi thời gian (EWMA) để tối ưu hóa lưu lượng mạng và tránh quá tải hệ thống.
