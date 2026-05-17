@@ -18,7 +18,7 @@ public class GatewayRoutingConfig {
             .route("backend-route", r -> r
                 .path("/api/**")
                 .filters(f -> {
-                    // LOGIC KIỂM TRA: CHỈ áp dụng Retry nếu thuật toán là "adaptive"
+                    // chỉ áp dụng Retry nếu thuật toán là "adaptive"
                     if ("adaptive".equalsIgnoreCase(albProperties.getStrategy())) {
                         f.retry(retryConfig -> {
                             retryConfig.setRetries(2);

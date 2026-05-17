@@ -117,8 +117,6 @@ public class MetricsPoller {
      * Instance này không được chọn bởi AdaptiveLoadBalancer vì finalScore rất cao.
      */
     private void applyCircuitOpenPenalty(String instanceId) {
-        // finalScore = Double.MAX_VALUE / 2 đảm bảo instance không bao giờ được chọn
-        // trong P2C algorithm nhưng không gây overflow khi so sánh
         ScoreBreakdown penaltyScore = new ScoreBreakdown(
             instanceId,
             0.0,   // ewmaLatency — không có dữ liệu
@@ -211,7 +209,7 @@ public class MetricsPoller {
                 .description("0=CLOSED, 1=HALF_OPEN, 2=OPEN")
                 .register(registry);
         }
-     // THÊM: gauge routing score — lazy eval tại scrape time
+        // gauge routing score — lazy eval tại scrape time
         if (registeredRoutingGauges.add(id)) {
             final String capturedId = id;
             Gauge.builder("alb.routing.score", () -> {

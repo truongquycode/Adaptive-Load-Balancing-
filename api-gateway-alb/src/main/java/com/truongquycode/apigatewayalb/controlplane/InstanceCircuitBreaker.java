@@ -56,7 +56,7 @@ public class InstanceCircuitBreaker {
                 }
                 return new CircuitStatus(CircuitState.HALF_OPEN, 0, newSuccess, current.openedAtMs());
             }
-            // CLOSED: reset failure count
+            
             return new CircuitStatus(CircuitState.CLOSED, 0, 0, 0L);
         });
     }

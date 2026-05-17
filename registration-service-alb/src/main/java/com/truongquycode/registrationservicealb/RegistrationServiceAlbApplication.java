@@ -5,7 +5,6 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
 import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
 
-// Chỉ exclude Database vì module này không dùng DB
 @SpringBootApplication(exclude = {DataSourceAutoConfiguration.class})
 @EnableDiscoveryClient
 public class RegistrationServiceAlbApplication {

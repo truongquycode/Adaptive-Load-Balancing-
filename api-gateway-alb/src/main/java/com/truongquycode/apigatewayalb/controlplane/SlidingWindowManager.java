@@ -9,8 +9,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 @Component
 public class SlidingWindowManager {
-
-	// Xóa toàn bộ latHistograms, queueHistograms cũ — chỉ giữ rotating pairs
+	
 	private final ConcurrentHashMap<String, Histogram[]> latHistPairs = new ConcurrentHashMap<>();
 	private final ConcurrentHashMap<String, Histogram[]> qHistPairs = new ConcurrentHashMap<>();
 	private final ConcurrentHashMap<String, AtomicInteger> latActiveIdx = new ConcurrentHashMap<>();
