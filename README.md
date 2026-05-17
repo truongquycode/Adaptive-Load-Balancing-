@@ -23,6 +23,20 @@ Hệ thống được chia thành 3 thành phần chính:
 
 ---
 
+## Danh sách Cổng & Chức năng
+
+| Thành phần | Port| Chức năng chính |
+| :--- | :---: | :--- |
+| **API Gateway** (`api-gateway-alb`) | `8080` | Cổng vào duy nhất (Single Entry Point). Tiếp nhận request từ Client, thực hiện tính toán điểm số và điều hướng lưu lượng bằng thuật toán Adaptive. |
+| **Eureka Server** (`eureka-server`) | `8761` | Service Registry / Dashboard. Nơi quản lý tập trung trạng thái đăng ký, hủy đăng ký và phát hiện dịch vụ của các node backend. |
+| **Registration Service - Instance 1** | `8081` | Node backend xử lý nghiệp vụ số 1, cung cấp API lấy metric thời gian thực cho Gateway. |
+| **Registration Service - Instance 2** | `8082` | Node backend xử lý nghiệp vụ số 2, hoạt động song song để chia sẻ tải cho hệ thống. |
+| **Registration Service - Instance 3** | `8083` | Node backend xử lý nghiệp vụ số 3 (thường được chọn để giả lập lỗi/độ trễ qua `ChaosController`). |
+| **Prometheus** | `9090` | Hệ thống thu thập, lưu trữ số liệu giám sát (metrics) dưới dạng dữ liệu chuỗi thời gian (Time-series). |
+| **Grafana** | `3000` | Giao diện Dashboard trực quan hóa hiệu năng, biểu đồ tải, theo dõi trạng thái CPU, Latency và Inflight Requests. |
+
+---
+
 ## Tính năng Cốt lõi
 
 ### 1. Thuật toán Thích nghi Thông minh
