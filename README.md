@@ -107,5 +107,50 @@ curl -X POST http://localhost:8083/api/chaos/disable
 
 ---
 
+---
+
+## Kiểm thử Tải & Độ Phục hồi với Apache JMeter
+
+Để chứng minh sức mạnh của thuật toán Cân bằng tải Thích nghi, dự án cung cấp một kịch bản kiểm thử kết hợp giữa **Tăng tải đột ngột (Spike Testing)** và **Bơm lỗi tự động (Chaos Engineering)** theo dòng thời gian.
+
+### 1. Tải và Cài đặt JMeter
+1. Truy cập trang chủ [Apache JMeter](https://jmeter.apache.org/download_jmeter.cgi) và tải phiên bản mới nhất (Yêu cầu Java 8+).
+2. Tải và cài đặt **JMeter Plugins Manager** (file `.jar` bỏ vào thư mục `lib/ext`).
+3. Khởi động JMeter, mở Plugins Manager và cài đặt bộ plugin **Custom Thread Groups** (để sử dụng component `jp@gc - Throughput Shaping Timer`).
+
+### 2. Thiết lập Kịch bản Kiểm thử
+
+Bạn tạo một Test Plan gồm 3 Thread Group chạy song song để mô phỏng thực tế:
+
+#### A. Main Thread Group (Tạo bão tải)
+Đảm nhiệm việc bắn request liên tục vào Gateway để mô phỏng người dùng.
+* **HTTP Request:** Gửi phương thức `GET` đến `http://localhost:8080/api/register`
+* **jp@gc - Throughput Shaping Timer:** Thiết lập mô hình tải kéo dài 5 phút (300 giây):
+  * `0` -> `200` RPS trong `30s` (Bắt đầu tăng tải).
+  * `200` -> `500` RPS trong `60s` (Bão tải đạt đỉnh).
+  * `500` -> `500` RPS trong `180s` (Duy trì bão tải).
+  * `500` -> `0` RPS trong `30s` (Giảm tải).
+* **Constant Timer:** Đặt `Thread Delay: 10ms` để tạo giãn cách nhỏ gọn giữa các thread.
+
+#### B. Thread Group: Chaos - Enable (Kích hoạt sự cố)
+Mô phỏng tình huống một node đột ngột bị nghẽn mạng ngay giữa tâm bão.
+* **Cấu hình Thread:** `1` Thread, `Startup delay = 90` (giây).
+* **HTTP Request:** Gửi phương thức `POST` tới `http://localhost:8083/api/chaos/enable`.
+* *Kết quả mong đợi:* Tại giây thứ 90 (đang ở đỉnh 500 RPS), node 8083 sẽ bị trễ. Gateway phải ngay lập tức nhận diện độ trễ tăng vọt (qua thuật toán EWMA và PID) và "né" node này, chuyển toàn bộ lưu lượng sang node 8081 và 8082 mà không làm rơi request của client.
+
+#### C. Thread Group: Chaos - Disable (Tắt sự cố, phục hồi)
+Mô phỏng tình huống node đã sửa xong lỗi và sẵn sàng nhận tải lại.
+* **Cấu hình Thread:** `1` Thread, `Startup delay = 210` (giây).
+* **HTTP Request:** Gửi phương thức `POST` tới `http://localhost:8083/api/chaos/disable`.
+* *Kết quả mong đợi:* Tại giây thứ 210 (sau 2 phút bị lỗi), node 8083 khỏe lại. Gateway nhận thấy Latency và Score của node này giảm về mức an toàn nên sẽ tự động điều phối lượng tải lớn quay trở lại node này để chia lửa cho 2 node kia.
+
+### Quan sát Kết quả
+Trong lúc JMeter đang bắn tải, hãy mở dashboard của **Grafana (`http://localhost:3000`)**. Ta sẽ thấy cực kỳ rõ rệt trên biểu đồ:
+1. Đường Line biểu diễn lưu lượng (RPS) vào node `8083` đột ngột cắm đầu xuống đất tại `T = 90s`.
+2. Đồng thời lưu lượng tại `8081` và `8082` vọt lên để gánh phần bị thiếu.
+3. Tại `T = 210s`, các đường Line lưu lượng tự động hội tụ và chia đều lại cho cả 3 node một cách mượt mà.
+
+---
+
 ## CI/CD & Deploy Tự động
 -dùng để thuận tiện trong quá trình thiết kế và kiểm thử
