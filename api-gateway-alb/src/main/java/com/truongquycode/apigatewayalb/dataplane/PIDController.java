@@ -2,12 +2,17 @@ package com.truongquycode.apigatewayalb.dataplane;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.truongquycode.apigatewayalb.math.EwmaSmoother;
 import com.truongquycode.apigatewayalb.model.PidConfig;
 import com.truongquycode.apigatewayalb.model.PidState;
+
+import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.stereotype.Component;
 import java.util.concurrent.TimeUnit;
 
 @Component
+@Slf4j
 public class PIDController {
 
     // Cache lưu trạng thái PID của từng instance
@@ -42,6 +47,13 @@ public class PIDController {
 
         if (!(isSaturated && sameSign)) {
             double newI = state.getIntegral() + (error * actualDt);
+            
+            // Leaky integrator: khi error gần 0, integral tự giảm dần
+            // Ngăn tình trạng một node bị "tẩy chay" vĩnh viễn sau chaos
+            if (Math.abs(error) < 0.1) {
+                newI = newI * 0.97; // Giảm 3% mỗi giây khi ổn định
+            }
+            
             state.setIntegral(Math.max(cfg.getMinI(), Math.min(cfg.getMaxI(), newI)));
         }
 
@@ -68,4 +80,8 @@ public class PIDController {
     return cfg.getLambda() *
            Math.tanh(cfg.getKappa() * Math.max(0.0, finalState.getLastOutput()));
 }
+    public void resetAllStates() {
+        states.invalidateAll();
+        log.info("PID states cleared — all instance integrals reset to 0");
+    }
 }

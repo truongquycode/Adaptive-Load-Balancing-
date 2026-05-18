@@ -72,13 +72,25 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
     private double calculateRealTimeScore(String instanceId) {
         ScoreBreakdown breakdown = cache.getScore(instanceId);
         double baseScore = (breakdown != null) ? breakdown.finalScore() : 0.5;
-        
+
         int localInflight = inflightTracker.getInflight(instanceId);
-        
-        // Dùng hàm log để tránh penalty tuyến tính quá cứng khi có bão tải
-        //sửa từ 0.4 -> 0.1
-        double inflightPenalty = 0.4 * Math.log(1.0 + localInflight);
-        
+        int totalInflight = inflightTracker.getTotalInflight();
+
+        double inflightPenalty;
+        if (totalInflight <= 0) {
+            inflightPenalty = 0.0;
+        } else {
+            // Tỷ lệ phần trăm traffic đang xử lý tại instance này
+            // so với toàn hệ thống — luôn trong [0, 1]
+            double relativeShare = (double) localInflight / totalInflight;
+            // Số instance đang hoạt động (xấp xỉ)
+            int activeInstances = 3;
+            double fairShare = 1.0 / activeInstances; // 0.333 khi phân phối đều
+
+            // Phạt khi instance đang gánh nhiều hơn phần công bằng của nó
+            inflightPenalty = 0.8 * Math.max(0, relativeShare - fairShare) / fairShare;
+        }
+
         return baseScore + inflightPenalty;
     }
 }

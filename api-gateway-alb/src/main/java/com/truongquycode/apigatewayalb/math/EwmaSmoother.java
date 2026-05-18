@@ -2,10 +2,14 @@ package com.truongquycode.apigatewayalb.math;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+
+import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.stereotype.Component;
 import java.util.concurrent.TimeUnit;
 
 @Component
+@Slf4j
 public class EwmaSmoother {
 
     private final Cache<String, EwmaState> states = Caffeine.newBuilder()
@@ -71,5 +75,10 @@ public class EwmaSmoother {
             this.lastTimestamp = t;
             this.lastTau       = tau;
         }
+    }
+    
+    public void resetAllStates() {
+        states.invalidateAll();
+        log.info("EWMA states cleared — cold start on next poll");
     }
 }
