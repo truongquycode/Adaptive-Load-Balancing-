@@ -1,9 +1,9 @@
-# Hướng Dẫn Chi Tiết Chuyển Dự Án Lên Docker Ubuntu Server
+# Nhật Ký Chuyển Dự Án Lên Docker Ubuntu Server
 
 Tài liệu này cung cấp các bước chi tiết để cấu hình và triển khai dự án lên Ubuntu Server thông qua Docker.
 
 ## Bước 1: Cài Đặt Docker Trên Ubuntu Server
-Sau khi bạn đã kết nối SSH thành công vào server, hãy chạy các lệnh sau để cập nhật hệ thống và cài đặt Docker:
+Sau khi đã kết nối SSH thành công vào server, hãy chạy các lệnh sau để cập nhật hệ thống và cài đặt Docker:
 
 ```bash
 sudo apt update
@@ -17,7 +17,7 @@ sudo docker run hello-world
 Đây là bước quan trọng nhất. Trong môi trường Docker, các service không giao tiếp với nhau qua `localhost` mà sẽ giao tiếp thông qua tên của container. 
 
 ### 1. Cấu hình cho API Gateway và Registration Service
-Bạn cần sửa file cấu hình của hai module này để thay đổi đường dẫn Eureka.
+Ta cần sửa file cấu hình của hai module này để thay đổi đường dẫn Eureka.
 * **Module API Gateway**: Sửa file `api-gateway-alb/src/main/resources/application.yml`.
 * **Module Registration**: Sửa file `registration-service-alb/src/main/resources/application.yml` (lưu ý dùng `PORT` thay cho `server.port` ở phần `instance-id`).
 
@@ -26,7 +26,7 @@ Chỉ cần sửa lại đoạn cấu hình `eureka` như sau:
 eureka:
   client:
     serviceUrl:
-      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}  # ← Thay đổi dòng này
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
   instance:
     prefer-ip-address: true
     # Đối với registration-service, thêm dòng sau:
