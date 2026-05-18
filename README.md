@@ -155,3 +155,5 @@ Trong lúc JMeter đang bắn tải, hãy mở dashboard của **Grafana (`http:
 
 ## CI/CD & Deploy Tự động
 -dùng để thuận tiện trong quá trình thiết kế và kiểm thử
+
+**[Xem chi tiết: Nhật ký chuyển dự án lên Docker Ubuntu Server](nhat-ky-chuyen-len-server.md)**
