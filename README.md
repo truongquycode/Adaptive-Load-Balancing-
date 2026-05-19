@@ -24,6 +24,71 @@ Hệ thống được chia thành 3 thành phần chính:
 
 ---
 
+## Kiến trúc Nội bộ của Gateway
+
+Bên trong API Gateway, hệ thống được tổ chức theo nguyên tắc phân chia trách nhiệm rõ ràng giữa hai tầng:
+
+### Control Plane — Tầng Quan sát và Tính toán
+* **`MetricsPoller`**: Thu thập metrics từ backend theo chu kỳ 1 giây, quản lý Circuit Breaker.
+* **`SlidingWindowManager`**: Duy trì histogram HDR theo cơ chế rotating pair, tính percentile động.
+* **`DynamicWeightEngine`**: Cập nhật trọng số MCDM theo entropy thông tin mỗi 5 giây.
+* **`ScoreCalculator`**: Tổng hợp điểm số từ EWMA, normalization, MCDM và PID penalty.
+* **`InstanceCircuitBreaker`**: Theo dõi trạng thái kết nối của từng instance.
+
+### Data Plane — Tầng Định tuyến Thời gian Thực
+* **`AdaptiveLoadBalancer`**: Thực thi thuật toán P2C, đọc điểm từ cache O(1).
+* **`InflightTracker`**: Đếm số request đang xử lý tại mỗi instance, cập nhật tức thì.
+* **`InflightLifecycle`**: Hook vào vòng đời request của Spring Cloud LoadBalancer để tăng/giảm counter.
+
+---
+
+## LUỒNG HOẠT ĐỘNG CHI TIẾT CỦA HỆ THỐNG
+
+### Luồng Khởi động và Đồng bộ Trạng thái Ban đầu
+Quy trình vận hành khởi đầu của hệ thống cân bằng tải thích nghi (ALB) đòi hỏi sự phối hợp chặt chẽ giữa tầng khám phá dịch vụ, tầng định tuyến và tầng thực thi nghiệp vụ để đảm bảo dữ liệu cấu trúc topo mạng luôn ở trạng thái nhất quán tuyệt đối trước khi tiếp nhận lưu lượng tải:
+* **Bước 1 — Khởi tạo Service Registry:** Thành phần `eureka-server` được kích hoạt đầu tiên trên cổng mặc định `8761`, thiết lập vùng không gian lưu trữ standalone để quản lý bảng trạng thái topo mạng của toàn hệ thống vi dịch vụ.
+* **Bước 2 — Đăng ký Dịch vụ Backend:** Ba instance của dịch vụ nghiệp vụ (`registration-service-alb`) khởi động song song. Ngay sau khi Spring Context nạp thành công, các Client này phát tín hiệu REST đăng ký trạng thái `UP` lên Eureka Server, đồng thời thiết lập chu kỳ gửi tín hiệu "nhịp tim" (Heartbeat) định kỳ mỗi 10 giây để duy trì trạng thái sống.
+* **Bước 3 — Khởi tạo Metric tại Gateway:** Phương thức `@PostConstruct` bên trong `DynamicWeightEngine` sử dụng cơ chế liên kết dữ liệu động của Micrometer để đăng ký các biến trọng số MCDM (α, β, γ) lên `MeterRegistry` phục vụ cho việc giám sát thời gian thực của Prometheus.
+* **Bước 4 — Kéo Topo Mạng và Khởi động Polling:** Gateway thực hiện lệnh gọi HTTP Fetch Registry về Eureka Server để đồng bộ danh sách máy chủ backend cục bộ. Chu kỳ làm mới danh sách này được cấu hình ép cứng về mức 5 giây (`registry-fetch-interval-seconds: 5s`), đồng bộ với thời gian sống của LoadBalancer Cache (TTL: 5s). Ngay khi danh sách máy chủ được nạp, mạch vòng định kỳ của `MetricsPoller` chính thức bước vào trạng thái kích hoạt.
+
+### Luồng Control Plane và Vòng đời Thu thập Metrics (Chu kỳ 1 giây)
+Tầng Control Plane hoạt động độc lập dưới dạng một tiến trình chạy ngầm bất đồng bộ. Mỗi giây, `MetricsPoller` thực hiện nghiêm ngặt kịch bản điều khiển 6 bước:
+* **Bước 1 — Kiểm tra Overlap:** Sử dụng cờ hiệu nguyên tử `AtomicBoolean isPolling` để đảm bảo chỉ một chu kỳ poll chạy tại một thời điểm. Nếu chu kỳ trước bị treo do nghẽn mạng và chưa hoàn thành, chu kỳ hiện tại sẽ chủ động bị bỏ qua (skip cycle) để bảo vệ tài nguyên luồng của Gateway.
+* **Bước 2 — Dọn dẹp dữ liệu:** Lấy danh sách instance từ Eureka và thực thi dọn dẹp các bản ghi dữ liệu (metrics thô, điểm số, trạng thái giao thông) của các instance đã offline khỏi bộ đệm, ngăn ngừa rò rỉ bộ nhớ.
+* **Bước 3 — Thẩm định Circuit Breaker:** Kiểm tra trạng thái mạch ngắt của từng instance. Nếu instance đang ở miền `OPEN`, Gateway sẽ bỏ qua lệnh gọi HTTP để tiết kiệm băng thông và áp dụng điểm phạt cực đại (`SCORE = 20.0`) ngay lập tức.
+* **Bước 4 — Gọi HTTP Bất đồng bộ (Parallel Polling):** Thực hiện gọi đồng thời các phương thức GET bằng HTTP REST đến endpoint `/api/alb-metrics` của các instance `CLOSED` hoặc `HALF_OPEN`. Quá trình này bị giới hạn ngưỡng timeout cứng là 800ms và thực thi phi khóa qua toán tử `Mono.when()` của Project Reactor.
+* **Bước 5 — Đồng hóa Số liệu và Tính toán:**
+    * **L_raw** (Delta Latency) → Hàm làm mịn `EWMA smoothing` có hệ số τ thích nghi → **L_ewma**.
+    * **L_ewma** + (P5/P95 từ Histogram) → Chuẩn hóa `normalizeLatency()` → **nL ∈ [0,1]**.
+    * **Q_raw** + qP99 → Chuẩn hóa Log-Scale `normalizeQueue()` → **nQ ∈ [0,1]**.
+    * **CPU_raw** → Chuẩn hóa `normalizeCpu()` → **nC ∈ [0,1]**.
+    * Tổng hợp **(nL, nQ, nC)** với bộ trọng số từ ma trận AHP-EWM **(α, β, γ)** → **BaseScore ∈ [0,1]**.
+    * Độ trễ chuẩn hóa của instance + Mức nền P50 chuẩn hóa toàn hệ thống → Đưa vào **PID Controller** (tích hợp Leaky Integrator và Low-pass Filter) → **Penalty ∈ [0, λ]**.
+    * Lưu trữ kết quả: **FinalScore = BaseScore + Penalty** vào bộ đệm `MetricsCache` (chi phí đọc/ghi O(1)).
+* **Bước 6 — Kết thúc Chu kỳ:** Sau khi toàn bộ các luồng HTTP hoàn tất, giải phóng cờ `isPolling` trong khối hàm `doFinally()` để sẵn sàng cho chu kỳ kế tiếp.
+
+### Luồng Data Plane và Định tuyến Thực tế (Xử lý Mili-giây)
+Tầng Data Plane được kích hoạt ngay lập tức nhằm đưa ra quyết định định tuyến tối ưu mỗi khi có request đập vào cổng 8080:
+* **Bước 1:** Spring Cloud Gateway hứng chặn request và gọi bộ cân bằng tải `AdaptiveLoadBalancer.choose()`.
+* **Bước 2 (P2C Algorithm):** Sử dụng cơ chế *Power of Two Choices*, hệ thống trích xuất ngẫu nhiên 2 instance phân biệt từ danh sách cấu hình nhằm khắc phục hiện tượng bầy đàn.
+* **Bước 3 (Real-Time Score):** Truy xuất `FinalScore` của 2 instance từ `MetricsCache`. Đọc số lượng request đang xử lý song song tức thời từ `InflightTracker` để tính hình phạt cục bộ.
+    `RealTimeScore = FinalScore + Inflight Penalty`
+* **Bước 4:** Găm request vào instance có `RealTimeScore` thấp hơn. Kích hoạt sự kiện `InflightLifecycle.onStartRequest()` để tăng biến đếm số luồng đang xử lý tại máy chủ đó lên 1 đơn vị.
+* **Bước 5:** Khi luồng xử lý tại môi trường container kết thúc (thành công, lỗi hoặc timeout), sự kiện `InflightLifecycle.onComplete()` được kích hoạt vô điều kiện nhằm giảm biến đếm về trạng thái cân bằng.
+
+### Luồng Quản lý Trạng thái Ngắt mạch (Circuit Breaker Machine)
+`InstanceCircuitBreaker` theo dõi lịch sử polling của từng instance theo mô hình máy trạng thái hữu hạn ba miền giá trị:
+* **CLOSED (Bình thường):** Gateway định tuyến lưu lượng bình thường. Mỗi lần poll bị timeout hoặc lỗi kết nối, failure count tăng 1. Sau 3 lần lỗi liên tiếp, mạch bị ngắt và chuyển sang `OPEN`.
+* **OPEN (Cách ly):** `MetricsPoller` triệt tiêu các lệnh gọi HTTP vô ích, áp dụng penalty tối đa để ngưng toàn bộ traffic định tuyến đến máy chủ này. Trạng thái bị khóa cứng trong 5 giây, sau đó tự động chuyển sang thử nghiệm phục hồi `HALF_OPEN`.
+* **HALF_OPEN (Thử nghiệm):** Cho phép một lượng nhỏ traffic/polling thăm dò mạng. Nếu `MetricsPoller` gọi HTTP REST thành công 2 lần liên tiếp, hệ thống xác nhận máy chủ đã khỏe, reset biến đếm và đóng mạch về `CLOSED`. Nếu thất bại, mạch bị dội ngược về `OPEN` và tái khởi động chu kỳ phạt 5 giây.
+
+### Luồng Phối hợp Xử lý Sự cố (Chaos Engineering và Tự Phục hồi)
+* **Kích hoạt lỗi:** Khi lệnh kích hoạt lỗi được phát tới `ChaosController` của một node, vòng lặp tính toán căn bậc hai cưỡng bức đẩy CPU lên mức trần và kéo giãn độ trễ.
+* **Phản xạ cô lập:** Tại chu kỳ 1 giây tiếp theo, lớp `EwmaSmoother` co hẹp hệ số làm mịn để nhận diện cú sốc trễ, `PIDController` tích lũy sai số dương và đẩy `FinalScore` vọt lên cao. Ở tầng Data Plane, thuật toán P2C lập tức nhận diện sự chênh lệch điểm số và "né" node lỗi, điều hướng toàn bộ 500 RPS bão tải sang 2 node khỏe mạnh còn lại. Hiện tượng sập dây chuyền (Cascading Failure) được ngăn chặn thành công.
+* **Tự phục hồi:** Khi sự cố Chaos được tắt đi, độ trễ thô lập tức giảm sút. Cơ chế xả trôi (*Leaky Integrator*) bên trong `PIDController` giải phóng dần điểm phạt. Khi `FinalScore` giảm về lại dải an toàn ban đầu, thuật toán P2C tự động điều tiết lưu lượng phân phối đều đặn trở lại cụm máy chủ một cách mượt mà.
+
+---
+
 ## Danh sách Cổng & Chức năng
 
 | Thành phần | Port| Chức năng chính |
@@ -155,5 +220,5 @@ Trong lúc JMeter đang bắn tải, hãy mở dashboard của **Grafana (`http:
 
 ## CI/CD & Deploy Tự động
 -dùng để thuận tiện trong quá trình thiết kế và kiểm thử
-
+## CÁC FILE NHẬT KÝ LÀM VIỆC
 **[Xem chi tiết: Nhật ký chuyển dự án lên Docker Ubuntu Server](nhat-ky-chuyen-len-server.md)**
