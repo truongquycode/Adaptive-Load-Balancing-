@@ -63,6 +63,14 @@ public class LeastConnectionsLoadBalancer implements ReactorServiceInstanceLoadB
             }
         }
 
-        return new DefaultResponse(bestInstance != null ? bestInstance : instances.get(0));
+        ServiceInstance selected = bestInstance != null ? bestInstance : instances.get(0);
+
+        // Thu thập metric trước khi trả về
+        io.micrometer.core.instrument.Metrics.counter("alb.routing.selected",
+            "backend", selected.getInstanceId(),
+            "port", String.valueOf(selected.getPort())
+        ).increment();
+
+        return new DefaultResponse(selected);
     }
 }

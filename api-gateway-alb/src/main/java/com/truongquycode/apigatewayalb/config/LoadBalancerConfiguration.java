@@ -18,6 +18,7 @@ import org.springframework.cloud.loadbalancer.support.LoadBalancerClientFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
+import com.truongquycode.apigatewayalb.dataplane.MetricAwareLoadBalancer;
 
 @Configuration
 @LoadBalancerClients({
@@ -41,14 +42,16 @@ public class LoadBalancerConfiguration {
         return new AdaptiveLoadBalancer(lazyProvider, metricsCache, inflightTracker);
     }
 
-    // 2. Kích hoạt thuật toán ROUND ROBIN
+	// 2. Kích hoạt thuật toán ROUND ROBIN
     @Bean
     @ConditionalOnProperty(name = "alb.strategy", havingValue = "round-robin")
     public ReactorLoadBalancer<ServiceInstance> roundRobinLoadBalancer(
             Environment environment, LoadBalancerClientFactory loadBalancerClientFactory) {
         String name = environment.getProperty(LoadBalancerClientFactory.PROPERTY_NAME);
         ObjectProvider<ServiceInstanceListSupplier> lazyProvider = loadBalancerClientFactory.getLazyProvider(name, ServiceInstanceListSupplier.class);
-        return new RoundRobinLoadBalancer(lazyProvider, name);
+        
+        // BỌC CLASS CỦA SPRING BẰNG WRAPPER CỦA BẠN
+        return new MetricAwareLoadBalancer(new RoundRobinLoadBalancer(lazyProvider, name));
     }
 
     // 3. Kích hoạt thuật toán RANDOM
@@ -58,7 +61,9 @@ public class LoadBalancerConfiguration {
             Environment environment, LoadBalancerClientFactory loadBalancerClientFactory) {
         String name = environment.getProperty(LoadBalancerClientFactory.PROPERTY_NAME);
         ObjectProvider<ServiceInstanceListSupplier> lazyProvider = loadBalancerClientFactory.getLazyProvider(name, ServiceInstanceListSupplier.class);
-        return new RandomLoadBalancer(lazyProvider, name);
+        
+        // BỌC CLASS CỦA SPRING BẰNG WRAPPER CỦA BẠN
+        return new MetricAwareLoadBalancer(new RandomLoadBalancer(lazyProvider, name));
     }
 
     // 4. Kích hoạt thuật toán LEAST CONNECTIONS
