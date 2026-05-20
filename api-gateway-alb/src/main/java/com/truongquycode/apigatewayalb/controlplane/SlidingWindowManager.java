@@ -99,4 +99,10 @@ public class SlidingWindowManager {
 			return 50.0;
 		return globalPair[gi].getValueAtPercentile(50.0);
 	}
+	
+	public double getSystemP75() {
+        int gi = globalActiveIdx.get();
+        if (globalPair[gi].getTotalCount() == 0) return 50.0;
+        return globalPair[gi].getValueAtPercentile(75.0);
+    }
 }

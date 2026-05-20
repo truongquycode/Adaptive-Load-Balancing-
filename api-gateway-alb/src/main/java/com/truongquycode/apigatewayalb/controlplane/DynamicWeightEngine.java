@@ -17,6 +17,9 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class DynamicWeightEngine {
+	
+	// Mức nền tương ứng cho [Latency (5ms), Queue (1 request), CPU (0.05%)]
+    private static final double[] MU = {5.0, 1.0, 0.05};
     
     // Khai báo hằng số toán học rõ ràng (Tránh Magic Numbers)
     private static final double EPSILON = 1e-6; 
@@ -51,6 +54,7 @@ public class DynamicWeightEngine {
     }
 
     // --- BƯỚC 1: Xây dựng và chuẩn hóa ma trận dữ liệu ---
+    // 2. Cập nhật toàn bộ nội dung của hàm buildNormalizedMatrix:
     private double[][] buildNormalizedMatrix(List<InstanceMetrics> instances, int n) {
         double[][] data = new double[n][CRITERIA_COUNT];
         
@@ -58,13 +62,15 @@ public class DynamicWeightEngine {
             double minVal = Double.MAX_VALUE;
             // Tìm Min cho từng tiêu chí
             for (int i = 0; i < n; i++) {
-                double val = Math.max(EPSILON, getMetric(instances.get(i), j));
+                double val = getMetric(instances.get(i), j);
                 if (val < minVal) minVal = val;
             }
-            // Chuẩn hóa: Càng nhỏ càng tốt (min/val)
+            
+            // Chuẩn hóa Laplace: (Min + mu) / (Val + mu)
+            // Triệt tiêu lỗi chia cho 0 và triệt tiêu luôn độ nhạy thái quá khi Val ≈ 0
             for (int i = 0; i < n; i++) {
-                double val = Math.max(EPSILON, getMetric(instances.get(i), j));
-                data[i][j] = minVal / val; 
+                double val = getMetric(instances.get(i), j);
+                data[i][j] = (minVal + MU[j]) / (val + MU[j]); 
             }
         }
         return data;

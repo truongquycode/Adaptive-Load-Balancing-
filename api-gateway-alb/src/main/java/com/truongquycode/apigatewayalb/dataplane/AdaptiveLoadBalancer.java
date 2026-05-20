@@ -55,8 +55,9 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
         ServiceInstance inst1 = instances.get(i);
         ServiceInstance inst2 = instances.get(j);
 
-        double score1 = calculateRealTimeScore(inst1.getInstanceId());
-        double score2 = calculateRealTimeScore(inst2.getInstanceId());
+        int activeNodes = instances.size(); // Đếm tổng số node hiện có
+        double score1 = calculateRealTimeScore(inst1.getInstanceId(), activeNodes);
+        double score2 = calculateRealTimeScore(inst2.getInstanceId(), activeNodes);
 
         ServiceInstance selected = score1 <= score2 ? inst1 : inst2;
 
@@ -69,26 +70,28 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
     }
 
     // Tích hợp Local Inflight ngay tại thời điểm định tuyến (mili-giây)
-    private double calculateRealTimeScore(String instanceId) {
+    private double calculateRealTimeScore(String instanceId, int activeNodes) {
         ScoreBreakdown breakdown = cache.getScore(instanceId);
         double baseScore = (breakdown != null) ? breakdown.finalScore() : 0.5;
 
         int localInflight = inflightTracker.getInflight(instanceId);
         int totalInflight = inflightTracker.getTotalInflight();
 
-        double inflightPenalty;
-        if (totalInflight <= 0) {
-            inflightPenalty = 0.0;
-        } else {
-            // Tỷ lệ phần trăm traffic đang xử lý tại instance này
-            // so với toàn hệ thống — luôn trong [0, 1]
+        double inflightPenalty = 0.0;
+        
+        // Tránh chia 0 và chỉ phạt khi hệ thống có tải
+        if (totalInflight > 0 && activeNodes > 0) {
             double relativeShare = (double) localInflight / totalInflight;
-            // Số instance đang hoạt động (xấp xỉ)
-            int activeInstances = 3;
-            double fairShare = 1.0 / activeInstances; // 0.333 khi phân phối đều
-
-            // Phạt khi instance đang gánh nhiều hơn phần công bằng của nó
-            inflightPenalty = 0.8 * Math.max(0, relativeShare - fairShare) / fairShare;
+            double fairShare = 1.0 / activeNodes;
+            
+            // Tính mức độ gánh dư thừa (nếu <= 0 tức là đang gánh ít hơn phần của mình)
+            double excessShare = Math.max(0.0, relativeShare - fairShare);
+            
+            // Hàm phạt Logarit (omega = 1.5). 
+            // Nếu node gánh 100% traffic của cụm 3 node (excess = 0.67), Penalty đạt xấp xỉ 0.76.
+            // Mức này vừa đủ để P2C chuyển traffic đi, nhưng không quá lớn để bóp méo BaseScore.
+            double omega = 1.5; 
+            inflightPenalty = omega * Math.log(1.0 + excessShare);
         }
 
         return baseScore + inflightPenalty;
