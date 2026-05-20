@@ -21,7 +21,7 @@ public class PIDController {
             .expireAfterAccess(5, TimeUnit.MINUTES).build();
 
     public double calculatePenalty(String instanceId, double rawLat, 
-                               double p50System, PidConfig cfg) {
+                               double setpoint, PidConfig cfg) {
 
     long now = System.currentTimeMillis();
 
@@ -36,7 +36,7 @@ public class PIDController {
         double actualDt = Math.min(5.0, Math.max(0.001,
             (now - state.getLastTimestamp()) / 1000.0));
 
-        double error = rawLat - p50System;
+        double error = rawLat - setpoint;
 
         // ----- P -----
         double p = cfg.getKp() * error;

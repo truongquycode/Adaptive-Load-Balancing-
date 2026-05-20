@@ -33,7 +33,7 @@ public class ScoreCalculator {
         }
 
         PercentileSnapshot snap     = windowManager.getSnapshot(instanceId);
-        double             p50System = windowManager.getSystemP50();
+        double p75System = windowManager.getSystemP75();
 
         // Lấy latency thực, fallback về p50 nếu chưa có dữ liệu
         double lRaw    = current.getLatency() > 0 ? current.getLatency() : snap.p50();
@@ -61,11 +61,11 @@ public class ScoreCalculator {
 
         double normalizedEwma = Math.max(0.0, Math.min(1.0,
             (ewmaLat  - p5) / (p95 - p5)));
-        double normalizedP50  = Math.max(0.0, Math.min(1.0,
-            (p50System - p5) / (p95 - p5)));
+        double normalizedP75  = Math.max(0.0, Math.min(1.0,
+                (p75System - p5) / (p95 - p5)));
 
-        double penalty    = pidController.calculatePenalty(
-            instanceId, normalizedEwma, normalizedP50, props.getPid());
+        double penalty = pidController.calculatePenalty(
+                instanceId, normalizedEwma, normalizedP75, props.getPid());
         double finalScore = baseScore + penalty;
 
         return new ScoreBreakdown(
