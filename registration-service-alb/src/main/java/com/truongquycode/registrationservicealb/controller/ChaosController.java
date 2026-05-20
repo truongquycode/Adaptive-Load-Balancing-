@@ -17,7 +17,7 @@ public class ChaosController {
         chaosEnabled.set(true);
         return ResponseEntity.ok(Map.of(
             "status", "chaos ENABLED",
-            "port", System.getProperty("server.port", "unknown")
+            "port", System.getenv("PORT") != null ? System.getenv("PORT") : "unknown"
         ));
     }
 
@@ -26,7 +26,7 @@ public class ChaosController {
         chaosEnabled.set(false);
         return ResponseEntity.ok(Map.of(
             "status", "chaos DISABLED",
-            "port", System.getProperty("server.port", "unknown")
+            "port", System.getenv("PORT") != null ? System.getenv("PORT") : "unknown"
         ));
     }
 
@@ -34,7 +34,7 @@ public class ChaosController {
     public ResponseEntity<Map<String, Object>> status() {
         return ResponseEntity.ok(Map.of(
             "chaosEnabled", chaosEnabled.get(),
-            "port", System.getProperty("server.port", "unknown")
+            "port", System.getenv("PORT") != null ? System.getenv("PORT") : "unknown"
         ));
     }
 }
