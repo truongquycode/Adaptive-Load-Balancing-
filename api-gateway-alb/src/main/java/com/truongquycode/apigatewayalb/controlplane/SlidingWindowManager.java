@@ -9,25 +9,31 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 @Component
 public class SlidingWindowManager {
-	
+
+	private static final long MAX_LATENCY_MS = 60000L; // 60 giây
+	private static final long MAX_QUEUE_SIZE = 10000L;
+	private static final int SIGNIFICANT_DIGITS = 2; // Độ phân giải Histogram
+
+	private static final int WINDOW_SIZE = 20; // 150-> 20
+	private static final int GLOBAL_WIN_SIZE = 60; // 450->60
+
 	private final ConcurrentHashMap<String, Histogram[]> latHistPairs = new ConcurrentHashMap<>();
 	private final ConcurrentHashMap<String, Histogram[]> qHistPairs = new ConcurrentHashMap<>();
 	private final ConcurrentHashMap<String, AtomicInteger> latActiveIdx = new ConcurrentHashMap<>();
 	private final ConcurrentHashMap<String, AtomicInteger> qActiveIdx = new ConcurrentHashMap<>();
 
 	// Global histogram cũng dùng rotating pair
-	private final Histogram[] globalPair = { new Histogram(1, 60000, 2), new Histogram(1, 60000, 2) };
+	// Khởi tạo mảng bằng hằng số
+	private final Histogram[] globalPair = { new Histogram(1, MAX_LATENCY_MS, SIGNIFICANT_DIGITS),
+			new Histogram(1, MAX_LATENCY_MS, SIGNIFICANT_DIGITS) };
 	private final AtomicInteger globalActiveIdx = new AtomicInteger(0);
 
-	private static final int WINDOW_SIZE = 20; //150-> 20
-	private static final int GLOBAL_WIN_SIZE = 60; //450->60
-
 	public void addMetrics(String instanceId, double lat, double queue) {
-		long latVal = Math.min(Math.max(1, (long) lat), 60000);
-		long qVal = Math.min(Math.max(1, (long) queue), 10000);
+		long latVal = Math.min(Math.max(1, (long) lat), MAX_LATENCY_MS);
+		long qVal = Math.min(Math.max(1, (long) queue), MAX_QUEUE_SIZE);
 
-		recordRotating(latHistPairs, latActiveIdx, instanceId, latVal, 60000, WINDOW_SIZE);
-		recordRotating(qHistPairs, qActiveIdx, instanceId, qVal, 10000, WINDOW_SIZE);
+		recordRotating(latHistPairs, latActiveIdx, instanceId, latVal, MAX_LATENCY_MS, WINDOW_SIZE);
+		recordRotating(qHistPairs, qActiveIdx, instanceId, qVal, MAX_QUEUE_SIZE, WINDOW_SIZE);
 
 		// Cập nhật global histogram
 		int gi = globalActiveIdx.get();
@@ -43,8 +49,8 @@ public class SlidingWindowManager {
 			ConcurrentHashMap<String, AtomicInteger> idxMap, String instanceId, long value, long maxVal,
 			int windowSize) {
 
-		Histogram[] hists = pairsMap.computeIfAbsent(instanceId,
-				k -> new Histogram[] { new Histogram(1, maxVal, 2), new Histogram(1, maxVal, 2) });
+		Histogram[] hists = pairsMap.computeIfAbsent(instanceId, k -> new Histogram[] {
+				new Histogram(1, maxVal, SIGNIFICANT_DIGITS), new Histogram(1, maxVal, SIGNIFICANT_DIGITS) });
 		AtomicInteger idx = idxMap.computeIfAbsent(instanceId, k -> new AtomicInteger(0));
 
 		int active = idx.get();
@@ -52,7 +58,6 @@ public class SlidingWindowManager {
 
 		if (hists[active].getTotalCount() > windowSize) {
 			int next = 1 - active;
-			// Chỉ thread đầu tiên thực hiện rotation thành công
 			if (idx.compareAndSet(active, next)) {
 				hists[next].reset();
 			}

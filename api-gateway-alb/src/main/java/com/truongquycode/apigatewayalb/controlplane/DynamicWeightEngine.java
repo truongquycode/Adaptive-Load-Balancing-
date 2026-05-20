@@ -17,54 +17,66 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class DynamicWeightEngine {
+    
+    // Khai báo hằng số toán học rõ ràng (Tránh Magic Numbers)
+    private static final double EPSILON = 1e-6; 
+    private static final double BLEND_FACTOR = 0.7; // 70% EWM + 30% AHP
+    private static final int CRITERIA_COUNT = 3;    // Latency, Queue, CPU
+    
     private final MetricsCache cache;
     private final MeterRegistry registry;
-    private final double[] ahpWeights = {0.5, 0.3, 0.2};
+    private final double[] ahpWeights = {0.5, 0.3, 0.2}; // Có thể đưa ra application.yml sau
+    
     private volatile double alpha = 0.5, beta = 0.3, gamma = 0.2;
     
     @PostConstruct
-    public void registerMetrics() {                // THÊM toàn bộ method này
-        Gauge.builder("alb.mcdm.weight", () -> alpha)
-            .tag("criterion", "latency")
-            .description("MCDM weight alpha — trọng số latency (AHP-EWM fusion)")
-            .register(registry);
-        Gauge.builder("alb.mcdm.weight", () -> beta)
-            .tag("criterion", "queue")
-            .description("MCDM weight beta — trọng số queue length")
-            .register(registry);
-        Gauge.builder("alb.mcdm.weight", () -> gamma)
-            .tag("criterion", "cpu")
-            .description("MCDM weight gamma — trọng số CPU")
-            .register(registry);
+    public void registerMetrics() {
+        Gauge.builder("alb.mcdm.weight", () -> alpha).tag("criterion", "latency").register(registry);
+        Gauge.builder("alb.mcdm.weight", () -> beta).tag("criterion", "queue").register(registry);
+        Gauge.builder("alb.mcdm.weight", () -> gamma).tag("criterion", "cpu").register(registry);
     }
 
     @Scheduled(fixedRateString = "${alb.weights.update-interval:5000}")
     public void computeMCDMWeights() {	
-        // Đổi từ getAll() thành getAllMetrics()
         List<InstanceMetrics> instances = cache.getAllMetrics(); 
         int n = instances.size();
         if (n < 2) return;
 
-        double[][] data = new double[n][3];
-        double epsilon = 1e-6; 
+        // Thuật toán được chia thành 3 bước đọc rất rõ ràng:
+        double[][] normalizedMatrix = buildNormalizedMatrix(instances, n);
+        double[] ewmWeights = calculateEntropyWeights(normalizedMatrix, n);
+        blendAndApplyFinalWeights(ewmWeights);
+        
+        log.debug("MCDM Weights Updated: Alpha={}, Beta={}, Gamma={}", alpha, beta, gamma);
+    }
 
-        for (int j = 0; j < 3; j++) {
+    // --- BƯỚC 1: Xây dựng và chuẩn hóa ma trận dữ liệu ---
+    private double[][] buildNormalizedMatrix(List<InstanceMetrics> instances, int n) {
+        double[][] data = new double[n][CRITERIA_COUNT];
+        
+        for (int j = 0; j < CRITERIA_COUNT; j++) {
             double minVal = Double.MAX_VALUE;
+            // Tìm Min cho từng tiêu chí
             for (int i = 0; i < n; i++) {
-                double val = Math.max(epsilon, getMetric(instances.get(i), j));
+                double val = Math.max(EPSILON, getMetric(instances.get(i), j));
                 if (val < minVal) minVal = val;
             }
+            // Chuẩn hóa: Càng nhỏ càng tốt (min/val)
             for (int i = 0; i < n; i++) {
-                double val = Math.max(epsilon, getMetric(instances.get(i), j));
+                double val = Math.max(EPSILON, getMetric(instances.get(i), j));
                 data[i][j] = minVal / val; 
             }
         }
+        return data;
+    }
 
-        double[] ewm = new double[3];
+    // --- BƯỚC 2: Tính toán trọng số Entropy (EWM) ---
+    private double[] calculateEntropyWeights(double[][] data, int n) {
+        double[] ewm = new double[CRITERIA_COUNT];
         double sumEwm = 0;
         double k = 1.0 / Math.log(n);
 
-        for (int j = 0; j < 3; j++) {
+        for (int j = 0; j < CRITERIA_COUNT; j++) {
             double colSum = 0;
             for (int i = 0; i < n; i++) colSum += data[i][j];
 
@@ -78,37 +90,37 @@ public class DynamicWeightEngine {
             sumEwm += ewm[j];
         }
         
-     // Normalize EWM
-        double[] ewmNorm = new double[3];
-        for (int j = 0; j < 3; j++) {
-            ewmNorm[j] = (sumEwm == 0) ? (1.0 / 3.0) : (ewm[j] / sumEwm);
+        // Chuẩn hóa EWM để tổng = 1
+        double[] ewmNorm = new double[CRITERIA_COUNT];
+        for (int j = 0; j < CRITERIA_COUNT; j++) {
+            ewmNorm[j] = (sumEwm == 0) ? (1.0 / CRITERIA_COUNT) : (ewm[j] / sumEwm);
         }
+        return ewmNorm;
+    }
 
-        // BLEND: 70% EWM + 30% AHP — tránh weight về 0 khi metric uniform
-        double blendFactor = 0.7;
-        double[] blended = new double[3];
-        for (int j = 0; j < 3; j++) {
-            blended[j] = blendFactor * ewmNorm[j] + (1 - blendFactor) * ahpWeights[j];
-        }
-
-        // Fusion AHP × blended rồi normalize
+    // --- BƯỚC 3: Trộn EWM với AHP và cập nhật biến toàn cục ---
+    private void blendAndApplyFinalWeights(double[] ewmNorm) {
         double sumFusion = 0;
-        double[] fusion = new double[3];
-        for (int j = 0; j < 3; j++) {
-            fusion[j] = ahpWeights[j] * blended[j];
+        double[] fusion = new double[CRITERIA_COUNT];
+        
+        for (int j = 0; j < CRITERIA_COUNT; j++) {
+            double blended = BLEND_FACTOR * ewmNorm[j] + (1 - BLEND_FACTOR) * ahpWeights[j];
+            fusion[j] = ahpWeights[j] * blended;
             sumFusion += fusion[j];
         }
 
-
         this.alpha = fusion[0] / sumFusion;
-        this.beta = fusion[1] / sumFusion;
+        this.beta  = fusion[1] / sumFusion;
         this.gamma = fusion[2] / sumFusion;
-        
-        log.debug("MCDM Weights Updated: Alpha={}, Beta={}, Gamma={}", alpha, beta, gamma);
     }
 
-    private double getMetric(InstanceMetrics m, int j) {
-        return j == 0 ? m.getLatency() : j == 1 ? m.getQueueLength() : m.getCpu();
+    private double getMetric(InstanceMetrics m, int criteriaIndex) {
+        return switch (criteriaIndex) {
+            case 0 -> m.getLatency();
+            case 1 -> m.getQueueLength();
+            case 2 -> m.getCpu();
+            default -> EPSILON;
+        };
     }
 
     public double getAlpha() { return alpha; }
