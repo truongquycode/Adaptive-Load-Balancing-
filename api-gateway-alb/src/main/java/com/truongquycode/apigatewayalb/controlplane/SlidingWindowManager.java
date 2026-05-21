@@ -105,4 +105,14 @@ public class SlidingWindowManager {
         if (globalPair[gi].getTotalCount() == 0) return 50.0;
         return globalPair[gi].getValueAtPercentile(75.0);
     }
+	
+	public void resetAll() {
+        latHistPairs.clear();
+        qHistPairs.clear();
+        latActiveIdx.clear();
+        qActiveIdx.clear();
+        globalPair[0].reset();
+        globalPair[1].reset();
+        globalActiveIdx.set(0);
+    }
 }

@@ -30,4 +30,9 @@ public class InflightTracker {
     public int getTotalInflight() {
         return totalInflight.get();
     }
+    
+    public void resetAll() {
+        counts.clear();
+        totalInflight.set(0);
+    }
 }

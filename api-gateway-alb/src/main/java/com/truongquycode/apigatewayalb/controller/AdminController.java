@@ -9,24 +9,28 @@ import com.truongquycode.apigatewayalb.dataplane.PIDController;
 import com.truongquycode.apigatewayalb.math.EwmaSmoother;
 
 import io.micrometer.core.instrument.MeterRegistry;
+import lombok.RequiredArgsConstructor;
+
+import com.truongquycode.apigatewayalb.controlplane.SlidingWindowManager;
+import com.truongquycode.apigatewayalb.dataplane.InflightTracker;
 
 @RestController
 @RequestMapping("/actuator")
+@RequiredArgsConstructor
 public class AdminController {
-	private final PIDController pidController;
+    
+    private final PIDController pidController;
     private final EwmaSmoother ewmaSmoother;
+    private final SlidingWindowManager windowManager;
+    private final InflightTracker inflightTracker;
 
-    public AdminController(PIDController pidController, EwmaSmoother ewmaSmoother) {
-        this.pidController = pidController;
-        this.ewmaSmoother = ewmaSmoother;
+    @PostMapping("/alb/reset")
+    public ResponseEntity<String> resetState() {
+        pidController.resetAllStates();
+        ewmaSmoother.resetAllStates();
+        windowManager.resetAll();
+        inflightTracker.resetAll();
+        
+        return ResponseEntity.ok("ALB State Reset Hòan Toàn — Sẵn sàng cho lần Benchmark tiếp theo");
     }
-	
-	@PostMapping("/alb/reset")
-	public ResponseEntity<String> resetState() {
-	    // Xóa PID state để test run tiếp theo bắt đầu sạch
-	    pidController.resetAllStates();
-	    ewmaSmoother.resetAllStates();
-	    return ResponseEntity.ok("ALB state reset — PID integral và EWMA cleared");
-	}
-
 }
