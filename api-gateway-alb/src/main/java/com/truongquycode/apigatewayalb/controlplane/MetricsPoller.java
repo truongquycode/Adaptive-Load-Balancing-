@@ -187,8 +187,16 @@ public class MetricsPoller {
         if (registeredRoutingGauges.add(id)) {
             Gauge.builder("alb.routing.score", () -> {
                     double finalScore = scoreValues.getOrDefault(id, 0.5);
-                    double localInflight = inflightTracker.getInflight(id);
-                    return finalScore + 0.4 * Math.log(1.0 + localInflight);
+                    int localInflight = inflightTracker.getInflight(id);
+                    int totalInflight = inflightTracker.getTotalInflight();
+                    
+                    double inflightPenalty = 0.0;
+                    if (totalInflight > 0) {
+                        // Giả định cụm luôn có 3 node để vẽ đồ thị
+                        double excessShare = Math.max(0.0, ((double) localInflight / totalInflight) - (1.0 / 3.0));
+                        inflightPenalty = 0.3 * Math.log(1.0 + excessShare);
+                    }
+                    return finalScore + inflightPenalty;
                 })
                 .tag("backend", id).register(registry);
         }
