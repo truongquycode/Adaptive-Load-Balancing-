@@ -32,15 +32,21 @@ public class RegistrationController {
             }
 
         } else if (ChaosController.asyncIoEnabled.get()) {
-            // TRƯỜNG HỢP 2: Lỗi I/O phi đồng bộ
-            // Chỉ ngủ (sleep) để tạo độ trễ 3 giây, nhường hoàn toàn CPU cho OS
+            // TRƯỜNG HỢP 2: Lỗi I/O phi đồng bộ (Sleep thuần túy, không tốn CPU)
             delay = 3000;
             Thread.sleep(delay);
 
         } else {
             // TRƯỜNG HỢP 1 (CPU Spike) VÀ BÌNH THƯỜNG:
-            // Luồng HTTP vẫn xử lý chớp nhoáng (10-50ms) để Inflight không bị dội lên.
-            // Nếu cờ cpuSpikeEnabled bật, CPU đã bị nhóm luồng ngầm bên kia đốt sạch.
+            // Ép luồng HTTP thực hiện một chút tính toán (mô phỏng parse JSON/Nghiệp vụ)
+            // Vòng lặp cố định này tốn < 1ms khi CPU rảnh rỗi.
+            // NHƯNG khi CPU bị Chaos vắt kiệt 100%, OS không cấp đủ time-slice, 
+            // vòng lặp này sẽ bị kéo dãn ra tốn hàng trăm mili-giây!
+            double httpDummy = 0;
+            for (int i = 0; i < 150000; i++) {
+                httpDummy += Math.sqrt(Math.random());
+            }
+
             delay = 10 + random.nextInt(40);
             Thread.sleep(delay);
         }
