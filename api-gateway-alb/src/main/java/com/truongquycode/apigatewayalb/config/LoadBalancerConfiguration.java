@@ -66,7 +66,7 @@ public class LoadBalancerConfiguration {
         return new MetricAwareLoadBalancer(new RandomLoadBalancer(lazyProvider, name));
     }
 
-    // 4. Kích hoạt thuật toán LEAST CONNECTIONS
+    // Kích hoạt thuật toán LEAST CONNECTIONS
     @Bean
     @ConditionalOnProperty(name = "alb.strategy", havingValue = "least-connections")
     public ReactorLoadBalancer<ServiceInstance> leastConnectionsLoadBalancer(
