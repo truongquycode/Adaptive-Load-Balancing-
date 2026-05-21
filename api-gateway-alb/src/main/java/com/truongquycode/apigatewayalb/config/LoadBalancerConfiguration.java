@@ -72,12 +72,12 @@ public class LoadBalancerConfiguration {
     public ReactorLoadBalancer<ServiceInstance> leastConnectionsLoadBalancer(
             Environment environment,
             LoadBalancerClientFactory loadBalancerClientFactory,
-            MetricsCache metricsCache) {
+            InflightTracker inflightTracker) {
         
         String name = environment.getProperty(LoadBalancerClientFactory.PROPERTY_NAME);
         ObjectProvider<ServiceInstanceListSupplier> lazyProvider = 
                 loadBalancerClientFactory.getLazyProvider(name, ServiceInstanceListSupplier.class);
         
-        return new LeastConnectionsLoadBalancer(lazyProvider, metricsCache);
+        return new LeastConnectionsLoadBalancer(lazyProvider, inflightTracker);
     }
 }

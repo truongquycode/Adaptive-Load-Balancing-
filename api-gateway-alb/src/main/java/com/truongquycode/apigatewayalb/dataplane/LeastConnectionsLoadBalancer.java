@@ -1,7 +1,5 @@
 package com.truongquycode.apigatewayalb.dataplane;
 
-import com.truongquycode.apigatewayalb.model.InstanceMetrics;
-import com.truongquycode.apigatewayalb.util.MetricsCache;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
@@ -22,7 +20,8 @@ import java.util.concurrent.ThreadLocalRandom;
 public class LeastConnectionsLoadBalancer implements ReactorServiceInstanceLoadBalancer {
 
     private final ObjectProvider<ServiceInstanceListSupplier> supplierProvider;
-    private final MetricsCache cache;
+    // THAY ĐỔI 1: Bỏ MetricsCache, thay bằng InflightTracker giống hệt Adaptive
+    private final InflightTracker inflightTracker; 
 
     @Override
     public Mono<Response<ServiceInstance>> choose(Request request) {
@@ -30,33 +29,28 @@ public class LeastConnectionsLoadBalancer implements ReactorServiceInstanceLoadB
         if (supplier == null) {
             return Mono.just(new EmptyResponse());
         }
-        // Gọi đúng tên hàm selectLeastConnectionsInstance
         return supplier.get(request).next().map(this::selectLeastConnectionsInstance);
     }
 
-    // Đã đổi tên hàm cho khớp
     private Response<ServiceInstance> selectLeastConnectionsInstance(List<ServiceInstance> instances) {
         if (instances == null || instances.isEmpty()) {
             return new EmptyResponse();
         }
 
         ServiceInstance bestInstance = null;
-        double minConnections = Double.MAX_VALUE;
+        int minConnections = Integer.MAX_VALUE;
 
         for (ServiceInstance instance : instances) {
             String id = instance.getInstanceId();
             
-            // Lấy metrics thô từ Cache (Control Plane đã cập nhật)
-            InstanceMetrics metrics = cache.getMetrics(id);
-
-            // Nếu chưa có metrics (lúc mới start), giả định số connection = 0
-            double currentConnections = (metrics != null) ? metrics.getQueueLength() : 0;
+            // THAY ĐỔI 2: Đọc trực tiếp từ InflightTracker ở tốc độ mili-giây (O(1))
+            int currentConnections = inflightTracker.getInflight(id);
 
             if (currentConnections < minConnections) {
                 minConnections = currentConnections;
                 bestInstance = instance;
             } else if (currentConnections == minConnections) {
-                // Nếu số connection bằng nhau, Random để phân tải đều, tránh dồn cục (Herd Effect)
+                // Xử lý Tie-breaker: Phân tải đều bằng Random khi bằng điểm
                 if (bestInstance == null || ThreadLocalRandom.current().nextBoolean()) {
                     bestInstance = instance;
                 }
@@ -65,7 +59,6 @@ public class LeastConnectionsLoadBalancer implements ReactorServiceInstanceLoadB
 
         ServiceInstance selected = bestInstance != null ? bestInstance : instances.get(0);
 
-        // Thu thập metric trước khi trả về
         io.micrometer.core.instrument.Metrics.counter("alb.routing.selected",
             "backend", selected.getInstanceId(),
             "port", String.valueOf(selected.getPort())
