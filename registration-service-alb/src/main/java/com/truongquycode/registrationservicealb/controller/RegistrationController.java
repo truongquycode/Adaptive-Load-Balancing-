@@ -43,7 +43,7 @@ public class RegistrationController {
             // NHƯNG khi CPU bị Chaos vắt kiệt 100%, OS không cấp đủ time-slice, 
             // vòng lặp này sẽ bị kéo dãn ra tốn hàng trăm mili-giây!
             double httpDummy = 0;
-            for (int i = 0; i < 20000; i++) {
+            for (int i = 0; i < 100000; i++) {
                 httpDummy += Math.sqrt(Math.random());
             }
 
