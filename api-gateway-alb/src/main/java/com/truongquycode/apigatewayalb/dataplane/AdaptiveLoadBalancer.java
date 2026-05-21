@@ -79,18 +79,15 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
 
         double inflightPenalty = 0.0;
         
-        // Tránh chia 0 và chỉ phạt khi hệ thống có tải
         if (totalInflight > 0 && activeNodes > 0) {
             double relativeShare = (double) localInflight / totalInflight;
             double fairShare = 1.0 / activeNodes;
-            
-            // Tính mức độ gánh dư thừa (nếu <= 0 tức là đang gánh ít hơn phần của mình)
             double excessShare = Math.max(0.0, relativeShare - fairShare);
             
-            // Hàm phạt Logarit (omega = 1.5). 
-            // Nếu node gánh 100% traffic của cụm 3 node (excess = 0.67), Penalty đạt xấp xỉ 0.76.
-            // Mức này vừa đủ để P2C chuyển traffic đi, nhưng không quá lớn để bóp méo BaseScore.
-            double omega = 1.5; 
+            // SỬA TẠI ĐÂY: Giảm omega từ 1.5 xuống 0.3
+            // Khống chế sức mạnh của Data Plane. Inflight Penalty giờ đây tối đa chỉ rơi vào khoảng 0.15 - 0.3
+            // Đảm bảo nó KHÔNG THỂ lớn hơn điểm phạt từ MCDM và PID (luôn > 1.0 khi có lỗi).
+            double omega = 0.3; 
             inflightPenalty = omega * Math.log(1.0 + excessShare);
         }
 
