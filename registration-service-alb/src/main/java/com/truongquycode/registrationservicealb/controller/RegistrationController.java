@@ -20,31 +20,34 @@ public class RegistrationController {
     public ResponseEntity<String> register(HttpServletRequest request) throws InterruptedException {
         long count = requestCount.incrementAndGet();
         int port = request.getServerPort();
-        boolean isChaos = ChaosController.chaosEnabled.get();
-        
-        int delay = simulateDelay(isChaos);
+        int delay;
 
-        return ResponseEntity.ok(String.format(
-            "Port: %d | Request #%d | Chaos: %s | Latency: %dms",
-            port, count, isChaos ? "ON" : "OFF", delay
-        ));
-    }
-
-    // Tách riêng logic tính toán độ trễ và giả lập bận CPU
-    private int simulateDelay(boolean isChaos) throws InterruptedException {
-        if (isChaos) {
-            int delay = 1000 + random.nextInt(1000); // 1s - 2s
+        if (ChaosController.originalChaos.get()) {
+            // Kịch bản gốc: Vừa trễ mạng, vừa đốt CPU trên chính luồng HTTP
+            delay = 1000 + random.nextInt(1000);
             long endTime = System.currentTimeMillis() + delay;
             double dummy = 0;
-            // Vòng lặp bận (Busy-wait) để đốt CPU
             while (System.currentTimeMillis() < endTime) {
-                dummy += Math.sqrt(Math.random()); 
+                dummy += Math.sqrt(Math.random());
             }
-            return delay;
-        } else {
-            int delay = 10 + random.nextInt(40); // 10ms - 50ms
+
+        } else if (ChaosController.asyncIoEnabled.get()) {
+            // TRƯỜNG HỢP 2: Lỗi I/O phi đồng bộ
+            // Chỉ ngủ (sleep) để tạo độ trễ 3 giây, nhường hoàn toàn CPU cho OS
+            delay = 3000;
             Thread.sleep(delay);
-            return delay;
+
+        } else {
+            // TRƯỜNG HỢP 1 (CPU Spike) VÀ BÌNH THƯỜNG:
+            // Luồng HTTP vẫn xử lý chớp nhoáng (10-50ms) để Inflight không bị dội lên.
+            // Nếu cờ cpuSpikeEnabled bật, CPU đã bị nhóm luồng ngầm bên kia đốt sạch.
+            delay = 10 + random.nextInt(40);
+            Thread.sleep(delay);
         }
+
+        return ResponseEntity.ok(String.format(
+            "Port: %d | Request #%d | Latency: %dms",
+            port, count, delay
+        ));
     }
 }
