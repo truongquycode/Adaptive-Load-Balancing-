@@ -36,7 +36,7 @@ public class RegistrationController {
             delay = 3000;
             Thread.sleep(delay);
 
-        } else {
+        } else if(ChaosController.cpuSpikeEnabled.get()){
             // TRƯỜNG HỢP 1 (CPU Spike) VÀ BÌNH THƯỜNG:
             // Ép luồng HTTP thực hiện một chút tính toán (mô phỏng parse JSON/Nghiệp vụ)
             // Vòng lặp cố định này tốn < 1ms khi CPU rảnh rỗi.
@@ -46,10 +46,9 @@ public class RegistrationController {
             for (int i = 0; i < 100000; i++) {
                 httpDummy += Math.sqrt(Math.random());
             }
-
-            delay = 10 + random.nextInt(40);
-            Thread.sleep(delay);
         }
+        delay = 10 + random.nextInt(40);
+        Thread.sleep(delay);
 
         return ResponseEntity.ok(String.format(
             "Port: %d | Request #%d | Latency: %dms",
