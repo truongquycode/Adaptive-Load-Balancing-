@@ -50,7 +50,7 @@ public class DynamicWeightEngine {
         double totalQueue = instances.stream().mapToDouble(InstanceMetrics::getQueueLength).sum();
         double avgCpu = instances.stream().mapToDouble(InstanceMetrics::getCpu).average().orElse(0.0);
         
-        if (totalQueue == n && avgCpu < 5.0) {
+        if (totalQueue == n && avgCpu < 0.05) {
             log.debug("Hệ thống nhàn rỗi - Đóng băng và Reset trọng số về mặc định (AHP)");
             // Kéo trọng số về lại mức gốc ban đầu của hệ thống
             this.alpha = ahpWeights[0]; // 0.5
