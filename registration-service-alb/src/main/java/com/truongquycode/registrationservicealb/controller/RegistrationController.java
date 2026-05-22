@@ -33,24 +33,27 @@ public class RegistrationController {
 
         } else if (ChaosController.asyncIoEnabled.get()) {
             // TRƯỜNG HỢP 2: Lỗi I/O phi đồng bộ (Sleep thuần túy, không tốn CPU)
-            delay = 1500;
+            delay = 3000;
             Thread.sleep(delay);
 
-        } else {
-            // TRƯỜNG HỢP 1 (CPU Spike) VÀ BÌNH THƯỜNG:
-            // Ép luồng HTTP thực hiện một chút tính toán (mô phỏng parse JSON/Nghiệp vụ)
-            // Vòng lặp cố định này tốn < 1ms khi CPU rảnh rỗi.
-            // NHƯNG khi CPU bị Chaos vắt kiệt 100%, OS không cấp đủ time-slice, 
-            // vòng lặp này sẽ bị kéo dãn ra tốn hàng trăm mili-giây!
+        } else if (ChaosController.cpuSpikeEnabled.get()) {
+            // TRƯỜNG HỢP 1 (CPU SPIKE - KHI CỜ ĐƯỢC BẬT TRUE):
+            // Mô phỏng việc các request đột nhiên trở nên phức tạp (như xuất báo cáo Excel, mã hóa, xử lý ảnh)
+            // Luồng HTTP phải cạnh tranh trực tiếp với nhóm luồng Chaos ngầm.
             double httpDummy = 0;
             for (int i = 0; i < 50000; i++) {
                 httpDummy += Math.sqrt(Math.random());
             }
             delay = 10 + random.nextInt(40);
             Thread.sleep(delay);
+
+        } else {
+            // TRẠNG THÁI BÌNH THƯỜNG:
+            // Tách biệt hoàn toàn, luồng xử lý siêu nhẹ, chỉ mô phỏng độ trễ mạng tự nhiên.
+            delay = 10 + random.nextInt(40);
+            Thread.sleep(delay);
         }
-        
-        
+
         return ResponseEntity.ok(String.format(
             "Port: %d | Request #%d | Latency: %dms",
             port, count, delay
