@@ -45,7 +45,17 @@ public class DynamicWeightEngine {
         int n = instances.size();
         if (n < 2) return;
 
-        // Thuật toán được chia thành 3 bước đọc rất rõ ràng:
+        // BẢN VÁ TỐI ƯU: NGỦ ĐÔNG TRỌNG SỐ KHI HỆ THỐNG NHÀN RỖI (IDLE)
+        // Nếu không có request nào đang chờ (tổng Queue = 0) và CPU trung bình cực thấp (< 5%)
+        double totalQueue = instances.stream().mapToDouble(InstanceMetrics::getQueueLength).sum();
+        double avgCpu = instances.stream().mapToDouble(InstanceMetrics::getCpu).average().orElse(0.0);
+        
+        if (totalQueue == 0 && avgCpu < 5.0) {
+            log.debug("Hệ thống nhàn rỗi - Đóng băng tính toán EWM (Giữ nguyên Alpha={}, Beta={}, Gamma={})", alpha, beta, gamma);
+            return; // Dừng hàm ngay lập tức, không cho EWM xoay trọng số nữa
+        }
+
+        // Nếu hệ thống đang có tải (Queue > 0 hoặc CPU > 5%), tiến hành tính toán bình thường
         double[][] normalizedMatrix = buildNormalizedMatrix(instances, n);
         double[] ewmWeights = calculateEntropyWeights(normalizedMatrix, n);
         blendAndApplyFinalWeights(ewmWeights);
