@@ -41,7 +41,7 @@ public class RegistrationController {
             // Mô phỏng việc các request đột nhiên trở nên phức tạp (như xuất báo cáo Excel, mã hóa, xử lý ảnh)
             // Luồng HTTP phải cạnh tranh trực tiếp với nhóm luồng Chaos ngầm.
             double httpDummy = 0;
-            for (int i = 0; i < 50000; i++) {
+            for (int i = 0; i < 150000; i++) {
                 httpDummy += Math.sqrt(Math.random());
             }
             delay = 10 + random.nextInt(40);
