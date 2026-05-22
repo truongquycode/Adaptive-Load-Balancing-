@@ -51,8 +51,12 @@ public class DynamicWeightEngine {
         double avgCpu = instances.stream().mapToDouble(InstanceMetrics::getCpu).average().orElse(0.0);
         
         if (totalQueue == 0 && avgCpu < 5.0) {
-            log.debug("Hệ thống nhàn rỗi - Đóng băng tính toán EWM (Giữ nguyên Alpha={}, Beta={}, Gamma={})", alpha, beta, gamma);
-            return; // Dừng hàm ngay lập tức, không cho EWM xoay trọng số nữa
+            log.debug("Hệ thống nhàn rỗi - Đóng băng và Reset trọng số về mặc định (AHP)");
+            // Kéo trọng số về lại mức gốc ban đầu của hệ thống
+            this.alpha = ahpWeights[0]; // 0.5
+            this.beta  = ahpWeights[1]; // 0.3
+            this.gamma = ahpWeights[2]; // 0.2
+            return; // Dừng hàm, không tính toán EWM
         }
 
         // Nếu hệ thống đang có tải (Queue > 0 hoặc CPU > 5%), tiến hành tính toán bình thường

@@ -33,8 +33,8 @@ public class RegistrationController {
 
         } else if (ChaosController.asyncIoEnabled.get()) {
             // TRƯỜNG HỢP 2: Lỗi I/O phi đồng bộ (Sleep thuần túy, không tốn CPU)
-            delay = 3000;
-            
+            delay = 1500;
+            Thread.sleep(delay);
 
         } else {
             // TRƯỜNG HỢP 1 (CPU Spike) VÀ BÌNH THƯỜNG:
@@ -47,9 +47,9 @@ public class RegistrationController {
                 httpDummy += Math.sqrt(Math.random());
             }
             delay = 10 + random.nextInt(40);
-            
+            Thread.sleep(delay);
         }
-        Thread.sleep(delay);
+        
         
         return ResponseEntity.ok(String.format(
             "Port: %d | Request #%d | Latency: %dms",
