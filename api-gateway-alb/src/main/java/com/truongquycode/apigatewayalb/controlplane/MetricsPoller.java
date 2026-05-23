@@ -52,7 +52,7 @@ public class MetricsPoller {
 
     private record TrafficState(double count, double totalTimeSec, double lastLatency) {}
 
-    @Scheduled(fixedRateString = "${alb.polling.interval:1000}")
+    @Scheduled(fixedRateString = "${alb.polling.interval:500}")
     public void pollMetrics() {
         if (!isPolling.compareAndSet(false, true)) {
             log.debug("Poll cycle skipped — previous cycle still running");
@@ -94,14 +94,16 @@ public class MetricsPoller {
 
         return webClient.get().uri(url)
                 .retrieve().bodyToMono(JsonNode.class)
-                .timeout(Duration.ofMillis(800))
+                .timeout(Duration.ofMillis(400))
                 .doOnNext(node -> {
                     circuitBreaker.recordSuccess(instanceId);
                     processMetrics(instanceId, node);
                 })
                 .onErrorResume(e -> {
                     circuitBreaker.recordFailure(instanceId);
-                    log.debug("Timeout/lỗi kết nối tới {} — {}", instanceId, e.getMessage());
+                    // Tạo một ScoreBreakdown với finalScore rất cao (ví dụ 10.0) để cache ngay lập tức
+                    ScoreBreakdown penaltyBreakdown = new ScoreBreakdown(instanceId, 0, 1, 1, 1, 1, 5.0, 10.0, System.currentTimeMillis());
+                    metricsCache.putScore(instanceId, penaltyBreakdown);
                     return Mono.empty();
                 })
                 .then();

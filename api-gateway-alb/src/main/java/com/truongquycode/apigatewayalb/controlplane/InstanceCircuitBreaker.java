@@ -15,12 +15,12 @@ import java.util.concurrent.atomic.AtomicReference;
 public class InstanceCircuitBreaker {
 
     // Số lần timeout liên tiếp để mở circuit
-    private static final int FAILURE_THRESHOLD = 3;
+    private static final int FAILURE_THRESHOLD = 1;
 
     // Thời gian giữ circuit ở trạng thái OPEN trước khi thử HALF_OPEN (ms)
     // Cơ sở: bằng 5 × polling interval (5 × 1000ms) để đảm bảo ít nhất 5 chu kỳ
     // poll thất bại trước khi hệ thống thử kết nối lại
-    private static final long OPEN_DURATION_MS = 5000L;
+    private static final long OPEN_DURATION_MS = 2000L;
 
     // Số lần thành công liên tiếp trong HALF_OPEN để đóng circuit trở lại
     private static final int SUCCESS_THRESHOLD = 2;

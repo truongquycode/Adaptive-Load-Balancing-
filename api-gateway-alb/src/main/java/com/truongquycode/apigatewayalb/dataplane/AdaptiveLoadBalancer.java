@@ -87,7 +87,7 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
             // SỬA TẠI ĐÂY: Giảm omega từ 1.5 xuống 0.3
             // Khống chế sức mạnh của Data Plane. Inflight Penalty giờ đây tối đa chỉ rơi vào khoảng 0.15 - 0.3
             // Đảm bảo nó KHÔNG THỂ lớn hơn điểm phạt từ MCDM và PID (luôn > 1.0 khi có lỗi).
-            double omega = 0.3; 
+            double omega = 0.8; 
             inflightPenalty = omega * Math.log(1.0 + excessShare);
         }
 
