@@ -16,6 +16,8 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
+import com.truongquycode.apigatewayalb.dataplane.RealtimeDynamicsTracker;
+import com.truongquycode.apigatewayalb.model.RealtimeDynamics;
 
 import java.time.Duration;
 import java.util.List;
@@ -38,6 +40,7 @@ public class MetricsPoller {
     private final SlidingWindowManager windowManager;
     private final WebClient.Builder webClientBuilder;
     private final InflightTracker inflightTracker;
+    private final RealtimeDynamicsTracker realtimeTracker;
 
     private final Map<String, Double> latencyValues = new ConcurrentHashMap<>();
     private final Map<String, Double> queueValues   = new ConcurrentHashMap<>();
@@ -91,9 +94,27 @@ public class MetricsPoller {
                 })
                 .onErrorResume(e -> {
                     
-                    ScoreBreakdown penaltyBreakdown = new ScoreBreakdown(instanceId, 0, 1, 1, 1, 1, 5.0, 10.0, System.currentTimeMillis());
+                	ScoreBreakdown penaltyBreakdown =
+                	        new ScoreBreakdown(
+                	                instanceId,
+                	                1000,
+                	                1,
+                	                1,
+                	                1,
+                	                1,
+                	                5,
+                	                10,
+                	                System.currentTimeMillis()
+                	        );
                     metricsCache.putScore(instanceId, penaltyBreakdown);
+                    realtimeTracker.update(
+                            instanceId,
+                            inflightTracker.getInflight(instanceId),
+                            1000.0,
+                            true
+                    );
                     return Mono.empty();
+                    
                 })
                 .then();
     }
@@ -119,6 +140,13 @@ public class MetricsPoller {
             double realQueue = reportedQueue >= 0 ? reportedQueue : inflightTracker.getInflight(instanceId);
 
             InstanceMetrics metrics = new InstanceMetrics(instanceId, latency, realQueue, cpu);
+            RealtimeDynamics dynamics =
+                    realtimeTracker.update(
+                            instanceId,
+                            realQueue,
+                            latency,
+                            false
+                    );
             metricsCache.putMetrics(instanceId, metrics);
             windowManager.addMetrics(instanceId, latency, realQueue);
 

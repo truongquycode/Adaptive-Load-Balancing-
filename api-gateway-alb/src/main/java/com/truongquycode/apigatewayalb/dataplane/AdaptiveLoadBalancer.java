@@ -25,7 +25,6 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
 
     private final ObjectProvider<ServiceInstanceListSupplier> supplierProvider;
     private final MetricsCache cache;
-    private final InflightTracker inflightTracker; // Tích hợp Local Tracker
 
     @Override
     public Mono<Response<ServiceInstance>> choose(Request request) {
@@ -45,7 +44,7 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
         double bestScore = Double.MAX_VALUE;
 
         for (ServiceInstance instance : instances) {
-            double score = calculateRealTimeScore(instance.getInstanceId(), activeNodes);
+        	double score = calculateScore(instance.getInstanceId());
             if (score < bestScore) {
                 bestScore = score;
                 bestInstance = instance;
@@ -61,29 +60,15 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
 
         return new DefaultResponse(selected);
     }
+    private double calculateScore(String instanceId) {
 
-    // Tích hợp Local Inflight ngay tại thời điểm định tuyến (mili-giây)
-    private double calculateRealTimeScore(String instanceId, int activeNodes) {
-        ScoreBreakdown breakdown = cache.getScore(instanceId);
-        double baseScore = (breakdown != null) ? breakdown.finalScore() : 0.5;
+        ScoreBreakdown breakdown =
+                cache.getScore(instanceId);
 
-        int localInflight = inflightTracker.getInflight(instanceId);
-        int totalInflight = inflightTracker.getTotalInflight();
-
-        double inflightPenalty = 0.0;
-        
-        if (totalInflight > 0 && activeNodes > 0) {
-            double relativeShare = (double) localInflight / totalInflight;
-            double fairShare = 1.0 / activeNodes;
-            double excessShare = Math.max(0.0, relativeShare - fairShare);
-            
-            // SỬA TẠI ĐÂY: Giảm omega từ 1.5 xuống 0.3
-            // Khống chế sức mạnh của Data Plane. Inflight Penalty giờ đây tối đa chỉ rơi vào khoảng 0.15 - 0.3
-            // Đảm bảo nó KHÔNG THỂ lớn hơn điểm phạt từ MCDM và PID (luôn > 1.0 khi có lỗi).
-            double omega = 0.8; 
-            inflightPenalty = omega * Math.log(1.0 + excessShare);
+        if (breakdown == null) {
+            return 999.0;
         }
 
-        return baseScore + inflightPenalty;
+        return breakdown.finalScore();
     }
 }

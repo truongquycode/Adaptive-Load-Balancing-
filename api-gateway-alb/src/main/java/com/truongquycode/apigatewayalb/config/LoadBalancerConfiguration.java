@@ -32,14 +32,13 @@ public class LoadBalancerConfiguration {
     public ReactorLoadBalancer<ServiceInstance> adaptiveLoadBalancer(
             Environment environment,
             LoadBalancerClientFactory loadBalancerClientFactory,
-            MetricsCache metricsCache,
-            InflightTracker inflightTracker) { // Truyền bean vào đây
+            MetricsCache metricsCache) { // Truyền bean vào đây
         
         String name = environment.getProperty(LoadBalancerClientFactory.PROPERTY_NAME);
         ObjectProvider<ServiceInstanceListSupplier> lazyProvider = 
                 loadBalancerClientFactory.getLazyProvider(name, ServiceInstanceListSupplier.class);
         
-        return new AdaptiveLoadBalancer(lazyProvider, metricsCache, inflightTracker);
+        return new AdaptiveLoadBalancer(lazyProvider, metricsCache);
     }
 
 	// 2. Kích hoạt thuật toán ROUND ROBIN
