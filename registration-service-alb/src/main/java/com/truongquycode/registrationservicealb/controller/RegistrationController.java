@@ -24,7 +24,7 @@ public class RegistrationController {
 
         if (ChaosController.originalChaos.get()) {
             // Kịch bản gốc: Vừa trễ mạng, vừa đốt CPU trên chính luồng HTTP
-            delay = 80 + random.nextInt(100);
+            delay = 500 + random.nextInt(500);
             long endTime = System.currentTimeMillis() + delay;
             double dummy = 0;
             while (System.currentTimeMillis() < endTime) {
