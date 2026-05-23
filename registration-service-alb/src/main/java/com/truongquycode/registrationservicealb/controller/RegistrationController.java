@@ -24,12 +24,13 @@ public class RegistrationController {
 
         if (ChaosController.originalChaos.get()) {
             // Kịch bản gốc: Vừa trễ mạng, vừa đốt CPU trên chính luồng HTTP
-            delay = 1000 + random.nextInt(1000);
+            delay = 80 + random.nextInt(100);
             long endTime = System.currentTimeMillis() + delay;
             double dummy = 0;
             while (System.currentTimeMillis() < endTime) {
                 dummy += Math.sqrt(Math.random());
             }
+            Thread.sleep(delay);
 
         } else if (ChaosController.asyncIoEnabled.get()) {
             // TRƯỜNG HỢP 2: Lỗi I/O phi đồng bộ (Sleep thuần túy, không tốn CPU)

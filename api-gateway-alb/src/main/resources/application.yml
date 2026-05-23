@@ -20,7 +20,7 @@ spring:
 
 alb:
   # adaptive, round-robin, random, least-connections
-  strategy: adaptive
+  strategy: least-connections
   ewma:
     tau-min: 500.0    # Phản ứng nhanh khi chaos (ms)
     tau-max: 5000.0   # Làm mịn mạnh khi ổn định (ms)
