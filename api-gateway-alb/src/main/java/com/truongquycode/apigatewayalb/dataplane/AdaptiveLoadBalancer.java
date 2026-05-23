@@ -37,34 +37,27 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
     }
 
     private Response<ServiceInstance> selectBestInstance(List<ServiceInstance> instances) {
-        if (instances == null || instances.isEmpty()) {
-            return new EmptyResponse();
+        if (instances == null || instances.isEmpty()) return new EmptyResponse();
+        if (instances.size() == 1) return new DefaultResponse(instances.get(0));
+
+        int activeNodes = instances.size();
+        ServiceInstance bestInstance = null;
+        double bestScore = Double.MAX_VALUE;
+
+        for (ServiceInstance instance : instances) {
+            double score = calculateRealTimeScore(instance.getInstanceId(), activeNodes);
+            if (score < bestScore) {
+                bestScore = score;
+                bestInstance = instance;
+            }
         }
-        if (instances.size() == 1) {
-            return new DefaultResponse(instances.get(0));
-        }
 
-        // THUẬT TOÁN P2C (Power of Two Choices) - Khắc phục bầy đàn
-        ThreadLocalRandom random = ThreadLocalRandom.current();
-        int i = random.nextInt(instances.size());
-        int j = random.nextInt(instances.size());
-        while (i == j) { // Đảm bảo chọn 2 node khác nhau
-            j = random.nextInt(instances.size());
-        }
-
-        ServiceInstance inst1 = instances.get(i);
-        ServiceInstance inst2 = instances.get(j);
-
-        int activeNodes = instances.size(); // Đếm tổng số node hiện có
-        double score1 = calculateRealTimeScore(inst1.getInstanceId(), activeNodes);
-        double score2 = calculateRealTimeScore(inst2.getInstanceId(), activeNodes);
-
-        ServiceInstance selected = score1 <= score2 ? inst1 : inst2;
+        ServiceInstance selected = bestInstance != null ? bestInstance : instances.get(0);
 
         Metrics.counter("alb.routing.selected",
-        	    "backend", selected.getInstanceId(),
-        	    "port", String.valueOf(selected.getPort())
-        	).increment();
+            "backend", selected.getInstanceId(),
+            "port", String.valueOf(selected.getPort())
+        ).increment();
 
         return new DefaultResponse(selected);
     }
