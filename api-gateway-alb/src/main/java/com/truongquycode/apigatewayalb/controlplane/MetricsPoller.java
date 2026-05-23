@@ -3,7 +3,6 @@ package com.truongquycode.apigatewayalb.controlplane;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.truongquycode.apigatewayalb.dataplane.InflightTracker;
 import com.truongquycode.apigatewayalb.dataplane.ScoreCalculator;
-import com.truongquycode.apigatewayalb.model.CircuitState;
 import com.truongquycode.apigatewayalb.model.InstanceMetrics;
 import com.truongquycode.apigatewayalb.model.ScoreBreakdown;
 import com.truongquycode.apigatewayalb.util.MetricsCache;
@@ -30,7 +29,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @RequiredArgsConstructor
 public class MetricsPoller {
 
-    private static final double CIRCUIT_OPEN_SCORE = 20.0;
     private static final String REGISTRATION_SERVICE_ID = "REGISTRATION-SERVICE-ALB";
 
     private final MeterRegistry registry;
@@ -40,7 +38,6 @@ public class MetricsPoller {
     private final SlidingWindowManager windowManager;
     private final WebClient.Builder webClientBuilder;
     private final InflightTracker inflightTracker;
-    private final InstanceCircuitBreaker circuitBreaker;
 
     private final Map<String, Double> latencyValues = new ConcurrentHashMap<>();
     private final Map<String, Double> queueValues   = new ConcurrentHashMap<>();
@@ -83,12 +80,6 @@ public class MetricsPoller {
     // --- Tách hàm: Lấy dữ liệu từ một instance duy nhất ---
     private Mono<Void> pollSingleInstance(ServiceInstance instance, WebClient webClient) {
         String instanceId = instance.getInstanceId();
-        
-        if (circuitBreaker.evaluateState(instanceId) == CircuitState.OPEN) {
-            log.debug("Circuit OPEN — bỏ qua poll cho {}", instanceId);
-            applyCircuitOpenPenalty(instanceId);
-            return Mono.empty();
-        }
 
         String url = instance.getUri().toString() + "/api/alb-metrics";
 
@@ -96,12 +87,10 @@ public class MetricsPoller {
                 .retrieve().bodyToMono(JsonNode.class)
                 .timeout(Duration.ofMillis(400))
                 .doOnNext(node -> {
-                    circuitBreaker.recordSuccess(instanceId);
                     processMetrics(instanceId, node);
                 })
                 .onErrorResume(e -> {
-                    circuitBreaker.recordFailure(instanceId);
-                    // Tạo một ScoreBreakdown với finalScore rất cao (ví dụ 10.0) để cache ngay lập tức
+                    
                     ScoreBreakdown penaltyBreakdown = new ScoreBreakdown(instanceId, 0, 1, 1, 1, 1, 5.0, 10.0, System.currentTimeMillis());
                     metricsCache.putScore(instanceId, penaltyBreakdown);
                     return Mono.empty();
@@ -117,16 +106,6 @@ public class MetricsPoller {
         latencyValues.keySet().retainAll(activeIds);
         queueValues.keySet().retainAll(activeIds);
         scoreValues.keySet().retainAll(activeIds);
-    }
-
-    private void applyCircuitOpenPenalty(String instanceId) {
-        ScoreBreakdown penaltyScore = new ScoreBreakdown(
-            instanceId, 0.0, 1.0, 1.0, 1.0, 1.0, 1.5, CIRCUIT_OPEN_SCORE, System.currentTimeMillis()
-        );
-        metricsCache.putScore(instanceId, penaltyScore);
-        
-        scoreValues.put(instanceId, CIRCUIT_OPEN_SCORE);
-        registerPrometheusGauges(instanceId);
     }
 
     private void processMetrics(String instanceId, JsonNode node) {
@@ -182,8 +161,7 @@ public class MetricsPoller {
                 .tag("backend", id).register(registry);
             Gauge.builder("alb.final.score", scoreValues, map -> map.getOrDefault(id, 0.0))
                 .tag("backend", id).register(registry);
-            Gauge.builder("alb.circuit.state", () -> (double) circuitBreaker.getStateValue(id))
-                .tag("backend", id).register(registry);
+            
         }
         
         if (registeredRoutingGauges.add(id)) {
@@ -196,7 +174,7 @@ public class MetricsPoller {
                     if (totalInflight > 0) {
                         // Giả định cụm luôn có 3 node để vẽ đồ thị
                         double excessShare = Math.max(0.0, ((double) localInflight / totalInflight) - (1.0 / 3.0));
-                        inflightPenalty = 0.3 * Math.log(1.0 + excessShare);
+                        inflightPenalty = 0.8 * Math.log(1.0 + excessShare);
                     }
                     return finalScore + inflightPenalty;
                 })
