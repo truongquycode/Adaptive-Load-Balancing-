@@ -17,7 +17,7 @@ public class AlbProperties {
     private PidConfig pid = new PidConfig();
     private Weights weights = new Weights();
 
-    @Data public static class Polling { private long interval = 1000; }
+    @Data public static class Polling { private long interval = 500; }
     @Data public static class Ewma { 
     	private double tau    = 3000.0;  // Giữ làm τ_max (ms)
         private double tauMin = 500.0;   // τ_min khi hệ thống biến động mạnh (ms)
