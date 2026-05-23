@@ -40,19 +40,19 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
         if (instances == null || instances.isEmpty()) return new EmptyResponse();
         if (instances.size() == 1) return new DefaultResponse(instances.get(0));
 
+        ThreadLocalRandom random = ThreadLocalRandom.current();
+        int i = random.nextInt(instances.size());
+        int j;
+        do { j = random.nextInt(instances.size()); } while (j == i);
+
+        ServiceInstance inst1 = instances.get(i);
+        ServiceInstance inst2 = instances.get(j);
+
         int activeNodes = instances.size();
-        ServiceInstance bestInstance = null;
-        double bestScore = Double.MAX_VALUE;
+        double score1 = calculateRealTimeScore(inst1.getInstanceId(), activeNodes);
+        double score2 = calculateRealTimeScore(inst2.getInstanceId(), activeNodes);
 
-        for (ServiceInstance instance : instances) {
-            double score = calculateRealTimeScore(instance.getInstanceId(), activeNodes);
-            if (score < bestScore) {
-                bestScore = score;
-                bestInstance = instance;
-            }
-        }
-
-        ServiceInstance selected = bestInstance != null ? bestInstance : instances.get(0);
+        ServiceInstance selected = score1 <= score2 ? inst1 : inst2;
 
         Metrics.counter("alb.routing.selected",
             "backend", selected.getInstanceId(),
