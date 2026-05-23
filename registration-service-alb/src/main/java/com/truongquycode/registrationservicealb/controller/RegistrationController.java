@@ -24,7 +24,7 @@ public class RegistrationController {
 
         if (ChaosController.originalChaos.get()) {
             // Kịch bản gốc: Vừa trễ mạng, vừa đốt CPU trên chính luồng HTTP
-            delay = 500 + random.nextInt(500);
+            delay = 100 + random.nextInt(200);
             long endTime = System.currentTimeMillis() + delay;
             double dummy = 0;
             while (System.currentTimeMillis() < endTime) {
@@ -62,7 +62,7 @@ public class RegistrationController {
             //           MCDM tăng score của node này → P2C tránh
             //           → Ít hơn 10% traffic đến node degraded
             double httpDummy = 0;
-            for (int i = 0; i < 200000; i++) { // Chỉ 3000 iterations ≈ <1ms overhead
+            for (int i = 0; i < 150000; i++) { // Chỉ 3000 iterations ≈ <1ms overhead
                 httpDummy += Math.sqrt(Math.random());
             }
             delay = 20 + random.nextInt(30); // 20–50ms, gần bằng baseline
