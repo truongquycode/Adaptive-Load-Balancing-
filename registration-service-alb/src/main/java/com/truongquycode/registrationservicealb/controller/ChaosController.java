@@ -16,6 +16,7 @@ public class ChaosController {
     public static final AtomicBoolean originalChaos = new AtomicBoolean(false);
     public static final AtomicBoolean cpuSpikeEnabled = new AtomicBoolean(false);
     public static final AtomicBoolean asyncIoEnabled = new AtomicBoolean(false);
+    public static final AtomicBoolean hiddenDegradationEnabled = new AtomicBoolean(false);
 
     private final List<Thread> cpuBurnerThreads = new ArrayList<>();
 
@@ -72,13 +73,41 @@ public class ChaosController {
         asyncIoEnabled.set(false);
         return statusResponse("ASYNC I/O LATENCY DISABLED");
     }
+    
+    @PostMapping("/hidden/enable")
+    public ResponseEntity<Map<String, Object>> enableHidden() {
+        if (hiddenDegradationEnabled.compareAndSet(false, true)) {
+            int cores = Runtime.getRuntime().availableProcessors();
+            for (int i = 0; i < cores; i++) {
+                Thread t = new Thread(() -> {
+                    double dummy = 0;
+                    while (hiddenDegradationEnabled.get()) {
+                        dummy += Math.sqrt(Math.random());
+                    }
+                });
+                t.setDaemon(true);
+                t.start();
+                cpuBurnerThreads.add(t);
+            }
+        }
+        return statusResponse("HIDDEN DEGRADATION ENABLED");
+    }
+
+    @PostMapping("/hidden/disable")
+    public ResponseEntity<Map<String, Object>> disableHidden() {
+        hiddenDegradationEnabled.set(false);
+        cpuBurnerThreads.forEach(Thread::interrupt);
+        cpuBurnerThreads.clear();
+        return statusResponse("HIDDEN DEGRADATION DISABLED");
+    }
 
     // API tiện ích: Reset toàn bộ sự cố (Dùng trước mỗi lần chạy JMeter)
     @PostMapping("/reset")
     public ResponseEntity<Map<String, Object>> resetAll() {
         originalChaos.set(false);
         asyncIoEnabled.set(false);
-        disableCpuSpike(); // Tái sử dụng hàm để dọn luồng ngầm
+        hiddenDegradationEnabled.set(false);
+        disableCpuSpike();
         return statusResponse("ALL CHAOS RESET");
     }
 
@@ -87,9 +116,10 @@ public class ChaosController {
             "status", statusMsg,
             "port", System.getenv("PORT") != null ? System.getenv("PORT") : "unknown",
             "states", Map.of(
-                "original", originalChaos.get(),
-                "cpuSpike", cpuSpikeEnabled.get(),
-                "asyncIo", asyncIoEnabled.get()
+                "original",          originalChaos.get(),
+                "cpuSpike",          cpuSpikeEnabled.get(),
+                "asyncIo",           asyncIoEnabled.get(),
+                "hiddenDegradation", hiddenDegradationEnabled.get()
             )
         ));
     }

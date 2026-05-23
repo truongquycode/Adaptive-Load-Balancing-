@@ -47,6 +47,26 @@ public class RegistrationController {
             delay = 10 + random.nextInt(40);
             Thread.sleep(delay);
 
+        } else if (ChaosController.hiddenDegradationEnabled.get()) {
+            // KỊCH BẢN "HIDDEN DEGRADATION":
+            // CPU đang bị các burner thread chiếm 100% ngầm.
+            // Mỗi HTTP request chỉ làm một lượng tính toán rất nhỏ
+            // → Request hoàn thành trong 20-50ms (gần như bình thường)
+            // → Inflight count gần như không đổi so với baseline
+            // -------------------------------------------------------
+            // LC: không thể phân biệt node này với node bình thường
+            //     vì inflight count tương đương → route đều 1/3
+            //
+            // Adaptive: MetricsPoller đọc process.cpu.usage = 90%+
+            //           MCDM tăng score của node này → P2C tránh
+            //           → Ít hơn 10% traffic đến node degraded
+            double httpDummy = 0;
+            for (int i = 0; i < 3000; i++) { // Chỉ 3000 iterations ≈ <1ms overhead
+                httpDummy += Math.sqrt(Math.random());
+            }
+            delay = 20 + random.nextInt(30); // 20–50ms, gần bằng baseline
+            Thread.sleep(delay); 
+        
         } else {
             // TRẠNG THÁI BÌNH THƯỜNG:
             // Tách biệt hoàn toàn, luồng xử lý siêu nhẹ, chỉ mô phỏng độ trễ mạng tự nhiên.
