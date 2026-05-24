@@ -85,7 +85,7 @@ public class MetricsPoller {
 
         return webClient.get().uri(url)
                 .retrieve().bodyToMono(JsonNode.class)
-                .timeout(Duration.ofMillis(400))
+                .timeout(Duration.ofMillis(800))
                 .doOnNext(node -> {
                     processMetrics(instanceId, node);
                 })

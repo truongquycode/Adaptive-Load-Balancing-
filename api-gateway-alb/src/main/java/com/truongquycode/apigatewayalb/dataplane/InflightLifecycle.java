@@ -1,5 +1,7 @@
 package com.truongquycode.apigatewayalb.dataplane;
 
+import java.util.concurrent.ConcurrentHashMap;
+
 import org.springframework.cloud.client.ServiceInstance;
 import org.springframework.cloud.client.loadbalancer.CompletionContext;
 import org.springframework.cloud.client.loadbalancer.LoadBalancerLifecycle;
@@ -11,6 +13,9 @@ import org.springframework.stereotype.Component;
 public class InflightLifecycle implements LoadBalancerLifecycle<Object, Object, ServiceInstance> {
 
     private final InflightTracker tracker;
+    // Track instance nào được chọn cho request hiện tại
+    // Key: requestId (hoặc context hash), Value: instanceId đã increment
+    private final ConcurrentHashMap<Integer, String> activeRequests = new ConcurrentHashMap<>();
 
     public InflightLifecycle(InflightTracker tracker) {
         this.tracker = tracker;
@@ -18,7 +23,7 @@ public class InflightLifecycle implements LoadBalancerLifecycle<Object, Object, 
 
     @Override
     public boolean supports(Class requestContextClass, Class responseClass, Class serverTypeClass) {
-        return true; // Áp dụng cho mọi request đi qua LB
+        return true;
     }
 
     @Override
@@ -26,17 +31,27 @@ public class InflightLifecycle implements LoadBalancerLifecycle<Object, Object, 
 
     @Override
     public void onStartRequest(Request<Object> request, Response<ServiceInstance> lbResponse) {
-        // Kích hoạt ngay khi Gateway VỪA CHỌN XONG 1 máy chủ (kể cả khi Retry)
         if (lbResponse != null && lbResponse.hasServer()) {
-            tracker.increment(lbResponse.getServer().getInstanceId());
+            String instanceId = lbResponse.getServer().getInstanceId();
+            int key = System.identityHashCode(request);
+            
+            // Nếu request này đã có instance cũ (retry), decrement instance cũ trước
+            String prev = activeRequests.put(key, instanceId);
+            if (prev != null && !prev.equals(instanceId)) {
+                tracker.decrement(prev); // Giải phóng counter của instance thất bại
+            }
+            tracker.increment(instanceId);
         }
     }
 
     @Override
     public void onComplete(CompletionContext<Object, ServiceInstance, Object> completionContext) {
-        // Kích hoạt khi Request kết thúc (Dù thành công, Lỗi, Timeout, hay Hủy)
-        if (completionContext.getLoadBalancerResponse() != null && completionContext.getLoadBalancerResponse().hasServer()) {
-            tracker.decrement(completionContext.getLoadBalancerResponse().getServer().getInstanceId());
+        if (completionContext.getLoadBalancerResponse() != null 
+                && completionContext.getLoadBalancerResponse().hasServer()) {
+            String instanceId = completionContext.getLoadBalancerResponse().getServer().getInstanceId();
+            int key = System.identityHashCode(completionContext.getLoadBalancerResponse());
+            activeRequests.remove(key);
+            tracker.decrement(instanceId);
         }
     }
 }

@@ -14,8 +14,8 @@ public class SlidingWindowManager {
 	private static final long MAX_QUEUE_SIZE = 10000L;
 	private static final int SIGNIFICANT_DIGITS = 2; // Độ phân giải Histogram
 
-	private static final int WINDOW_SIZE = 20; // 150-> 20
-	private static final int GLOBAL_WIN_SIZE = 60; // 450->60
+	private static final int WINDOW_SIZE = 120; // 150-> 20
+	private static final int GLOBAL_WIN_SIZE = 240; // 450->60
 
 	private final ConcurrentHashMap<String, Histogram[]> latHistPairs = new ConcurrentHashMap<>();
 	private final ConcurrentHashMap<String, Histogram[]> qHistPairs = new ConcurrentHashMap<>();
