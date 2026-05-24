@@ -147,6 +147,8 @@ public class MetricsPoller {
         double currentLatency = (deltaCount <= 0)
             ? (prev.lastLatency() * 0.9) + (p50 * 0.1)
             : (deltaTotal / deltaCount) * 1000.0;
+        
+        currentLatency = Math.min(currentLatency, 1500.0);
 
         trafficStates.put(id, new TrafficState(currentCount, currentTotalTime, currentLatency));
         return currentLatency;
