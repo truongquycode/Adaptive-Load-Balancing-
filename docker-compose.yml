@@ -6,9 +6,8 @@ networks:
 
 services:
 
-  # ─── Eureka Service Discovery ──────────────────────────
   eureka-server:
-    build: 
+    build:
       context: .
       dockerfile: eureka-server/Dockerfile
     container_name: eureka-server
@@ -25,11 +24,10 @@ services:
       retries: 5
       start_period: 40s
 
-  # ─── Registration Service Instance 1 ───────────────────
   registration-8081:
-	cpus: "1.0"
-	mem_limit: 512m
-    build: 
+    cpus: "1.0"
+    mem_limit: 512m
+    build:
       context: .
       dockerfile: registration-service-alb/Dockerfile
     container_name: registration-8081
@@ -45,11 +43,10 @@ services:
         condition: service_healthy
     restart: on-failure
 
-  # ─── Registration Service Instance 2 ───────────────────
   registration-8082:
-	cpus: "1.0"
-	mem_limit: 512m
-    build: 
+    cpus: "1.0"
+    mem_limit: 512m
+    build:
       context: .
       dockerfile: registration-service-alb/Dockerfile
     container_name: registration-8082
@@ -65,11 +62,10 @@ services:
         condition: service_healthy
     restart: on-failure
 
-  # ─── Registration Service Instance 3 (Chaos Target) ────
   registration-8083:
-	cpus: "1.0"
-	mem_limit: 512m
-    build: 
+    cpus: "1.0"
+    mem_limit: 512m
+    build:
       context: .
       dockerfile: registration-service-alb/Dockerfile
     container_name: registration-8083
@@ -85,11 +81,10 @@ services:
         condition: service_healthy
     restart: on-failure
 
-  # ─── API Gateway ALB ────────────────────────────────────
   api-gateway-alb:
-	cpus: "1.0"
-	mem_limit: 512m
-    build: 
+    cpus: "2.0"
+    mem_limit: 1g
+    build:
       context: .
       dockerfile: api-gateway-alb/Dockerfile
     container_name: api-gateway-alb
