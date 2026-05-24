@@ -64,14 +64,8 @@ public class ScoreCalculator {
         double normalizedP75  = Math.max(0.0, Math.min(1.0,
                 (p75System - p5) / (p95 - p5)));
 
-        double penalty = 0.0;
-        
-        // BẢN VÁ COLD START: Chỉ bắt đầu phạt PID khi node đã hoàn thành pha Warm-up (ví dụ > 30 requests).
-        // Ngăn chặn hiện tượng traffic "đá bóng" qua lại làm tăng đột biến p99 lúc mới boot.
-        if (snap.totalCount() > 200) {
-            penalty = pidController.calculatePenalty(
-                    instanceId, normalizedEwma, normalizedP75, props.getPid());
-        }
+        double penalty = pidController.calculatePenalty(
+                instanceId, normalizedEwma, normalizedP75, props.getPid());
         double finalScore = baseScore + penalty;
 
         return new ScoreBreakdown(

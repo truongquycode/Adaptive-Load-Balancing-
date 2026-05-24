@@ -69,7 +69,7 @@ public class SlidingWindowManager {
 		Histogram[] qHists = qHistPairs.get(instanceId);
 
 		if (lHists == null) {
-			return new PercentileSnapshot(0.0, 50.0, 100.0, 10.0, 0);
+			return new PercentileSnapshot(0.0, 50.0, 100.0, 10.0);
 		}
 
 		// Đọc từ histogram ACTIVE hiện tại
@@ -77,7 +77,7 @@ public class SlidingWindowManager {
 		Histogram lh = lHists[lIdx];
 
 		if (lh.getTotalCount() == 0) {
-			return new PercentileSnapshot(0.0, 50.0, 100.0, 10.0, 0);
+			return new PercentileSnapshot(0.0, 50.0, 100.0, 10.0);
 		}
 
 		double qP99 = 10.0;
@@ -90,7 +90,7 @@ public class SlidingWindowManager {
 		}
 
 		return new PercentileSnapshot(lh.getValueAtPercentile(5.0), lh.getValueAtPercentile(50.0),
-				lh.getValueAtPercentile(95.0), qP99, lh.getTotalCount());
+				lh.getValueAtPercentile(95.0), qP99);
 	}
 
 	public double getSystemP50() {
