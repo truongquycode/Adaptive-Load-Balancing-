@@ -16,6 +16,7 @@ public class SlidingWindowManager {
 
 	private static final int WINDOW_SIZE = 100; // 150-> 20
 	private static final int GLOBAL_WIN_SIZE = 160; // 450->60
+	private final Object globalLock = new Object();
 
 	private final ConcurrentHashMap<String, Histogram[]> latHistPairs = new ConcurrentHashMap<>();
 	private final ConcurrentHashMap<String, Histogram[]> qHistPairs = new ConcurrentHashMap<>();
@@ -35,13 +36,15 @@ public class SlidingWindowManager {
 		recordRotating(latHistPairs, latActiveIdx, instanceId, latVal, MAX_LATENCY_MS, WINDOW_SIZE);
 		recordRotating(qHistPairs, qActiveIdx, instanceId, qVal, MAX_QUEUE_SIZE, WINDOW_SIZE);
 
-		// Cập nhật global histogram
-		int gi = globalActiveIdx.get();
-		globalPair[gi].recordValue(latVal);
-		if (globalPair[gi].getTotalCount() > GLOBAL_WIN_SIZE) {
-			int next = 1 - gi;
-			globalPair[next].reset();
-			globalActiveIdx.set(next);
+		// ── Fix race condition trên global histogram ─────────────────────────
+		synchronized (globalLock) {
+			int gi = globalActiveIdx.get();
+			globalPair[gi].recordValue(latVal);
+			if (globalPair[gi].getTotalCount() > GLOBAL_WIN_SIZE) {
+				int next = 1 - gi;
+				globalPair[next].reset(); // Reset TRƯỚC khi flip
+				globalActiveIdx.set(next); // Flip sau khi đã reset sạch
+			}
 		}
 	}
 
@@ -93,26 +96,31 @@ public class SlidingWindowManager {
 				lh.getValueAtPercentile(95.0), qP99);
 	}
 
-	public double getSystemP50() {
-		int gi = globalActiveIdx.get();
-		if (globalPair[gi].getTotalCount() == 0)
-			return 50.0;
-		return globalPair[gi].getValueAtPercentile(50.0);
-	}
-	
 	public double getSystemP75() {
-        int gi = globalActiveIdx.get();
-        if (globalPair[gi].getTotalCount() == 0) return 50.0;
-        return globalPair[gi].getValueAtPercentile(75.0);
-    }
-	
+		synchronized (globalLock) {
+			int gi = globalActiveIdx.get();
+			if (globalPair[gi].getTotalCount() == 0)
+				return 50.0;
+			return globalPair[gi].getValueAtPercentile(75.0);
+		}
+	}
+
+	public double getSystemP50() {
+		synchronized (globalLock) {
+			int gi = globalActiveIdx.get();
+			if (globalPair[gi].getTotalCount() == 0)
+				return 50.0;
+			return globalPair[gi].getValueAtPercentile(50.0);
+		}
+	}
+
 	public void resetAll() {
-        latHistPairs.clear();
-        qHistPairs.clear();
-        latActiveIdx.clear();
-        qActiveIdx.clear();
-        globalPair[0].reset();
-        globalPair[1].reset();
-        globalActiveIdx.set(0);
-    }
+		latHistPairs.clear();
+		qHistPairs.clear();
+		latActiveIdx.clear();
+		qActiveIdx.clear();
+		globalPair[0].reset();
+		globalPair[1].reset();
+		globalActiveIdx.set(0);
+	}
 }
