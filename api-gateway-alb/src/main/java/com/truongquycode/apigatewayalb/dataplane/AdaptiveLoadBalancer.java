@@ -57,6 +57,8 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
             "backend", selected.getInstanceId(),
             "port", String.valueOf(selected.getPort())
         ).increment();
+        
+        
 
         return new DefaultResponse(selected);
     }

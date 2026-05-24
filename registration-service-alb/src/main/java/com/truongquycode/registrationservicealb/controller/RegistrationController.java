@@ -80,4 +80,74 @@ public class RegistrationController {
             port, count, delay
         ));
     }
+    
+    @GetMapping("/register/light")
+    public ResponseEntity<String> light(HttpServletRequest request)
+            throws InterruptedException {
+
+        Thread.sleep(10 + random.nextInt(20));
+
+        return ResponseEntity.ok("LIGHT");
+    }
+    
+    @GetMapping("/register/medium")
+    public ResponseEntity<String> medium(HttpServletRequest request)
+            throws InterruptedException {
+
+        double dummy = 0;
+
+        for (int i = 0; i < 300000; i++) {
+            dummy += Math.sqrt(Math.random());
+        }
+
+        Thread.sleep(30 + random.nextInt(40));
+
+        return ResponseEntity.ok(
+        	    "MEDIUM\n" + largePayload(32)
+        	);
+    }
+    
+    @GetMapping("/register/heavy")
+    public ResponseEntity<String> heavy(HttpServletRequest request)
+            throws InterruptedException {
+
+        double dummy = 0;
+
+        for (int i = 0; i < 2000000; i++) {
+            dummy += Math.sqrt(Math.random());
+        }
+
+        Thread.sleep(100 + random.nextInt(100));
+
+        return ResponseEntity.ok(
+        	    "HEAVY\n" + largePayload(128)
+        	);
+    }
+    
+    @GetMapping("/register/io")
+    public ResponseEntity<String> io(HttpServletRequest request)
+            throws InterruptedException {
+
+        Thread.sleep(2000);
+
+        return ResponseEntity.ok("IO");
+    }
+    
+    @GetMapping("/register/cpu")
+    public ResponseEntity<String> cpu(HttpServletRequest request)
+            throws InterruptedException {
+
+        double dummy = 0;
+
+        for (int i = 0; i < 5000000; i++) {
+            dummy += Math.sqrt(Math.random());
+        }
+
+        return ResponseEntity.ok("CPU");
+    }
+    
+    private String largePayload(int kb) {
+
+        return "X".repeat(kb * 1024);
+    }
 }

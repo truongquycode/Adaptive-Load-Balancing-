@@ -27,6 +27,8 @@ services:
 
   # ─── Registration Service Instance 1 ───────────────────
   registration-8081:
+	cpus: "1.0"
+	  mem_limit: 512m
     build: 
       context: .
       dockerfile: registration-service-alb/Dockerfile
@@ -45,6 +47,8 @@ services:
 
   # ─── Registration Service Instance 2 ───────────────────
   registration-8082:
+	cpus: "1.0"
+	  mem_limit: 512m
     build: 
       context: .
       dockerfile: registration-service-alb/Dockerfile
@@ -63,6 +67,8 @@ services:
 
   # ─── Registration Service Instance 3 (Chaos Target) ────
   registration-8083:
+	cpus: "1.0"
+	  mem_limit: 512m
     build: 
       context: .
       dockerfile: registration-service-alb/Dockerfile
@@ -81,6 +87,8 @@ services:
 
   # ─── API Gateway ALB ────────────────────────────────────
   api-gateway-alb:
+	cpus: "1.0"
+	  mem_limit: 512m
     build: 
       context: .
       dockerfile: api-gateway-alb/Dockerfile

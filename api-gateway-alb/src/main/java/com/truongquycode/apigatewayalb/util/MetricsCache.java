@@ -35,4 +35,9 @@ public class MetricsCache {
         metricsMap.keySet().retainAll(activeIds);
         scoreMap.keySet().retainAll(activeIds);
     }
+    
+    public void resetAll() {
+        metricsMap.clear();
+        scoreMap.clear();
+    }
 }
