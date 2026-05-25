@@ -175,7 +175,7 @@ public class MetricsPoller {
 		double deltaCount = currentCount - prev.count();
 		double deltaTotal = currentTotalTime - prev.totalTimeSec();
 
-		double currentLatency = (deltaCount <= 0) ? (prev.lastLatency() * 0.75) + (p50 * 0.25)
+		double currentLatency = (deltaCount <= 0) ? (prev.lastLatency() * 0.9) + (p50 * 0.1)
 				: (deltaTotal / deltaCount) * 1000.0;
 
 		currentLatency = Math.min(currentLatency, 1500.0);
