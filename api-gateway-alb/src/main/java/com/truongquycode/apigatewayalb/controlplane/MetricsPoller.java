@@ -160,7 +160,7 @@ public class MetricsPoller {
 
 		// Asymmetric: nếu score tăng (xấu đi) → phản ứng nhanh
 		// nếu score giảm (tốt lên) → phục hồi thận trọng
-		double alpha = rawScore > prev ? 0.55 : 0.20;
+		double alpha = rawScore > prev ? 0.55 : 0.28;
 
 		double smoothed = alpha * rawScore + (1 - alpha) * prev;
 		smoothedScores.put(instanceId, smoothed);
@@ -175,7 +175,7 @@ public class MetricsPoller {
 		double deltaCount = currentCount - prev.count();
 		double deltaTotal = currentTotalTime - prev.totalTimeSec();
 
-		double currentLatency = (deltaCount <= 0) ? (prev.lastLatency() * 0.9) + (p50 * 0.1)
+		double currentLatency = (deltaCount <= 0) ? (prev.lastLatency() * 0.75) + (p50 * 0.25)
 				: (deltaTotal / deltaCount) * 1000.0;
 
 		currentLatency = Math.min(currentLatency, 1500.0);
