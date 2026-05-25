@@ -21,7 +21,7 @@ public class DynamicWeightEngine {
 	// Mức nền tương ứng cho [Latency (5ms), Queue (1 request), CPU (0.05%)]
 	private static final double[] MU = { 5.0, 1.0, 0.05 };
 
-	private static final double WEIGHT_EMA_ALPHA = 0.15; // Chỉ cập nhật 25% mỗi chu kỳ 5s
+	private static final double WEIGHT_EMA_ALPHA = 0.25; // Chỉ cập nhật 25% mỗi chu kỳ 5s
 
 	// Khai báo hằng số toán học rõ ràng (Tránh Magic Numbers)
 	private static final double EPSILON = 1e-6;
