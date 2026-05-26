@@ -27,7 +27,7 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
 	private final MetricsCache cache;
 	private final InflightTracker inflightTracker; // Tích hợp Local Tracker
 	private static final int INFLIGHT_HARD_CAP = 80; // Tomcat max=500, để an toàn
-	private static final double SCORE_OPEN_THRESHOLD = 8.0; // Score này = instance "circuit open"
+	private static final double SCORE_OPEN_THRESHOLD = 1.5; // Score này = instance "circuit open"
 
 	@Override
 	public Mono<Response<ServiceInstance>> choose(Request request) {
