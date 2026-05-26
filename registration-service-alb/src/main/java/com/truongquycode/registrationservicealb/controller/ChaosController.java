@@ -135,7 +135,7 @@ public class ChaosController {
         // Chạy song song để tránh blocking HTTP response quá lâu
         snapshot.forEach(t -> {
             try {
-                t.join(500); // 500ms per thread là quá đủ
+                t.join(500);
             } catch (InterruptedException ignored) {
                 Thread.currentThread().interrupt();
             }
