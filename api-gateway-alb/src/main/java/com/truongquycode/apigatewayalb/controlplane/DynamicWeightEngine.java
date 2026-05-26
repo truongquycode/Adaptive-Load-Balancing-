@@ -129,56 +129,34 @@ public class DynamicWeightEngine {
 
 	// --- BƯỚC 3: Trộn EWM với AHP và cập nhật biến toàn cục ---
 	private void blendAndApplyFinalWeights(double[] ewmNorm) {
-	    double sumFusion = 0;
-	    double[] fusion = new double[CRITERIA_COUNT];
-	    for (int j = 0; j < CRITERIA_COUNT; j++) {
-	        double blended = BLEND_FACTOR * ewmNorm[j] + (1 - BLEND_FACTOR) * ahpWeights[j];
-	        fusion[j] = ahpWeights[j] * blended;
-	        sumFusion += fusion[j];
-	    }
+		double sumFusion = 0;
+		double[] fusion = new double[CRITERIA_COUNT];
 
-	    double rawAlpha = fusion[0] / sumFusion;
-	    double rawBeta  = fusion[1] / sumFusion;
-	    double rawGamma = fusion[2] / sumFusion;
+		for (int j = 0; j < CRITERIA_COUNT; j++) {
+			double blended = BLEND_FACTOR * ewmNorm[j] + (1 - BLEND_FACTOR) * ahpWeights[j];
+			fusion[j] = ahpWeights[j] * blended;
+			sumFusion += fusion[j];
+		}
 
-	    // EMA smoothing
-	    double newAlpha = WEIGHT_EMA_ALPHA * rawAlpha + (1 - WEIGHT_EMA_ALPHA) * this.alpha;
-	    double newBeta  = WEIGHT_EMA_ALPHA * rawBeta  + (1 - WEIGHT_EMA_ALPHA) * this.beta;
-	    double newGamma = WEIGHT_EMA_ALPHA * rawGamma + (1 - WEIGHT_EMA_ALPHA) * this.gamma;
+		// Raw target weights
+		double targetAlpha = fusion[0] / sumFusion;
+		double targetBeta = fusion[1] / sumFusion;
+		double targetGamma = fusion[2] / sumFusion;
 
-	    // Renorm trước khi clamp (bước này là bắt buộc)
-	    double s = newAlpha + newBeta + newGamma;
-	    newAlpha /= s; newBeta /= s; newGamma /= s;
+		// ── EMA smoothing: ngăn weights dao động cực mạnh ──────────────────
+		// WEIGHT_EMA_ALPHA=0.25 → cần ~8 chu kỳ (40s) để weights chuyển 90%
+		// Trước khi fix: alpha có thể nhảy từ 23% → 73% trong 1 chu kỳ 5s
+		double newAlpha = WEIGHT_EMA_ALPHA * targetAlpha + (1 - WEIGHT_EMA_ALPHA) * this.alpha;
+		double newBeta = WEIGHT_EMA_ALPHA * targetBeta + (1 - WEIGHT_EMA_ALPHA) * this.beta;
+		double newGamma = WEIGHT_EMA_ALPHA * targetGamma + (1 - WEIGHT_EMA_ALPHA) * this.gamma;
 
-	    // ── Clamp với soft redistribution ──────────────────────────────────
-	    // Nếu gamma vượt ceiling, phần excess chuyển vào alpha (latency quan trọng hơn)
-	    if (newGamma > 0.40) {
-	        double excess = newGamma - 0.40;
-	        newGamma = 0.40;
-	        newAlpha += excess * 0.70;
-	        newBeta  += excess * 0.30;
-	    }
-	    if (newAlpha > 0.65) {
-	        double excess = newAlpha - 0.65;
-	        newAlpha = 0.65;
-	        newBeta  += excess * 0.60;
-	        newGamma += excess * 0.40;
-	    }
-	    if (newBeta > 0.45) {
-	        double excess = newBeta - 0.45;
-	        newBeta = 0.45;
-	        newAlpha += excess;
-	    }
-	    // Hard floor
-	    newAlpha = Math.max(0.20, newAlpha);
-	    newBeta  = Math.max(0.10, newBeta);
-	    newGamma = Math.max(0.10, newGamma);
+		// Renormalize để đảm bảo tổng = 1 sau EMA
+		double sum = newAlpha + newBeta + newGamma;
+		this.alpha = newAlpha / sum;
+		this.beta = newBeta / sum;
+		this.gamma = newGamma / sum;
 
-	    // Renorm lần cuối SAU KHI clamp xong (đảm bảo tổng = 1)
-	    s = newAlpha + newBeta + newGamma;
-	    this.alpha = newAlpha / s;
-	    this.beta  = newBeta  / s;
-	    this.gamma = newGamma / s;
+		log.debug("MCDM Weights (EMA-smoothed): Alpha={:.3f}, Beta={:.3f}, Gamma={:.3f}", alpha, beta, gamma);
 	}
 
 	private double getMetric(InstanceMetrics m, int criteriaIndex) {
