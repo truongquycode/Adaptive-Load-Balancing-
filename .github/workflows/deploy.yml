@@ -16,5 +16,5 @@ jobs:
       # Build và khởi chạy Docker trực tiếp tại không gian làm việc của Runner
       - name: Build and deploy
         run: |
-          docker compose build
+          docker compose build --no-cache
           docker compose up -d
