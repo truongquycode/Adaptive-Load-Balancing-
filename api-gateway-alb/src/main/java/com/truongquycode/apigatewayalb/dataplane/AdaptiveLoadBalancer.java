@@ -100,7 +100,7 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
 
 			// ── Tăng omega từ 0.8 → 1.2 để phân tán load đều hơn ────────────
 			// Kết hợp với hard cap, inflight penalty không cần quá mạnh
-			double omega = 1.5;
+			double omega = 1.2;
 			inflightPenalty = omega * Math.log(1.0 + excessShare);
 		}
 
