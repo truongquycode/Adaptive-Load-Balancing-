@@ -20,7 +20,7 @@ spring:
 
 alb:
   # adaptive, round-robin, random, least-connections
-  strategy: random
+  strategy: round-robin
   polling:
     interval: 1000    # Tăng từ 500ms → 1000ms, giảm overhead polling
   ewma:

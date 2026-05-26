@@ -4,16 +4,18 @@ on:
   push:
     branches: [ "main" ]
 
+concurrency:
+  group: deploy-production
+  cancel-in-progress: true   # Tự hủy job cũ khi có job mới
+
 jobs:
   deploy:
     runs-on: self-hosted
 
     steps:
-      # Action chuẩn của GitHub tự động xử lý xác thực (Auth) và tải code mới nhất về
       - name: Checkout source code
         uses: actions/checkout@v4
 
-      # Build và khởi chạy Docker trực tiếp tại không gian làm việc của Runner
       - name: Build and deploy
         run: |
           docker compose config
