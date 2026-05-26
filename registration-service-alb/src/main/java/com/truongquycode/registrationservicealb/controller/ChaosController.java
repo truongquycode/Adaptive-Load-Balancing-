@@ -56,7 +56,10 @@ public class ChaosController {
     @PostMapping("/cpu-spike/disable")
     public ResponseEntity<Map<String, Object>> disableCpuSpike() {
         cpuSpikeEnabled.set(false);
-        cpuBurnerThreads.forEach(Thread::interrupt);
+        cpuBurnerThreads.forEach(t -> {
+            t.interrupt();
+            try { t.join(1000); } catch (InterruptedException ignored) {}
+        });
         cpuBurnerThreads.clear();
         return statusResponse("BACKGROUND CPU SPIKE DISABLED");
     }
@@ -96,7 +99,12 @@ public class ChaosController {
     @PostMapping("/hidden/disable")
     public ResponseEntity<Map<String, Object>> disableHidden() {
         hiddenDegradationEnabled.set(false);
-        cpuBurnerThreads.forEach(Thread::interrupt);
+        
+        // join() chờ mỗi thread thoát vòng while, timeout 1 giây
+        cpuBurnerThreads.forEach(t -> {
+            t.interrupt();
+            try { t.join(1000); } catch (InterruptedException ignored) {}
+        });
         cpuBurnerThreads.clear();
         return statusResponse("HIDDEN DEGRADATION DISABLED");
     }
@@ -106,7 +114,7 @@ public class ChaosController {
     public ResponseEntity<Map<String, Object>> resetAll() {
         originalChaos.set(false);
         asyncIoEnabled.set(false);
-        hiddenDegradationEnabled.set(false);
+        disableHidden();    // ← Thay vì chỉ set flag
         disableCpuSpike();
         return statusResponse("ALL CHAOS RESET");
     }
