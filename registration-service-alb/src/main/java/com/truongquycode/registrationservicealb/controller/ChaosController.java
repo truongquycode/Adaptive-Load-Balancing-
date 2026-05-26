@@ -25,7 +25,7 @@ public class ChaosController {
     // ── FIX ROOT CAUSE 1: Giới hạn số thread theo container CPU, không dùng host CPU ──
     // Docker container 8083 có 1.0 CPU → tối đa 2 burner threads là đủ đốt 100%
     // Dùng hằng số thay vì availableProcessors() để kiểm soát chính xác
-    private static final int BURNER_THREAD_COUNT = 2;
+    private static final int BURNER_THREAD_COUNT = 1;
 
     // ─── KỊCH BẢN CŨ: Vừa trễ vừa đốt CPU ───────────────────────────────────────────
     @PostMapping("/enable")
@@ -88,9 +88,22 @@ public class ChaosController {
                 Thread t = new Thread(() -> {
                     double dummy = 0;
                     // ── FIX: check cả isInterrupted() ──
-                    while (hiddenDegradationEnabled.get() && !Thread.currentThread().isInterrupted()) {
-                        dummy += Math.sqrt(Math.random());
-                    }
+                    while (hiddenDegradationEnabled.get()
+                    	       && !Thread.currentThread().isInterrupted()) {
+
+                    	    for (int j = 0; j < 10000; j++) {
+                    	        dummy += Math.sqrt(Math.random());
+                    	    }
+
+                    	    Thread.onSpinWait();
+
+                    	    try {
+                    	        Thread.sleep(1);
+                    	    } catch (InterruptedException e) {
+                    	        Thread.currentThread().interrupt();
+                    	        break;
+                    	    }
+                    	}
                 });
                 t.setDaemon(true); // daemon: JVM shutdown không bị block
                 t.setName("hidden-burner-" + i);
