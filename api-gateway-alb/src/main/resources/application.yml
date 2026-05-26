@@ -19,7 +19,7 @@ spring:
         ttl: 5s # Thời gian sống của cache (mặc định 35s)
 
 alb:
-  # adaptive, round-robin, random, least-connections
+  # adaptive, round-robin, random, least-connections change
   strategy: round-robin
   polling:
     interval: 1000    # Tăng từ 500ms → 1000ms, giảm overhead polling
