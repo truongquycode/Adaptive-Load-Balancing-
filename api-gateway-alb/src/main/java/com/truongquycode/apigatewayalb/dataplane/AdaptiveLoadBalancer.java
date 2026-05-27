@@ -28,15 +28,17 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
     private final MetricsCache cache;
     private final InflightTracker inflightTracker;
 
-    // Không còn dùng threshold tuyệt đối
     private static final int    INFLIGHT_HARD_CAP  = 80;
-    // Node bị "near-exclude" nếu score > (minScore × RATIO + BUFFER)
-    // RATIO=2.0: node tệ hơn 2x so với node tốt nhất → degraded
-    // BUFFER=0.15: tránh exclude khi scores gần nhau (normal variance)
     private static final double DEGRADE_RATIO      = 2.0;
     private static final double DEGRADE_BUFFER     = 0.08;
-    // Probe traffic để phát hiện recovery
     private static final double PROBE_PROBABILITY  = 0.03;
+    private static final double OMEGA              = 1.2;
+
+    // ── Stable baseline: chỉ cập nhật khi cluster THỰC SỰ cải thiện ──────────
+    // Ngăn threshold tăng khi best node bị overload tạm thời
+    // Initial = 0.30 (conservative estimate, sẽ tự hiệu chỉnh sau warmup)
+    private volatile double clusterBestEma = 0.30;
+    private static final double BASELINE_EMA_ALPHA = 0.08; // Rất chậm, chỉ cập nhật khi tốt hơn
 
     @Override
     public Mono<Response<ServiceInstance>> choose(Request request) {
@@ -47,47 +49,55 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
 
     private Response<ServiceInstance> selectBestInstance(List<ServiceInstance> instances) {
         if (instances == null || instances.isEmpty()) return new EmptyResponse();
-        if (instances.size() == 1)  return new DefaultResponse(instances.get(0));
+        if (instances.size() == 1) return new DefaultResponse(instances.get(0));
 
         int n = instances.size();
         int totalInflight = inflightTracker.getTotalInflight();
 
-        // ══ PASS 1: Thu thập MCDM scores (health signal, 1s lag) ═══════════
+        // ══ PASS 1: Thu thập điểm số từ cache ══════════════════════════════
         record NodeInfo(ServiceInstance inst, double mcdm, int inflight) {}
         List<NodeInfo> nodes = new ArrayList<>(n);
-        double minMcdm = Double.MAX_VALUE;
+        double instantMin = Double.MAX_VALUE;
 
         for (ServiceInstance inst : instances) {
             ScoreBreakdown bd = cache.getScore(inst.getInstanceId());
             double mcdm = (bd != null) ? bd.finalScore() : 0.5;
             int inflight = inflightTracker.getInflight(inst.getInstanceId());
             nodes.add(new NodeInfo(inst, mcdm, inflight));
-            if (mcdm < minMcdm) minMcdm = mcdm;
+            if (mcdm < instantMin) instantMin = mcdm;
         }
 
-        // ══ PASS 2: Phân loại healthy/degraded theo threshold TƯƠNG ĐỐI ════
-        // threshold thay đổi theo điều kiện thực tế của cluster
-        // → tự hiệu chỉnh với mọi điều kiện mạng, mọi kịch bản chaos
-        double degradeThreshold = minMcdm * DEGRADE_RATIO + DEGRADE_BUFFER;
+        // ══ Cập nhật baseline EMA — CHỈ KHI cluster thực sự cải thiện ══════
+        // Quan trọng: Math.min() đảm bảo clusterBestEma không bao giờ TĂNG
+        // khi instantMin tăng do overload tạm thời
+        if (instantMin < clusterBestEma) {
+            clusterBestEma = BASELINE_EMA_ALPHA * instantMin
+                           + (1 - BASELINE_EMA_ALPHA) * clusterBestEma;
+        }
+        // effectiveBaseline = giá trị NHỎ HƠN giữa hiện tại và lịch sử tốt nhất
+        // → Threshold không thể tăng khi best node bị overload
+        double effectiveBaseline = Math.min(instantMin, clusterBestEma);
+        double degradeThreshold  = effectiveBaseline * DEGRADE_RATIO + DEGRADE_BUFFER;
 
+        // ══ PASS 2: Phân loại healthy/degraded ══════════════════════════════
         ServiceInstance best = null;
-        double bestRealtime   = Double.MAX_VALUE;
+        double bestRealtime = Double.MAX_VALUE;
         List<ServiceInstance> degraded = new ArrayList<>();
 
         for (NodeInfo node : nodes) {
-            // Node bị loại khỏi pool chính
             if (node.inflight() >= INFLIGHT_HARD_CAP
                     || node.mcdm() >= degradeThreshold) {
                 degraded.add(node.inst());
                 continue;
             }
 
-            // ── Healthy node: MCDM score + inflight penalty (cân bằng tải thời gian thực)
-            // Tách hai tín hiệu: health (MCDM) và load (inflight) không trộn lẫn
+            // Healthy node: tính realtime score với inflight penalty có cap
             double excessShare = (totalInflight > 0)
                 ? Math.max(0.0, (double) node.inflight() / totalInflight - 1.0 / n)
                 : 0.0;
-            double realtime = node.mcdm() + 1.2 * Math.log(1.0 + excessShare);
+            // ── Cap inflightPenalty ở 0.40 để tránh oscillation ─────────────
+            double inflightPenalty = Math.min(0.40, OMEGA * Math.log(1.0 + excessShare));
+            double realtime = node.mcdm() + inflightPenalty;
 
             if (realtime < bestRealtime) {
                 bestRealtime = realtime;
@@ -95,21 +105,20 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
             }
         }
 
-        // ── Fallback: tất cả node đều degraded → chọn node MCDM thấp nhất ──
+        // ══ Fallback: chọn node tệ nhất ít nhất ════════════════════════════
         if (best == null) {
             best = nodes.stream()
                         .min(Comparator.comparingDouble(NodeInfo::mcdm))
                         .map(NodeInfo::inst)
                         .orElse(instances.get(0));
-            log.warn("All instances degraded — routing to least-bad node");
+            log.warn("All nodes degraded (threshold={:.3f}) — routing to least-bad",
+                     degradeThreshold);
         }
 
-        // ── Probe traffic: gửi 3% vào degraded nodes để phát hiện recovery ──
+        // ══ Probe traffic 3% vào degraded nodes để detect recovery ══════════
         if (!degraded.isEmpty()
                 && ThreadLocalRandom.current().nextDouble() < PROBE_PROBABILITY) {
-            best = degraded.get(
-                ThreadLocalRandom.current().nextInt(degraded.size()));
-            log.debug("Probe request sent to degraded node: {}", best.getInstanceId());
+            best = degraded.get(ThreadLocalRandom.current().nextInt(degraded.size()));
         }
 
         Metrics.counter("alb.routing.selected",

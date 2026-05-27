@@ -48,29 +48,24 @@ public class DynamicWeightEngine {
 		if (n < 2)
 			return;
 
-		// BẢN VÁ TỐI ƯU: NGỦ ĐÔNG TRỌNG SỐ KHI HỆ THỐNG NHÀN RỖI (IDLE)
-		// Nếu không có request nào đang chờ (tổng Queue = 0) và CPU trung bình cực thấp
-		// (< 5%)
 		double totalQueue = instances.stream().mapToDouble(InstanceMetrics::getQueueLength).sum();
 		double avgCpu = instances.stream().mapToDouble(InstanceMetrics::getCpu).average().orElse(0.0);
-
 		double avgQueue = totalQueue / n;
-		if (avgQueue < 1.0 && avgCpu < 0.05) {
-			log.debug("Hệ thống nhàn rỗi - Đóng băng và Reset trọng số về mặc định (AHP)");
-			// Kéo trọng số về lại mức gốc ban đầu của hệ thống
-			this.alpha = ahpWeights[0]; // 0.5
-			this.beta = ahpWeights[1]; // 0.3
-			this.gamma = ahpWeights[2]; // 0.2
-			return; // Dừng hàm, không tính toán EWM
+
+		// ── Sửa idle condition: chỉ freeze khi THỰC SỰ nhàn rỗi ─────────────────
+		// Trước: avgQueue < 1.0 AND avgCpu < 0.05
+		// Sau: avgQueue < 0.5 AND avgCpu < 0.03 (chặt hơn, tránh freeze khi hidden CPU)
+		if (avgQueue < 0.5 && avgCpu < 0.03) {
+			log.debug("System idle — weights frozen at AHP defaults");
+			this.alpha = ahpWeights[0];
+			this.beta = ahpWeights[1];
+			this.gamma = ahpWeights[2];
+			return;
 		}
 
-		// Nếu hệ thống đang có tải (Queue > 0 hoặc CPU > 5%), tiến hành tính toán bình
-		// thường
 		double[][] normalizedMatrix = buildNormalizedMatrix(instances, n);
 		double[] ewmWeights = calculateEntropyWeights(normalizedMatrix, n);
 		blendAndApplyFinalWeights(ewmWeights);
-
-		log.debug("MCDM Weights Updated: Alpha={}, Beta={}, Gamma={}", alpha, beta, gamma);
 	}
 
 	// --- BƯỚC 1: Xây dựng và chuẩn hóa ma trận dữ liệu ---

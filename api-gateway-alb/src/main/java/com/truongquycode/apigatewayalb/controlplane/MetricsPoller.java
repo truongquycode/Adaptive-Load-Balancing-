@@ -156,15 +156,26 @@ public class MetricsPoller {
 	// Phát hiện degradation NHANH (alpha=0.55), phục hồi CHẬM (alpha=0.20)
 	// → Tránh yo-yo: instance phục hồi nhưng ngay lập tức bị flood traffic lại
 	private double applyScoreEma(String instanceId, double rawScore) {
-		double prev = smoothedScores.getOrDefault(instanceId, rawScore);
+	    double prev = smoothedScores.getOrDefault(instanceId, rawScore);
+	    double delta = rawScore - prev;
 
-		// Asymmetric: nếu score tăng (xấu đi) → phản ứng nhanh
-		// nếu score giảm (tốt lên) → phục hồi thận trọng
-		double alpha = rawScore > prev ? 0.40 : 0.28;
+	    double alpha;
+	    if (delta > 0.30) {
+	        // Tăng đột ngột lớn → chaos event thực sự (không phải network noise)
+	        // Phản ứng NHANH để loại node ra khỏi pool trong vòng 1-2 giây
+	        alpha = 0.60;
+	    } else if (delta > 0.0) {
+	        // Tăng nhỏ → có thể là network jitter (LRC-Student, Tailscale overhead)
+	        // Phản ứng VỪA PHẢI để lọc noise
+	        alpha = 0.35;
+	    } else {
+	        // Giảm → recovery, phục hồi thận trọng tránh flood traffic trở lại
+	        alpha = 0.25;
+	    }
 
-		double smoothed = alpha * rawScore + (1 - alpha) * prev;
-		smoothedScores.put(instanceId, smoothed);
-		return smoothed;
+	    double smoothed = alpha * rawScore + (1 - alpha) * prev;
+	    smoothedScores.put(instanceId, smoothed);
+	    return smoothed;
 	}
 
 	// Hàm calculateDeltaLatency giữ nguyên
