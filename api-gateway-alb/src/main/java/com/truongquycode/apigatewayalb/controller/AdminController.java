@@ -29,7 +29,7 @@ public class AdminController {
         pidController.resetAllStates();
         ewmaSmoother.resetAllStates();
         windowManager.resetAll();
-        inflightTracker.resetAll();
+        inflightTracker.resetAll();	
         
         return ResponseEntity.ok("ALB State Reset Hòan Toàn — Sẵn sàng cho lần Benchmark tiếp theo");
     }
