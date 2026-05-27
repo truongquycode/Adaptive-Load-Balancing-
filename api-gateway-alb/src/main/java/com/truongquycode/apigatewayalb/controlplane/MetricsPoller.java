@@ -160,7 +160,7 @@ public class MetricsPoller {
 
 		// Asymmetric: nếu score tăng (xấu đi) → phản ứng nhanh
 		// nếu score giảm (tốt lên) → phục hồi thận trọng
-		double alpha = rawScore > prev ? 0.55 : 0.28;
+		double alpha = rawScore > prev ? 0.40 : 0.28;
 
 		double smoothed = alpha * rawScore + (1 - alpha) * prev;
 		smoothedScores.put(instanceId, smoothed);

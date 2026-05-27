@@ -25,7 +25,7 @@ public class ChaosController {
     // ── FIX ROOT CAUSE 1: Giới hạn số thread theo container CPU, không dùng host CPU ──
     // Docker container 8083 có 1.0 CPU → tối đa 2 burner threads là đủ đốt 100%
     // Dùng hằng số thay vì availableProcessors() để kiểm soát chính xác
-    private static final int BURNER_THREAD_COUNT = 1;
+    private static final int BURNER_THREAD_COUNT = 2;
 
     // ─── KỊCH BẢN CŨ: Vừa trễ vừa đốt CPU ───────────────────────────────────────────
     @PostMapping("/enable")

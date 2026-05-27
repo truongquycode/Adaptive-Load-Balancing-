@@ -129,56 +129,58 @@ public class DynamicWeightEngine {
 
 	// --- BƯỚC 3: Trộn EWM với AHP và cập nhật biến toàn cục ---
 	private void blendAndApplyFinalWeights(double[] ewmNorm) {
-	    double sumFusion = 0;
-	    double[] fusion = new double[CRITERIA_COUNT];
-	    for (int j = 0; j < CRITERIA_COUNT; j++) {
-	        double blended = BLEND_FACTOR * ewmNorm[j] + (1 - BLEND_FACTOR) * ahpWeights[j];
-	        fusion[j] = ahpWeights[j] * blended;
-	        sumFusion += fusion[j];
-	    }
+		double sumFusion = 0;
+		double[] fusion = new double[CRITERIA_COUNT];
+		for (int j = 0; j < CRITERIA_COUNT; j++) {
+			double blended = BLEND_FACTOR * ewmNorm[j] + (1 - BLEND_FACTOR) * ahpWeights[j];
+			fusion[j] = ahpWeights[j] * blended;
+			sumFusion += fusion[j];
+		}
 
-	    double rawAlpha = fusion[0] / sumFusion;
-	    double rawBeta  = fusion[1] / sumFusion;
-	    double rawGamma = fusion[2] / sumFusion;
+		double rawAlpha = fusion[0] / sumFusion;
+		double rawBeta = fusion[1] / sumFusion;
+		double rawGamma = fusion[2] / sumFusion;
 
-	    // EMA smoothing
-	    double newAlpha = WEIGHT_EMA_ALPHA * rawAlpha + (1 - WEIGHT_EMA_ALPHA) * this.alpha;
-	    double newBeta  = WEIGHT_EMA_ALPHA * rawBeta  + (1 - WEIGHT_EMA_ALPHA) * this.beta;
-	    double newGamma = WEIGHT_EMA_ALPHA * rawGamma + (1 - WEIGHT_EMA_ALPHA) * this.gamma;
+		double newAlpha = WEIGHT_EMA_ALPHA * rawAlpha + (1 - WEIGHT_EMA_ALPHA) * this.alpha;
+		double newBeta = WEIGHT_EMA_ALPHA * rawBeta + (1 - WEIGHT_EMA_ALPHA) * this.beta;
+		double newGamma = WEIGHT_EMA_ALPHA * rawGamma + (1 - WEIGHT_EMA_ALPHA) * this.gamma;
 
-	    // Renorm trước khi clamp (bước này là bắt buộc)
-	    double s = newAlpha + newBeta + newGamma;
-	    newAlpha /= s; newBeta /= s; newGamma /= s;
+		double s = newAlpha + newBeta + newGamma;
+		newAlpha /= s;
+		newBeta /= s;
+		newGamma /= s;
 
-	    // ── Clamp với soft redistribution ──────────────────────────────────
-	    // Nếu gamma vượt ceiling, phần excess chuyển vào alpha (latency quan trọng hơn)
-	    if (newGamma > 0.40) {
-	        double excess = newGamma - 0.40;
-	        newGamma = 0.40;
-	        newAlpha += excess * 0.70;
-	        newBeta  += excess * 0.30;
-	    }
-	    if (newAlpha > 0.65) {
-	        double excess = newAlpha - 0.65;
-	        newAlpha = 0.65;
-	        newBeta  += excess * 0.60;
-	        newGamma += excess * 0.40;
-	    }
-	    if (newBeta > 0.45) {
-	        double excess = newBeta - 0.45;
-	        newBeta = 0.45;
-	        newAlpha += excess;
-	    }
-	    // Hard floor
-	    newAlpha = Math.max(0.20, newAlpha);
-	    newBeta  = Math.max(0.10, newBeta);
-	    newGamma = Math.max(0.10, newGamma);
+		// ── Nâng ceiling gamma: 0.40 → 0.55 ─────────────────────────────────
+		// Lý do: khi hidden CPU degradation, EWM tự nhiên tăng gamma cao
+		// Nếu cap ở 0.40, signal bị triệt tiêu → không detect được
+		// Với cap 0.55: 8083 baseScore ≈ 0.60 → ratio 2.8x vs healthy → excluded ✓
+		if (newGamma > 0.55) {
+			double excess = newGamma - 0.55;
+			newGamma = 0.55;
+			newAlpha += excess * 0.70;
+			newBeta += excess * 0.30;
+		}
+		if (newAlpha > 0.70) {
+			double excess = newAlpha - 0.70;
+			newAlpha = 0.70;
+			newBeta += excess * 0.60;
+			newGamma += excess * 0.40;
+		}
+		if (newBeta > 0.45) {
+			double excess = newBeta - 0.45;
+			newBeta = 0.45;
+			newAlpha += excess;
+		}
 
-	    // Renorm lần cuối SAU KHI clamp xong (đảm bảo tổng = 1)
-	    s = newAlpha + newBeta + newGamma;
-	    this.alpha = newAlpha / s;
-	    this.beta  = newBeta  / s;
-	    this.gamma = newGamma / s;
+		// Hard floor
+		newAlpha = Math.max(0.15, newAlpha);
+		newBeta = Math.max(0.08, newBeta);
+		newGamma = Math.max(0.08, newGamma);
+
+		s = newAlpha + newBeta + newGamma;
+		this.alpha = newAlpha / s;
+		this.beta = newBeta / s;
+		this.gamma = newGamma / s;
 	}
 
 	private double getMetric(InstanceMetrics m, int criteriaIndex) {
