@@ -34,7 +34,7 @@ public class RegistrationController {
 
         } else if (ChaosController.asyncIoEnabled.get()) {
             // TRƯỜNG HỢP 2: Lỗi I/O phi đồng bộ (Sleep thuần túy, không tốn CPU)
-            delay = 3000;
+            delay = 800;
             Thread.sleep(delay);
 
         } else if (ChaosController.cpuSpikeEnabled.get()) {
