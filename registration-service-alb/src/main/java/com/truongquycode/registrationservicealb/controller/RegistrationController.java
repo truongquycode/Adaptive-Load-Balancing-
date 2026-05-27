@@ -62,7 +62,7 @@ public class RegistrationController {
             //           MCDM tăng score của node này → P2C tránh
             //           → Ít hơn 10% traffic đến node degraded
             double httpDummy = 0;
-            for (int i = 0; i < 150000; i++) { // Chỉ 3000 iterations ≈ <1ms overhead
+            for (int i = 0; i < 3000; i++) { // Chỉ 3000 iterations ≈ <1ms overhead
                 httpDummy += Math.sqrt(Math.random());
             }
             delay = 20 + random.nextInt(30); // 20–50ms, gần bằng baseline

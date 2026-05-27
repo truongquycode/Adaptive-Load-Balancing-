@@ -91,7 +91,7 @@ public class ChaosController {
                     while (hiddenDegradationEnabled.get()
                     	       && !Thread.currentThread().isInterrupted()) {
 
-                    	    for (int j = 0; j < 10000; j++) {
+                    	    for (int j = 0; j < 200000; j++) {
                     	        dummy += Math.sqrt(Math.random());
                     	    }
 
@@ -149,8 +149,8 @@ public class ChaosController {
         snapshot.forEach(t -> {
             try {
                 t.join(500);
-            } catch (InterruptedException ignored) {
-                Thread.currentThread().interrupt();
+            } catch (InterruptedException e) {
+                
             }
         });
     }
