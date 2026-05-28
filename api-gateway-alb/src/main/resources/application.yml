@@ -9,7 +9,7 @@ spring:
       httpclient:
         #  Giới hạn thời gian chờ (Fail-Fast Mechanism)
         connect-timeout: 2000 # 2 giây để thiết lập kết nối TCP
-        response-timeout: 8s  # Tối đa 8 giây để chờ backend trả lời
+        response-timeout: 15s  # Tối đa 15 giây để chờ backend trả lời
         pool:
           type: elastic
           max-connections: 1000 # Mở rộng sức chứa connection pool cho tải cao
