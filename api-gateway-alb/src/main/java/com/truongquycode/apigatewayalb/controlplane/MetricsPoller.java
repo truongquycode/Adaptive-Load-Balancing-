@@ -113,8 +113,8 @@ public class MetricsPoller {
 		latencyValues.keySet().retainAll(activeIds);
 		queueValues.keySet().retainAll(activeIds);
 		scoreValues.keySet().retainAll(activeIds);
-	    consecutiveFailures.keySet().retainAll(activeIds);  // ← thêm dòng này
-	    smoothedScores.keySet().retainAll(activeIds);      
+		consecutiveFailures.keySet().retainAll(activeIds); // ← thêm dòng này
+		smoothedScores.keySet().retainAll(activeIds);
 	}
 
 	private void processMetrics(String instanceId, JsonNode node) {
@@ -156,55 +156,49 @@ public class MetricsPoller {
 	// Phát hiện degradation NHANH (alpha=0.55), phục hồi CHẬM (alpha=0.20)
 	// → Tránh yo-yo: instance phục hồi nhưng ngay lập tức bị flood traffic lại
 	private double applyScoreEma(String instanceId, double rawScore) {
-	    double prev = smoothedScores.getOrDefault(instanceId, rawScore);
-	    double delta = rawScore - prev;
+		double prev = smoothedScores.getOrDefault(instanceId, rawScore);
+		double delta = rawScore - prev;
 
-	    double alpha;
-	    if (delta > 0.30) {
-	        // Tăng đột ngột lớn → chaos event thực sự (không phải network noise)
-	        // Phản ứng NHANH để loại node ra khỏi pool trong vòng 1-2 giây
-	        alpha = 0.60;
-	    } else if (delta > 0.0) {
-	        // Tăng nhỏ → có thể là network jitter (LRC-Student, Tailscale overhead)
-	        // Phản ứng VỪA PHẢI để lọc noise
-	        alpha = 0.35;
-	    } else {
-	        // Giảm → recovery, phục hồi thận trọng tránh flood traffic trở lại
-	        alpha = 0.25;
-	    }
+		double alpha;
+		if (delta > 0.30) {
+			// Tăng đột ngột lớn → chaos event thực sự (không phải network noise)
+			// Phản ứng NHANH để loại node ra khỏi pool trong vòng 1-2 giây
+			alpha = 0.60;
+		} else if (delta > 0.0) {
+			// Tăng nhỏ → có thể là network jitter (LRC-Student, Tailscale overhead)
+			// Phản ứng VỪA PHẢI để lọc noise
+			alpha = 0.35;
+		} else {
+			// Giảm → recovery, phục hồi thận trọng tránh flood traffic trở lại
+			alpha = 0.25;
+		}
 
-	    double smoothed = alpha * rawScore + (1 - alpha) * prev;
-	    smoothedScores.put(instanceId, smoothed);
-	    return smoothed;
+		double smoothed = alpha * rawScore + (1 - alpha) * prev;
+		smoothedScores.put(instanceId, smoothed);
+		return smoothed;
 	}
 
 	private double calculateDeltaLatency(String id, double currentCount, double currentTotalTime) {
-	    double p50 = windowManager.getSnapshot(id).p50();
-	    TrafficState prev = trafficStates.getOrDefault(id, new TrafficState(0, 0, p50));
+		double p50 = windowManager.getSnapshot(id).p50();
+		TrafficState prev = trafficStates.getOrDefault(id, new TrafficState(0, 0, p50));
 
-	    double deltaCount = currentCount - prev.count();
-	    double deltaTotal = currentTotalTime - prev.totalTimeSec();
+		double deltaCount = currentCount - prev.count();
+		double deltaTotal = currentTotalTime - prev.totalTimeSec();
 
-	    double currentLatency;
-	    if (deltaCount > 0) {
-	        currentLatency = (deltaTotal / deltaCount) * 1000.0;
-	    } else {
-	        // Không có request mới hoàn thành trong interval này
-	        // Dùng inflight làm proxy áp lực: queue cao → latency đang tăng
-	        int inflight = inflightTracker.getInflight(id);
-	        if (inflight > 30) {
-	            // Node đang tích queue → ước tính latency tăng dần
-	            // Tăng 15% mỗi chu kỳ nếu queue cao, không để vượt 3000ms
-	            currentLatency = Math.min(prev.lastLatency() * 1.15, 3000.0);
-	        } else {
-	            // Queue thấp, node có thể đang idle → decay về p50
-	            currentLatency = prev.lastLatency() * 0.80 + p50 * 0.20;
-	        }
-	    }
+		double currentLatency;
+		if (deltaCount > 0) {
+			// Có data thực → dùng trực tiếp
+			currentLatency = (deltaTotal / deltaCount) * 1000.0;
+		} else {
+			// Không có request mới hoàn thành:
+			// KHÔNG tăng latency (tránh death spiral)
+			// Giữ nguyên giá trị cũ, không decay lên cũng không decay xuống
+			currentLatency = prev.lastLatency();
+		}
 
-	    currentLatency = Math.min(Math.max(currentLatency, 1.0), 3000.0);
-	    trafficStates.put(id, new TrafficState(currentCount, currentTotalTime, currentLatency));
-	    return currentLatency;
+		currentLatency = Math.min(Math.max(currentLatency, 1.0), 3000.0);
+		trafficStates.put(id, new TrafficState(currentCount, currentTotalTime, currentLatency));
+		return currentLatency;
 	}
 
 	// --- Tách hàm: Đăng ký Prometheus Gauges ---
