@@ -48,7 +48,7 @@ services:
 
   # ─── Instance TRUNG BÌNH — Server phụ ─────────────────
   registration-8082:
-    cpus: "1.0"
+    cpus: "1.5"
     mem_limit: 512m
     build:
       context: .
