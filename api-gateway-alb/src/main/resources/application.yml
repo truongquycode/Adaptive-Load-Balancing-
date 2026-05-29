@@ -1,50 +1,71 @@
 server:
-  port: 8080
+    port: 8080
 
 spring:
-  application:
-    name: api-gateway-alb
-  cloud:
-    gateway:
-      httpclient:
-        #  Giới hạn thời gian chờ (Fail-Fast Mechanism)
-        connect-timeout: 2000 # 2 giây để thiết lập kết nối TCP
-        response-timeout: 15s  # Tối đa 15 giây để chờ backend trả lời
-        pool:
-          type: elastic
-          max-connections: 1000 # Mở rộng sức chứa connection pool cho tải cao
-    loadbalancer:
-      cache:
-        # Làm mới danh sách máy chủ nhanh hơn
-        ttl: 5s # Thời gian sống của cache (mặc định 35s)
+    application:
+        name: api-gateway-alb
+    cloud:
+        gateway:
+            httpclient:
+                connect-timeout: 2000
+                response-timeout: 15s
+                pool:
+                    type: elastic
+                    max-connections: 1000
+        loadbalancer:
+            cache:
+                ttl: 5s
 
 alb:
-  # adaptive, round-robin, random, least-connections
-  strategy: least-connections
-  polling:
-    interval: 500    # Tăng từ 500ms → 1000ms, giảm overhead polling
-  ewma:
-    tau-min: 200.0    # Phản ứng nhanh hơn với chaos # 300 → 200, phản ứng nhanh hơn
-    tau-max: 3000.0   # Làm mịn mạnh hơn khi ổn định # 8000 → 3000
-    k: 3.0            # Nhạy hơn với biến động
+    # ── FIX RC5: Giảm từ 500ms → 200ms để phản ứng kịp với 800 RPS ─────────
+    # Trước: 800 RPS × 500ms = 400 request với score cũ mỗi cycle
+    # Sau:   800 RPS × 200ms = 160 request → score stale window nhỏ hơn 2.5x
+    # adaptive, round-robin, random, least-connections
+    strategy: adaptive
+    polling:
+        interval: 200
 
+    ewma:
+        # ── Tune cho /api/simulate-call (CPU-intensive, latency 40-500ms) ────────
+        # tau-min nhỏ hơn: phản ứng nhanh khi spike (chaos event hoặc overload)
+        # tau-max nhỏ hơn: ổn định hơn nhưng không quá trơ
+        # k=4.0: rất nhạy với deviation (deviation 25% đã đủ để giảm τ về τ_min)
+        tau-min: 150.0 # 200 → 150ms
+        tau-max: 2000.0 # 3000 → 2000ms (ổn định hơn, phản ứng nhanh hơn)
+        k: 4.0 # 3.0 → 4.0
+
+    pid:
+        # ── Tune PID cho workload không có chaos, chỉ có heterogeneous capacity ──
+        # kp cao hơn: phản ứng P mạnh hơn khi một node chậm hơn system P75
+        # ki thấp hơn: tránh integral windup khi node nhanh trở lại sau overload
+        # lambda nhỏ hơn: PID penalty không lấn át MCDM baseScore quá nhiều
+        #   (baseScore đã cải thiện nhờ system-wide normalization)
+        kp: 1.0 # 0.8 → 1.0
+        ki: 0.08 # 0.10 → 0.08 (giảm windup)
+        kd: 0.04 # 0.05 → 0.04
+        tau-d: 2.0 # 3.0 → 2.0
+        min-i: -0.8 # -1.0 → -0.8
+        max-i: 2.5 # 3.0 → 2.5
+        lambda: 0.6 # 0.8 → 0.6 (giảm để MCDM dominant, không phải PID)
+        kappa: 1.2 # 1.0 → 1.2
+
+    weights:
+        update-interval: 5000
 
 management:
-  endpoints:
-    web:
-      exposure:
-        #  Bảo mật (Nguyên tắc Least Privilege)
-        include: health, info, metrics, prometheus 
-  metrics:
-    tags:
-      application: ${spring.application.name}
+    endpoints:
+        web:
+            exposure:
+                include: health, info, metrics, prometheus
+    metrics:
+        tags:
+            application: ${spring.application.name}
 
 eureka:
-  client:
-    serviceUrl:
-      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
-    #  Tăng tốc độ đồng bộ Service Discovery
-    registry-fetch-interval-seconds: 5 # Mặc định 30s
-  instance:
-    prefer-ip-address: true
-    lease-renewal-interval-in-seconds: 10 # Gửi (Heartbeat) nhanh hơn
+    client:
+        serviceUrl:
+            defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+        registry-fetch-interval-seconds: 5
+    instance:
+        prefer-ip-address: true
+        lease-renewal-interval-in-seconds: 10

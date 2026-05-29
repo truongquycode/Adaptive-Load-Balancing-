@@ -18,21 +18,27 @@ import java.util.List;
 @RequiredArgsConstructor
 public class DynamicWeightEngine {
 
-	// Mức nền tương ứng cho [Latency (5ms), Queue (1 request), CPU (0.05%)]
 	private static final double[] MU = { 5.0, 1.0, 0.05 };
 
-	private static final double WEIGHT_EMA_ALPHA = 0.15; // Chỉ cập nhật 25% mỗi chu kỳ 5s
-
-	// Khai báo hằng số toán học rõ ràng (Tránh Magic Numbers)
+	private static final double WEIGHT_EMA_ALPHA = 0.15;
 	private static final double EPSILON = 1e-6;
-	private static final double BLEND_FACTOR = 0.7; // 70% EWM + 30% AHP
-	private static final int CRITERIA_COUNT = 3; // Latency, Queue, CPU
+
+	// ── FIX: Tăng BLEND_FACTOR: EWM chiếm 80% thay vì 70% ──────────────────
+	// Lý do: với workload CPU-intensive trên heterogeneous nodes (8081: 2 CPU,
+	// 8082: 1.5 CPU, 8083: 1 CPU), tín hiệu CPU (gamma) từ entropy rất quan trọng.
+	// EWM phát hiện sự chênh lệch entropy CPU tốt hơn khi weight của nó cao hơn.
+	private static final double BLEND_FACTOR = 0.80; // 0.70 → 0.80
+	private static final int CRITERIA_COUNT = 3;
 
 	private final MetricsCache cache;
 	private final MeterRegistry registry;
-	private final double[] ahpWeights = { 0.5, 0.3, 0.2 }; // Có thể đưa ra application.yml sau
 
-	private volatile double alpha = 0.5, beta = 0.3, gamma = 0.2;
+	// AHP prior: latency vẫn quan trọng nhất (0.5),
+	// nhưng giảm queue (0.25) và tăng CPU (0.25) so với trước (0.3/0.2).
+	// Lý do: /api/simulate-call là CPU-bound, CPU là tín hiệu phân biệt chính.
+	private final double[] ahpWeights = { 0.50, 0.25, 0.25 };
+
+	private volatile double alpha = 0.50, beta = 0.25, gamma = 0.25;
 
 	@PostConstruct
 	public void registerMetrics() {
@@ -52,10 +58,10 @@ public class DynamicWeightEngine {
 		double avgCpu = instances.stream().mapToDouble(InstanceMetrics::getCpu).average().orElse(0.0);
 		double avgQueue = totalQueue / n;
 
-		// ── Sửa idle condition: chỉ freeze khi THỰC SỰ nhàn rỗi ─────────────────
-		// Trước: avgQueue < 1.0 AND avgCpu < 0.05
-		// Sau: avgQueue < 0.5 AND avgCpu < 0.03 (chặt hơn, tránh freeze khi hidden CPU)
-		if (avgQueue < 0.5 && avgCpu < 0.03) {
+		// ── FIX: Strict idle condition ────────────────────────────────────────
+		// avgQueue < 0.3 (trước: 0.5) và avgCpu < 0.02 (trước: 0.03)
+		// Đảm bảo không freeze weights quá sớm khi hệ thống đang idle giữa burst
+		if (avgQueue < 0.3 && avgCpu < 0.02) {
 			log.debug("System idle — weights frozen at AHP defaults");
 			this.alpha = ahpWeights[0];
 			this.beta = ahpWeights[1];
@@ -68,22 +74,16 @@ public class DynamicWeightEngine {
 		blendAndApplyFinalWeights(ewmWeights);
 	}
 
-	// --- BƯỚC 1: Xây dựng và chuẩn hóa ma trận dữ liệu ---
-	// 2. Cập nhật toàn bộ nội dung của hàm buildNormalizedMatrix:
 	private double[][] buildNormalizedMatrix(List<InstanceMetrics> instances, int n) {
 		double[][] data = new double[n][CRITERIA_COUNT];
 
 		for (int j = 0; j < CRITERIA_COUNT; j++) {
 			double minVal = Double.MAX_VALUE;
-			// Tìm Min cho từng tiêu chí
 			for (int i = 0; i < n; i++) {
 				double val = getMetric(instances.get(i), j);
 				if (val < minVal)
 					minVal = val;
 			}
-
-			// Chuẩn hóa Laplace: (Min + mu) / (Val + mu)
-			// Triệt tiêu lỗi chia cho 0 và triệt tiêu luôn độ nhạy thái quá khi Val ≈ 0
 			for (int i = 0; i < n; i++) {
 				double val = getMetric(instances.get(i), j);
 				data[i][j] = (minVal + MU[j]) / (val + MU[j]);
@@ -92,7 +92,6 @@ public class DynamicWeightEngine {
 		return data;
 	}
 
-	// --- BƯỚC 2: Tính toán trọng số Entropy (EWM) ---
 	private double[] calculateEntropyWeights(double[][] data, int n) {
 		double[] ewm = new double[CRITERIA_COUNT];
 		double sumEwm = 0;
@@ -109,12 +108,10 @@ public class DynamicWeightEngine {
 				if (p > 0)
 					sumEntropy += p * Math.log(p);
 			}
-
 			ewm[j] = Math.max(0.0, 1.0 - (-k * sumEntropy));
 			sumEwm += ewm[j];
 		}
 
-		// Chuẩn hóa EWM để tổng = 1
 		double[] ewmNorm = new double[CRITERIA_COUNT];
 		for (int j = 0; j < CRITERIA_COUNT; j++) {
 			ewmNorm[j] = (sumEwm == 0) ? (1.0 / CRITERIA_COUNT) : (ewm[j] / sumEwm);
@@ -122,7 +119,6 @@ public class DynamicWeightEngine {
 		return ewmNorm;
 	}
 
-	// --- BƯỚC 3: Trộn EWM với AHP và cập nhật biến toàn cục ---
 	private void blendAndApplyFinalWeights(double[] ewmNorm) {
 		double sumFusion = 0;
 		double[] fusion = new double[CRITERIA_COUNT];
@@ -145,10 +141,8 @@ public class DynamicWeightEngine {
 		newBeta /= s;
 		newGamma /= s;
 
-		// ── Nâng ceiling gamma: 0.40 → 0.55 ─────────────────────────────────
-		// Lý do: khi hidden CPU degradation, EWM tự nhiên tăng gamma cao
-		// Nếu cap ở 0.40, signal bị triệt tiêu → không detect được
-		// Với cap 0.55: 8083 baseScore ≈ 0.60 → ratio 2.8x vs healthy → excluded ✓
+		// ── Bounds: gamma được phép lên tới 0.55 để detect CPU overload ──────
+		// (giữ nguyên so với trước — quan trọng cho heterogeneous capacity)
 		if (newGamma > 0.55) {
 			double excess = newGamma - 0.55;
 			newGamma = 0.55;
@@ -170,12 +164,14 @@ public class DynamicWeightEngine {
 		// Hard floor
 		newAlpha = Math.max(0.15, newAlpha);
 		newBeta = Math.max(0.08, newBeta);
-		newGamma = Math.max(0.08, newGamma);
+		newGamma = Math.max(0.10, newGamma); // floor gamma cao hơn: 0.08 → 0.10
 
 		s = newAlpha + newBeta + newGamma;
 		this.alpha = newAlpha / s;
 		this.beta = newBeta / s;
 		this.gamma = newGamma / s;
+
+		log.debug("MCDM weights updated: α={:.3f} β={:.3f} γ={:.3f}", this.alpha, this.beta, this.gamma);
 	}
 
 	private double getMetric(InstanceMetrics m, int criteriaIndex) {

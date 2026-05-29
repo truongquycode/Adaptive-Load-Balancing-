@@ -18,115 +18,145 @@ import reactor.core.publisher.Mono;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.concurrent.ThreadLocalRandom;
 
 @Slf4j
 @RequiredArgsConstructor
 public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer {
 
-    private final ObjectProvider<ServiceInstanceListSupplier> supplierProvider;
-    private final MetricsCache cache;
-    private final InflightTracker inflightTracker;
+	private final ObjectProvider<ServiceInstanceListSupplier> supplierProvider;
+	private final MetricsCache cache;
+	private final InflightTracker inflightTracker;
 
- // Tăng hard cap phù hợp với workload 1500 RPS
-    private static final int    INFLIGHT_HARD_CAP  = 200; // 350 → 200
-    private static final double DEGRADE_RATIO      = 1.8; // 1.7 → 1.8 (bớt aggressive)
-    private static final double DEGRADE_BUFFER     = 0.08;
-    private static final double PROBE_PROBABILITY  = 0.03;
-    private static final double OMEGA              = 1.5; // 2.0 → 1.5
+	// Hard cap chỉ khi inflight vượt ngưỡng vật lý
+	private static final int INFLIGHT_HARD_CAP = 200;
 
+	// OMEGA: trọng số của inflight penalty trong routing score.
+	// Tăng lên 2.5 để inflight trở thành tín hiệu PRIMARY,
+	// không phải secondary sau MCDM score.
+	private static final double OMEGA = 2.5;
 
-    // ── Stable baseline: chỉ cập nhật khi cluster THỰC SỰ cải thiện ──────────
-    // Ngăn threshold tăng khi best node bị overload tạm thời
-    // Initial = 0.30 (conservative estimate, sẽ tự hiệu chỉnh sau warmup)
-    private volatile double clusterBestEma = 0.10; // 0.30 → 0.10
-    private static final double BASELINE_EMA_ALPHA = 0.08; // Rất chậm, chỉ cập nhật khi tốt hơn
+	// MCDM_WEIGHT: trọng số của MCDM score trong routing decision.
+	// Giảm xuống để MCDM đóng vai trò capacity estimation,
+	// không phải bộ phán quyết tuyệt đối.
+	private static final double MCDM_WEIGHT = 0.4;
 
-    @Override
-    public Mono<Response<ServiceInstance>> choose(Request request) {
-        ServiceInstanceListSupplier supplier = supplierProvider.getIfAvailable();
-        if (supplier == null) return Mono.just(new EmptyResponse());
-        return supplier.get(request).next().map(this::selectBestInstance);
-    }
+	// Floor tránh chia cho 0 khi tính capacity weight
+	private static final double SCORE_FLOOR = 0.05;
 
-    private Response<ServiceInstance> selectBestInstance(List<ServiceInstance> instances) {
-        if (instances == null || instances.isEmpty()) return new EmptyResponse();
-        if (instances.size() == 1) return new DefaultResponse(instances.get(0));
+	@Override
+	public Mono<Response<ServiceInstance>> choose(Request request) {
+		ServiceInstanceListSupplier supplier = supplierProvider.getIfAvailable();
+		if (supplier == null)
+			return Mono.just(new EmptyResponse());
+		return supplier.get(request).next().map(this::selectBestInstance);
+	}
 
-        int n = instances.size();
-        int totalInflight = inflightTracker.getTotalInflight();
+	private Response<ServiceInstance> selectBestInstance(List<ServiceInstance> instances) {
+		if (instances == null || instances.isEmpty())
+			return new EmptyResponse();
+		if (instances.size() == 1)
+			return new DefaultResponse(instances.get(0));
 
-        // ══ PASS 1: Thu thập điểm số từ cache ══════════════════════════════
-        record NodeInfo(ServiceInstance inst, double mcdm, int inflight) {}
-        List<NodeInfo> nodes = new ArrayList<>(n);
-        double instantMin = Double.MAX_VALUE;
+		int n = instances.size();
+		int totalInflight = inflightTracker.getTotalInflight();
 
-        for (ServiceInstance inst : instances) {
-            ScoreBreakdown bd = cache.getScore(inst.getInstanceId());
-            double mcdm = (bd != null) ? bd.finalScore() : 0.5;
-            int inflight = inflightTracker.getInflight(inst.getInstanceId());
-            nodes.add(new NodeInfo(inst, mcdm, inflight));
-            if (mcdm < instantMin) instantMin = mcdm;
-        }
+		// ── PASS 1: Thu thập score + inflight ────────────────────────────────
+		record NodeInfo(ServiceInstance inst, double mcdm, int inflight) {
+		}
+		List<NodeInfo> nodes = new ArrayList<>(n);
 
-        // ══ Cập nhật baseline EMA — CHỈ KHI cluster thực sự cải thiện ══════
-        // Quan trọng: Math.min() đảm bảo clusterBestEma không bao giờ TĂNG
-        // khi instantMin tăng do overload tạm thời
-        if (instantMin < clusterBestEma) {
-            clusterBestEma = BASELINE_EMA_ALPHA * instantMin
-                           + (1 - BASELINE_EMA_ALPHA) * clusterBestEma;
-        }
-        // effectiveBaseline = giá trị NHỎ HƠN giữa hiện tại và lịch sử tốt nhất
-        // → Threshold không thể tăng khi best node bị overload
-        double effectiveBaseline = Math.min(instantMin, clusterBestEma);
-        double degradeThreshold  = effectiveBaseline * DEGRADE_RATIO + DEGRADE_BUFFER;
+		for (ServiceInstance inst : instances) {
+			ScoreBreakdown bd = cache.getScore(inst.getInstanceId());
+			// Dùng SCORE_FLOOR để tránh division by zero trong capacity weight
+			double mcdm = (bd != null) ? Math.max(SCORE_FLOOR, bd.finalScore()) : 0.5;
+			int inflight = inflightTracker.getInflight(inst.getInstanceId());
+			nodes.add(new NodeInfo(inst, mcdm, inflight));
+		}
 
-        // ══ PASS 2: Phân loại healthy/degraded ══════════════════════════════
-        ServiceInstance best = null;
-        double bestRealtime = Double.MAX_VALUE;
-        List<ServiceInstance> degraded = new ArrayList<>();
+		// ── PASS 2: Tính capacity-weighted expected inflight ─────────────────
+		//
+		// Nguyên lý: Node có MCDM score thấp hơn = node "tốt hơn" = capacity cao hơn.
+		// capacity_weight_i = 1 / mcdm_i
+		// Normalized: fairShare_i = capWeight_i / sum(capWeights)
+		// → fairShare_i * totalInflight = expected inflight của node i
+		//
+		// Ví dụ với 3 nodes (mcdm: 0.3, 0.5, 0.8):
+		// capWeights = [3.33, 2.0, 1.25] → sum=6.58
+		// fairShare = [0.507, 0.304, 0.190] (sum=1)
+		// Node 0 được phân bổ 50.7% traffic, node 2 chỉ 19%
+		// → Phù hợp với năng lực thực tế
 
-        for (NodeInfo node : nodes) {
-            if (node.inflight() >= INFLIGHT_HARD_CAP
-                    || node.mcdm() >= degradeThreshold) {
-                degraded.add(node.inst());
-                continue;
-            }
+		double[] capWeights = new double[n];
+		double sumCap = 0;
+		for (int i = 0; i < n; i++) {
+			capWeights[i] = 1.0 / nodes.get(i).mcdm();
+			sumCap += capWeights[i];
+		}
+		// Normalize thành fair share (tổng = 1)
+		double[] fairShare = new double[n];
+		for (int i = 0; i < n; i++) {
+			fairShare[i] = capWeights[i] / sumCap;
+		}
 
-            // Healthy node: tính realtime score với inflight penalty có cap
-            double excessShare = (totalInflight > 0)
-                ? Math.max(0.0, (double) node.inflight() / totalInflight - 1.0 / n)
-                : 0.0;
-            // ── Cap inflightPenalty ở 0.40 để tránh oscillation ─────────────
-            double inflightPenalty = Math.min(0.40, OMEGA * Math.log(1.0 + excessShare));
-            double realtime = node.mcdm() + inflightPenalty;
+		// ── PASS 3: Tính routing score cho từng node ──────────────────────────
+		//
+		// routingScore = MCDM_WEIGHT * mcdm + OMEGA * inflightPenalty
+		//
+		// inflightPenalty = log(1 + excess / expectedInflight)
+		// excess = max(0, inflight_i - expectedInflight_i)
+		// Khi node nhận đúng phần của mình: excess=0 → penalty=0
+		// Khi node nhận vượt capacity: penalty tăng nhanh → route sang node khác
+		//
+		// Khác với trước (cap 0.40):
+		// Không có cap cứng → khi node thực sự quá tải, penalty có thể lớn hơn MCDM
+		// → Inflight trở thành tín hiệu dominant như trong LeastConn
 
-            if (realtime < bestRealtime) {
-                bestRealtime = realtime;
-                best = node.inst();
-            }
-        }
+		ServiceInstance best = null;
+		double bestScore = Double.MAX_VALUE;
+		ServiceInstance leastInflightFallback = null;
+		int minInflight = Integer.MAX_VALUE;
 
-        // ══ Fallback: chọn node tệ nhất ít nhất ════════════════════════════
-        if (best == null) {
-            best = nodes.stream()
-                        .min(Comparator.comparingDouble(NodeInfo::mcdm))
-                        .map(NodeInfo::inst)
-                        .orElse(instances.get(0));
-            log.warn("All nodes degraded (threshold={:.3f}) — routing to least-bad",
-                     degradeThreshold);
-        }
+		for (int i = 0; i < n; i++) {
+			NodeInfo node = nodes.get(i);
 
-        // ══ Probe traffic 3% vào degraded nodes để detect recovery ══════════
-        if (!degraded.isEmpty()
-                && ThreadLocalRandom.current().nextDouble() < PROBE_PROBABILITY) {
-            best = degraded.get(ThreadLocalRandom.current().nextInt(degraded.size()));
-        }
+			// Hard cap: chỉ loại hoàn toàn khi vượt INFLIGHT_HARD_CAP
+			if (node.inflight() >= INFLIGHT_HARD_CAP)
+				continue;
 
-        Metrics.counter("alb.routing.selected",
-            "backend", best.getInstanceId(),
-            "port", String.valueOf(best.getPort())).increment();
+			// Cập nhật fallback (node ít inflight nhất, dùng khi tất cả đều xấu)
+			if (node.inflight() < minInflight) {
+				minInflight = node.inflight();
+				leastInflightFallback = node.inst();
+			}
 
-        return new DefaultResponse(best);
-    }
+			double expectedInflight = totalInflight > 0 ? totalInflight * fairShare[i] : 0.0;
+
+			// Lượng inflight vượt capacity
+			double excess = Math.max(0.0, node.inflight() - expectedInflight);
+
+			// Chuẩn hóa theo expected để penalty độc lập với total load
+			// (expectedInflight + 1) tránh chia cho 0 khi totalInflight nhỏ
+			double normalizedExcess = excess / (expectedInflight + 1.0);
+			double inflightPenalty = OMEGA * Math.log1p(normalizedExcess);
+
+			// Routing score = capacity-adjusted quality + inflight pressure
+			double routingScore = MCDM_WEIGHT * node.mcdm() + inflightPenalty;
+
+			if (routingScore < bestScore) {
+				bestScore = routingScore;
+				best = node.inst();
+			}
+		}
+
+		// ── Fallback: tất cả đều ở INFLIGHT_HARD_CAP ─────────────────────────
+		if (best == null) {
+			best = leastInflightFallback != null ? leastInflightFallback : instances.get(0);
+			log.warn("All nodes at INFLIGHT_HARD_CAP={}, routing to least-inflight fallback", INFLIGHT_HARD_CAP);
+		}
+
+		Metrics.counter("alb.routing.selected", "backend", best.getInstanceId(), "port", String.valueOf(best.getPort()))
+				.increment();
+
+		return new DefaultResponse(best);
+	}
 }
