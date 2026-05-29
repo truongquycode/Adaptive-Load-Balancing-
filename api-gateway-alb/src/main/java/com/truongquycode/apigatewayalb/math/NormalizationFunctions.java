@@ -28,8 +28,15 @@ public class NormalizationFunctions {
      */
     public double normalizeQueue(double qRaw, double qP99) {
         if (qRaw < 0) qRaw = 0;
-        double qMax = Math.max(qP99, 10.0);
-        return Math.min(1.0, Math.log(1.0 + qRaw) / Math.log(1.0 + qMax));
+        // Dùng floor nhỏ hơn để signal nhạy hơn ở vùng queue thấp-trung
+        double qMax = Math.max(qP99, 5.0); // 10 → 5
+
+        // Kết hợp log (nhạy lúc thấp) + linear (phân kỳ lúc cao)
+        double logScore  = Math.log(1.0 + qRaw) / Math.log(1.0 + qMax);
+        // Thêm linear component để duy trì phân kỳ khi tất cả node queue cao
+        double linearScore = Math.min(1.0, qRaw / Math.max(qMax * 2.0, 20.0));
+
+        return Math.min(1.0, 0.6 * logScore + 0.4 * linearScore);
     }
 
     /**

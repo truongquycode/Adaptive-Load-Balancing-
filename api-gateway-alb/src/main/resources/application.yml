@@ -20,11 +20,11 @@ spring:
 
 alb:
   # adaptive, round-robin, random, least-connections
-  strategy: least-connections
+  strategy: adaptive
   polling:
     interval: 500    # Tăng từ 500ms → 1000ms, giảm overhead polling
   ewma:
-    tau-min: 300.0    # Phản ứng nhanh hơn với chaos
+    tau-min: 200.0    # Phản ứng nhanh hơn với chaos # 300 → 200, phản ứng nhanh hơn
     tau-max: 3000.0   # Làm mịn mạnh hơn khi ổn định # 8000 → 3000
     k: 3.0            # Nhạy hơn với biến động
 

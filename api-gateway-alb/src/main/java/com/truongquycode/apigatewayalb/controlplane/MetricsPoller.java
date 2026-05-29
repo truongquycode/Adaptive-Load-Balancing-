@@ -178,21 +178,33 @@ public class MetricsPoller {
 	    return smoothed;
 	}
 
-	// Hàm calculateDeltaLatency giữ nguyên
 	private double calculateDeltaLatency(String id, double currentCount, double currentTotalTime) {
-		double p50 = windowManager.getSnapshot(id).p50();
-		TrafficState prev = trafficStates.getOrDefault(id, new TrafficState(0, 0, p50));
+	    double p50 = windowManager.getSnapshot(id).p50();
+	    TrafficState prev = trafficStates.getOrDefault(id, new TrafficState(0, 0, p50));
 
-		double deltaCount = currentCount - prev.count();
-		double deltaTotal = currentTotalTime - prev.totalTimeSec();
+	    double deltaCount = currentCount - prev.count();
+	    double deltaTotal = currentTotalTime - prev.totalTimeSec();
 
-		double currentLatency = (deltaCount <= 0) ? (prev.lastLatency() * 0.75) + (p50 * 0.25)
-				: (deltaTotal / deltaCount) * 1000.0;
+	    double currentLatency;
+	    if (deltaCount > 0) {
+	        currentLatency = (deltaTotal / deltaCount) * 1000.0;
+	    } else {
+	        // Không có request mới hoàn thành trong interval này
+	        // Dùng inflight làm proxy áp lực: queue cao → latency đang tăng
+	        int inflight = inflightTracker.getInflight(id);
+	        if (inflight > 30) {
+	            // Node đang tích queue → ước tính latency tăng dần
+	            // Tăng 15% mỗi chu kỳ nếu queue cao, không để vượt 3000ms
+	            currentLatency = Math.min(prev.lastLatency() * 1.15, 3000.0);
+	        } else {
+	            // Queue thấp, node có thể đang idle → decay về p50
+	            currentLatency = prev.lastLatency() * 0.80 + p50 * 0.20;
+	        }
+	    }
 
-		currentLatency = Math.min(currentLatency, 3000.0);
-
-		trafficStates.put(id, new TrafficState(currentCount, currentTotalTime, currentLatency));
-		return currentLatency;
+	    currentLatency = Math.min(Math.max(currentLatency, 1.0), 3000.0);
+	    trafficStates.put(id, new TrafficState(currentCount, currentTotalTime, currentLatency));
+	    return currentLatency;
 	}
 
 	// --- Tách hàm: Đăng ký Prometheus Gauges ---

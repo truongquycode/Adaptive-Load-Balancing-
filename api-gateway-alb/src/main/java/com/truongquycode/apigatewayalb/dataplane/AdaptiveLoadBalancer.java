@@ -28,11 +28,13 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
     private final MetricsCache cache;
     private final InflightTracker inflightTracker;
 
-    private static final int    INFLIGHT_HARD_CAP  = 80;
-    private static final double DEGRADE_RATIO      = 2.0;
+ // Tăng hard cap phù hợp với workload 1500 RPS
+    private static final int    INFLIGHT_HARD_CAP  = 350; // 80 → 350
+    private static final double DEGRADE_RATIO      = 1.7; // 2.0 → 1.7 (nhạy hơn)
     private static final double DEGRADE_BUFFER     = 0.08;
     private static final double PROBE_PROBABILITY  = 0.03;
-    private static final double OMEGA              = 1.2;
+    private static final double OMEGA              = 2.0; // 1.2 → 2.0 (phạt inflight mạnh hơn)
+
 
     // ── Stable baseline: chỉ cập nhật khi cluster THỰC SỰ cải thiện ──────────
     // Ngăn threshold tăng khi best node bị overload tạm thời
