@@ -37,7 +37,7 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
     // ── Stable baseline: chỉ cập nhật khi cluster THỰC SỰ cải thiện ──────────
     // Ngăn threshold tăng khi best node bị overload tạm thời
     // Initial = 0.30 (conservative estimate, sẽ tự hiệu chỉnh sau warmup)
-    private volatile double clusterBestEma = 0.30;
+    private volatile double clusterBestEma = 0.10; // 0.30 → 0.10
     private static final double BASELINE_EMA_ALPHA = 0.08; // Rất chậm, chỉ cập nhật khi tốt hơn
 
     @Override

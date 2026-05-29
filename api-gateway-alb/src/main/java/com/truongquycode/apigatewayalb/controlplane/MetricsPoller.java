@@ -134,16 +134,16 @@ public class MetricsPoller {
 			ScoreBreakdown rawBreakdown = scoreCalculator.calculateScore(instanceId, metrics);
 
 			// ── EMA smoothing: ngăn score nhảy đột ngột ─────────────────────
-			double smoothedFinal = applyScoreEma(instanceId, rawBreakdown.finalScore());
+//			double smoothedFinal = applyScoreEma(instanceId, rawBreakdown.finalScore());
 
-			ScoreBreakdown smoothedBreakdown = new ScoreBreakdown(rawBreakdown.instanceId(), rawBreakdown.ewmaLatency(),
-					rawBreakdown.normLatency(), rawBreakdown.normQueue(), rawBreakdown.normCpu(),
-					rawBreakdown.baseScore(), rawBreakdown.pidPenalty(), smoothedFinal, // ← dùng smoothed score
-					rawBreakdown.updatedAtMs());
-			metricsCache.putScore(instanceId, smoothedBreakdown);
-			latencyValues.put(instanceId, smoothedBreakdown.ewmaLatency());
+//			ScoreBreakdown smoothedBreakdown = new ScoreBreakdown(rawBreakdown.instanceId(), rawBreakdown.ewmaLatency(),
+//					rawBreakdown.normLatency(), rawBreakdown.normQueue(), rawBreakdown.normCpu(),
+//					rawBreakdown.baseScore(), rawBreakdown.pidPenalty(), rawBreakdown.finalScore(), // ← dùng smoothed score
+//					rawBreakdown.updatedAtMs());
+			metricsCache.putScore(instanceId, rawBreakdown);
+			latencyValues.put(instanceId, rawBreakdown.ewmaLatency());
 			queueValues.put(instanceId, realQueue);
-			scoreValues.put(instanceId, smoothedFinal);
+			scoreValues.put(instanceId, rawBreakdown.finalScore());
 
 			registerPrometheusGauges(instanceId);
 
@@ -189,7 +189,7 @@ public class MetricsPoller {
 		double currentLatency = (deltaCount <= 0) ? (prev.lastLatency() * 0.75) + (p50 * 0.25)
 				: (deltaTotal / deltaCount) * 1000.0;
 
-		currentLatency = Math.min(currentLatency, 1500.0);
+		currentLatency = Math.min(currentLatency, 3000.0);
 
 		trafficStates.put(id, new TrafficState(currentCount, currentTotalTime, currentLatency));
 		return currentLatency;
