@@ -6,66 +6,47 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Random;
-import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.ThreadLocalRandom;
 
 @RestController
 @RequestMapping("/api")
 public class SimulateController {
 
-	private final Random random = new Random();
-	private static final AtomicLong requestCount = new AtomicLong(0);
-	private static final Semaphore DB_POOL = new Semaphore(50);
+    private final Random random = new Random();
+    private static final AtomicLong requestCount = new AtomicLong(0);
 
-	@GetMapping("/simulate-call")
-	public ResponseEntity<String> simulateInterServiceCommunication() throws InterruptedException {
+    @GetMapping("/simulate-call")
+    public ResponseEntity<String> simulateInterServiceCommunication() throws InterruptedException {
+        long count = requestCount.incrementAndGet();
 
-		long count = requestCount.incrementAndGet();
+        // 1. PHA 1: MÔ PHỎNG CPU PARSE JSON (Serialization)
+        // Khi Service A chuẩn bị gọi Service B, nó tốn CPU để mã hóa dữ liệu thành JSON
+        burnCpu(7000); 
 
-		// JSON parse
-		burnCpu(17000);
+        // 2. PHA 2: MÔ PHỎNG NETWORK I/O (Chờ đợi)
+        // Gửi request qua mạng và chờ Service B hoặc Database phản hồi. (Không tốn CPU)
+        int networkDelay = 15 + random.nextInt(35); // Trễ ngẫu nhiên 15-50ms
+        Thread.sleep(networkDelay);
 
-		// network
-		Thread.sleep(10 + random.nextInt(20));
-		DB_POOL.acquire();
-		try {
-			double p = random.nextDouble();
+        // 3. PHA 3: MÔ PHỎNG CPU ĐỌC KẾT QUẢ (Deserialization & Business Logic)
+        // Khi nhận được dữ liệu về, tốn CPU để giải nén JSON và tính toán nghiệp vụ
+        burnCpu(9000);
 
-			if (p < 0.80) {
-				// normal request
-				Thread.sleep(20 + ThreadLocalRandom.current().nextInt(30));
-			} else if (p < 0.95) {
-				// hơi chậm
-				Thread.sleep(80 + ThreadLocalRandom.current().nextInt(40));
-			} else {
-				// tail latency
-				Thread.sleep(200 + ThreadLocalRandom.current().nextInt(150));
-			}
-		} finally {
-			DB_POOL.release();
-		}
+        return ResponseEntity.ok(String.format(
+            "Inter-service call completed | Request #%d | Network I/O Wait: %dms", 
+            count, networkDelay
+        ));
+    }
 
-		// business logic
-		burnCpu(19000);
-
-		return ResponseEntity.ok(String.format("Request #%d completed", count));
-	}
-
-	/**
-	 * Hàm giả lập tải CPU. Số vòng lặp nhỏ (2000-3000) giúp tạo ra mức tiêu thụ CPU
-	 * nền khoảng 15-30% khi chịu tải 300-400 RPS, phản ánh đúng thực tế của một
-	 * microservice đang bận rộn.
-	 */
-	private void burnCpu(int iterations) {
-		double dummy = 0;
-
-		for (int i = 1; i <= iterations; i++) {
-			dummy += Math.sqrt(i);
-		}
-
-		if (dummy == Double.MAX_VALUE) {
-			System.out.println(dummy);
-		}
-	}
+    /**
+     * Hàm giả lập tải CPU. 
+     * Số vòng lặp nhỏ (2000-3000) giúp tạo ra mức tiêu thụ CPU nền khoảng 15-30% 
+     * khi chịu tải 300-400 RPS, phản ánh đúng thực tế của một microservice đang bận rộn.
+     */
+    private void burnCpu(int iterations) {
+        double dummy = 0;
+        for (int i = 0; i < iterations; i++) {
+            dummy += Math.sqrt(Math.random());
+        }
+    }
 }
