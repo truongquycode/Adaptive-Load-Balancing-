@@ -21,7 +21,7 @@ public class SimulateController {
 
         // 1. PHA 1: MÔ PHỎNG CPU PARSE JSON (Serialization)
         // Khi Service A chuẩn bị gọi Service B, nó tốn CPU để mã hóa dữ liệu thành JSON
-        burnCpu(9000); 
+        burnCpu(10000); 
 
         // 2. PHA 2: MÔ PHỎNG NETWORK I/O (Chờ đợi)
         // Gửi request qua mạng và chờ Service B hoặc Database phản hồi. (Không tốn CPU)
@@ -30,7 +30,7 @@ public class SimulateController {
 
         // 3. PHA 3: MÔ PHỎNG CPU ĐỌC KẾT QUẢ (Deserialization & Business Logic)
         // Khi nhận được dữ liệu về, tốn CPU để giải nén JSON và tính toán nghiệp vụ
-        burnCpu(11000);
+        burnCpu(12000);
 
         return ResponseEntity.ok(String.format(
             "Inter-service call completed | Request #%d | Network I/O Wait: %dms", 
