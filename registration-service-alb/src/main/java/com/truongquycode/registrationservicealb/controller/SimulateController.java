@@ -30,7 +30,7 @@ public class SimulateController {
 
         // 3. PHA 3: MÔ PHỎNG CPU ĐỌC KẾT QUẢ (Deserialization & Business Logic)
         // Khi nhận được dữ liệu về, tốn CPU để giải nén JSON và tính toán nghiệp vụ
-        burnCpu(8000);
+        burnCpu(9000);
 
         return ResponseEntity.ok(String.format(
             "Inter-service call completed | Request #%d | Network I/O Wait: %dms", 
