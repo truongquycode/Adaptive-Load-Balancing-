@@ -21,7 +21,7 @@ public class SimulateController {
 
         // 1. PHA 1: MÔ PHỎNG CPU PARSE JSON (Serialization)
         // Khi Service A chuẩn bị gọi Service B, nó tốn CPU để mã hóa dữ liệu thành JSON
-        burnCpu(7000); 
+        burnCpu(7000);  //nên đổi 
 
         // 2. PHA 2: MÔ PHỎNG NETWORK I/O (Chờ đợi)
         // Gửi request qua mạng và chờ Service B hoặc Database phản hồi. (Không tốn CPU)
