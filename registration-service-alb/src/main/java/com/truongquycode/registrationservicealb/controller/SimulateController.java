@@ -24,7 +24,7 @@ public class SimulateController {
 		long count = requestCount.incrementAndGet();
 
 		// JSON parse
-		burnCpu(7000);
+		burnCpu(17000);
 
 		// network
 		Thread.sleep(10 + random.nextInt(20));
@@ -47,7 +47,7 @@ public class SimulateController {
 		}
 
 		// business logic
-		burnCpu(9000);
+		burnCpu(19000);
 
 		return ResponseEntity.ok(String.format("Request #%d completed", count));
 	}
