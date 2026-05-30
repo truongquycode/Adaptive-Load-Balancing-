@@ -6,7 +6,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Random;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.ThreadLocalRandom;
 
 @RestController
 @RequestMapping("/api")
@@ -14,32 +16,40 @@ public class SimulateController {
 
 	private final Random random = new Random();
 	private static final AtomicLong requestCount = new AtomicLong(0);
+	private static final Semaphore DB_POOL = new Semaphore(50);
 
 	@GetMapping("/simulate-call")
 	public ResponseEntity<String> simulateInterServiceCommunication() throws InterruptedException {
+
 		long count = requestCount.incrementAndGet();
 
-		// 1. PHA 1: MÔ PHỎNG CPU PARSE JSON (Serialization)
-		// Khi Service A chuẩn bị gọi Service B, nó tốn CPU để mã hóa dữ liệu thành JSON
-		burnCpu(2000);
+		// JSON parse
+		burnCpu(2500);
 
-		// 2. PHA 2: MÔ PHỎNG NETWORK I/O (Chờ đợi)
-		// Gửi request qua mạng và chờ Service B hoặc Database phản hồi. (Không tốn CPU)
-		int networkDelay = 15 + random.nextInt(35); // Trễ ngẫu nhiên 15-50ms
-		Thread.sleep(networkDelay);
+		// network
+		Thread.sleep(10 + random.nextInt(20));
+		DB_POOL.acquire();
+		try {
+			double p = random.nextDouble();
 
-		if (random.nextDouble() < 0.1) {
-			Thread.sleep(200 + random.nextInt(100)); // DB slow query
-		} else {
-			Thread.sleep(30 + random.nextInt(40));
+			if (p < 0.80) {
+				// normal request
+				Thread.sleep(20 + ThreadLocalRandom.current().nextInt(30));
+			} else if (p < 0.95) {
+				// hơi chậm
+				Thread.sleep(80 + ThreadLocalRandom.current().nextInt(40));
+			} else {
+				// tail latency
+				Thread.sleep(200 + ThreadLocalRandom.current().nextInt(150));
+			}
+		} finally {
+			DB_POOL.release();
 		}
 
-		// 3. PHA 3: MÔ PHỎNG CPU ĐỌC KẾT QUẢ (Deserialization & Business Logic)
-		// Khi nhận được dữ liệu về, tốn CPU để giải nén JSON và tính toán nghiệp vụ
+		// business logic
 		burnCpu(3000);
 
-		return ResponseEntity.ok(String.format("Inter-service call completed | Request #%d | Network I/O Wait: %dms",
-				count, networkDelay));
+		return ResponseEntity.ok(String.format("Request #%d completed", count));
 	}
 
 	/**
@@ -49,8 +59,13 @@ public class SimulateController {
 	 */
 	private void burnCpu(int iterations) {
 		double dummy = 0;
-		for (int i = 0; i < iterations; i++) {
-			dummy += Math.sqrt(Math.random());
+
+		for (int i = 1; i <= iterations; i++) {
+			dummy += Math.sqrt(i);
+		}
+
+		if (dummy == Double.MAX_VALUE) {
+			System.out.println(dummy);
 		}
 	}
 }
