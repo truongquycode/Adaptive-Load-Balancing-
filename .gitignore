@@ -1,2 +1,38 @@
+# Maven
 target/
+**/target/
+
+# Eclipse
+.project
+.classpath
+.factorypath
+.settings/
+
+# Eclipse trong các module con
+**/.project
+**/.classpath
+**/.factorypath
+**/.settings/
+
+# Test output
+test/
+**/test/
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IntelliJ (nếu có)
+.idea/
+*.iml
+
+# VS Code (nếu có)
+.vscode/
+
+# Build artifacts
 *.jar
+*.war
+*.ear
