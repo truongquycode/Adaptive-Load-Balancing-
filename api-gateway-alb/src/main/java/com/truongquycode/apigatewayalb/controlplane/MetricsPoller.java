@@ -201,6 +201,17 @@ public class MetricsPoller {
 		return currentLatency;
 	}
 
+	// Thêm hàm này vào MetricsPoller.java
+	public void resetAllStates() {
+		trafficStates.clear();
+		consecutiveFailures.clear();
+		smoothedScores.clear();
+		latencyValues.clear();
+		queueValues.clear();
+		scoreValues.clear();
+//		log.info("[MetricsPoller] States cleared for new benchmark run.");
+	}
+
 	// --- Tách hàm: Đăng ký Prometheus Gauges ---
 	private void registerPrometheusGauges(String id) {
 		if (registeredGauges.add(id)) {

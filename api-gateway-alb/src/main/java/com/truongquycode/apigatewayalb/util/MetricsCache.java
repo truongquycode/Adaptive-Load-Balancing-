@@ -35,4 +35,11 @@ public class MetricsCache {
         metricsMap.keySet().retainAll(activeIds);
         scoreMap.keySet().retainAll(activeIds);
     }
+    
+ // Thêm hàm này vào MetricsCache.java
+    public void clearAll() {
+        metricsMap.clear();
+        scoreMap.clear();
+//        log.info("[MetricsCache] All metrics and scores cleared.");
+    }
 }

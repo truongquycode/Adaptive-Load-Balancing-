@@ -194,4 +194,12 @@ public class DynamicWeightEngine {
 	public double getGamma() {
 		return gamma;
 	}
+	
+	// Thêm hàm này vào DynamicWeightEngine.java
+    public void resetWeights() {
+        this.alpha = ahpWeights[0];
+        this.beta  = ahpWeights[1];
+        this.gamma = ahpWeights[2];
+//        log.info("[DynamicWeightEngine] Weights reset to AHP defaults: α={:.2f} β={:.2f} γ={:.2f}", alpha, beta, gamma);
+    }
 }
