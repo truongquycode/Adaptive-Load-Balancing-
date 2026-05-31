@@ -3,9 +3,9 @@ Volume serial number is 541E-A63A
 D:.
 ³   .gitignore
 ³   .project
-³   cautruc.txt
 ³   docker-compose.yml
 ³   pom.xml
+³   structure.txt
 ³   
 ÃÄÄÄ.github
 ³   ÀÄÄÄworkflows
