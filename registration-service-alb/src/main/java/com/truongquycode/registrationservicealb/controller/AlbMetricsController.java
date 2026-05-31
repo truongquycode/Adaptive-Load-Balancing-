@@ -49,6 +49,7 @@ public class AlbMetricsController {
 
 		return Map.of("cpu", cpu, "count", count, "totalTime", totalTime, "queue", queue);
 	}
+	
 
 	// Hàm helper chuyên xử lý lỗi lấy metric
 	private double getMetricSafely(Supplier<Double> metricSupplier) {
