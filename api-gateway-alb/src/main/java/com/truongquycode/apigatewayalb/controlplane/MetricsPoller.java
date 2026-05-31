@@ -179,27 +179,36 @@ public class MetricsPoller {
 	}
 
 	private double calculateDeltaLatency(String id, double currentCount, double currentTotalTime) {
-		double p50 = windowManager.getSnapshot(id).p50();
-		TrafficState prev = trafficStates.getOrDefault(id, new TrafficState(0, 0, p50));
-
-		double deltaCount = currentCount - prev.count();
-		double deltaTotal = currentTotalTime - prev.totalTimeSec();
-
-		double currentLatency;
-		if (deltaCount > 0) {
-			// Có data thực → dùng trực tiếp
-			currentLatency = (deltaTotal / deltaCount) * 1000.0;
-		} else {
-			// Không có request mới hoàn thành:
-			// KHÔNG tăng latency (tránh death spiral)
-			// Giữ nguyên giá trị cũ, không decay lên cũng không decay xuống
-			currentLatency = prev.lastLatency();
-		}
-
-		currentLatency = Math.min(Math.max(currentLatency, 1.0), 3000.0);
-		trafficStates.put(id, new TrafficState(currentCount, currentTotalTime, currentLatency));
-		return currentLatency;
-	}
+        double p50 = windowManager.getSnapshot(id).p50();
+ 
+        TrafficState prev = trafficStates.get(id);
+ 
+        if (prev == null) {
+            // POST-RESET: Thiết lập baseline mới từ giá trị backend hiện tại.
+            // Trả về p50 (mặc định 50ms khi histogram rỗng) thay vì tính
+            // historical average từ toàn bộ backend timer (gây ghost latency).
+            double initLatency = Math.min(Math.max(1.0, p50), 3000.0);
+            trafficStates.put(id, new TrafficState(currentCount, currentTotalTime, initLatency));
+            log.debug("[MetricsPoller] Baseline established for {}: count={}, initLatency={}ms",
+                    id, currentCount, initLatency);
+            return initLatency;
+        }
+ 
+        double deltaCount = currentCount - prev.count();
+        double deltaTotal = currentTotalTime - prev.totalTimeSec();
+ 
+        double currentLatency;
+        if (deltaCount > 0) {
+            currentLatency = (deltaTotal / deltaCount) * 1000.0;
+        } else {
+            // Không có request mới: giữ nguyên latency cũ, không decay
+            currentLatency = prev.lastLatency();
+        }
+ 
+        currentLatency = Math.min(Math.max(currentLatency, 1.0), 3000.0);
+        trafficStates.put(id, new TrafficState(currentCount, currentTotalTime, currentLatency));
+        return currentLatency;
+    }
 
 	// Thêm hàm này vào MetricsPoller.java
 	public void resetAllStates() {

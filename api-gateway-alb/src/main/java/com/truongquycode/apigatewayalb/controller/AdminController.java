@@ -6,6 +6,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.truongquycode.apigatewayalb.dataplane.AdaptiveLoadBalancer;
+import com.truongquycode.apigatewayalb.dataplane.InflightLifecycle;
 import com.truongquycode.apigatewayalb.dataplane.PIDController;
 import com.truongquycode.apigatewayalb.math.EwmaSmoother;
 import com.truongquycode.apigatewayalb.controlplane.SlidingWindowManager;
@@ -32,6 +33,7 @@ public class AdminController {
     private final MetricsPoller        metricsPoller;
     private final DynamicWeightEngine  weightEngine;
     private final MetricsCache         metricsCache;
+    private final InflightLifecycle    inflightLifecycle;
 
     @PostMapping("/alb/reset")
     public ResponseEntity<String> resetState() {
@@ -40,6 +42,7 @@ public class AdminController {
         // 1. Data Plane Resets
         inflightTracker.resetAll();
         AdaptiveLoadBalancer.resetStaticState();
+        inflightLifecycle.resetActiveRequests();
 
         // 2. Control Plane - Math & Algorithms Resets
         pidController.resetAllStates();
