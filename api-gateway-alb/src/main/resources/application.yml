@@ -21,7 +21,7 @@ alb:
     # Trước: 800 RPS × 500ms = 400 request với score cũ mỗi cycle
     # Sau:   800 RPS × 200ms = 160 request → score stale window nhỏ hơn 2.5x
     # adaptive, round-robin, random, least-connections
-    strategy: round-robin
+    strategy: adaptive
     polling:
         interval: 200
 
