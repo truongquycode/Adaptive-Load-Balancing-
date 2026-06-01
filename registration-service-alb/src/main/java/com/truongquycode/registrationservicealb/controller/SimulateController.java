@@ -66,14 +66,14 @@ public class SimulateController {
         // burnCpu bên dưới sẽ tự chậm lại khi tranh CPU với burner threads.
 
         // Pha 1: CPU parse / serialize
-        burnCpu(7_000);
+        burnCpu(3_000);
 
         // Pha 2: Network I/O (không tốn CPU)
         int networkDelay = 15 + random.nextInt(35); // 15–50ms
         Thread.sleep(networkDelay);
 
         // Pha 3: CPU deserialize / business logic
-        burnCpu(9_000);
+        burnCpu(4_000);
 
         return ResponseEntity.ok(String.format(
             "Inter-service call completed | Request #%d | Network I/O: %dms",
