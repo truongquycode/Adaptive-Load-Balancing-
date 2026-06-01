@@ -11,12 +11,12 @@ import org.springframework.web.reactive.function.client.WebClient;
 @EnableDiscoveryClient
 @EnableScheduling
 public class ApiGatewayAlbApplication {
-    public static void main(String[] args) {
-        SpringApplication.run(ApiGatewayAlbApplication.class, args);
-    }
-    
-    @Bean
-    public WebClient.Builder webClientBuilder() {
-        return WebClient.builder();
-    }
+	public static void main(String[] args) {
+		SpringApplication.run(ApiGatewayAlbApplication.class, args);
+	}
+
+	@Bean
+	public WebClient.Builder webClientBuilder() {
+		return WebClient.builder();
+	}
 }

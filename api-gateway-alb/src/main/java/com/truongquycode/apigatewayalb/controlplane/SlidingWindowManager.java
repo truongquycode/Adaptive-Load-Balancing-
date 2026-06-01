@@ -92,10 +92,10 @@ public class SlidingWindowManager {
 				lh.getValueAtPercentile(95.0), qP99);
 	}
 
-	// ── Hàm mới: global P5 cho cross-instance normalization ──────────────────
-	// Mục đích: khi normalizeLatency dùng system-wide bounds, node luôn chậm
+	// global P5 cho cross-instance normalization
+	// khi normalizeLatency dùng system-wide bounds, node luôn chậm
 	// (như 8083) sẽ có nL cao hơn thay vì bị "normalize về 0.5" theo bounds
-	// riêng của nó. Đây là fix cho RC4.
+	// riêng của nó
 	public double getSystemP5() {
 		synchronized (globalLock) {
 			int gi = globalActiveIdx.get();
@@ -105,7 +105,7 @@ public class SlidingWindowManager {
 		}
 	}
 
-	// ── Hàm mới: global P95 cho cross-instance normalization ─────────────────
+	// global P95 cho cross-instance normalization
 	public double getSystemP95() {
 		synchronized (globalLock) {
 			int gi = globalActiveIdx.get();

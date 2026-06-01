@@ -2,7 +2,7 @@ package com.truongquycode.apigatewayalb.config;
 
 import com.truongquycode.apigatewayalb.dataplane.AdaptiveLoadBalancer;
 import com.truongquycode.apigatewayalb.dataplane.InflightTracker;
-import com.truongquycode.apigatewayalb.dataplane.LeastConnectionsLoadBalancer; // DÒNG BỊ THIẾU Ở ĐÂY
+import com.truongquycode.apigatewayalb.dataplane.LeastConnectionsLoadBalancer;
 import com.truongquycode.apigatewayalb.util.MetricsCache;
 
 import org.springframework.beans.factory.ObjectProvider;
@@ -22,62 +22,57 @@ import com.truongquycode.apigatewayalb.dataplane.MetricAwareLoadBalancer;
 
 @Configuration
 @LoadBalancerClients({
-    @LoadBalancerClient(name = "REGISTRATION-SERVICE-ALB", configuration = LoadBalancerConfiguration.class)
-})
+		@LoadBalancerClient(name = "REGISTRATION-SERVICE-ALB", configuration = LoadBalancerConfiguration.class) })
 public class LoadBalancerConfiguration {
 
-    // 1. Kích hoạt thuật toán THÍCH NGHI (Adaptive)
+	// 1. Kích hoạt thuật toán THÍCH NGHI (Adaptive)
 	@Bean
-    @ConditionalOnProperty(name = "alb.strategy", havingValue = "adaptive", matchIfMissing = true)
-    public ReactorLoadBalancer<ServiceInstance> adaptiveLoadBalancer(
-            Environment environment,
-            LoadBalancerClientFactory loadBalancerClientFactory,
-            MetricsCache metricsCache,
-            InflightTracker inflightTracker) { // Truyền bean vào đây
-        
-        String name = environment.getProperty(LoadBalancerClientFactory.PROPERTY_NAME);
-        ObjectProvider<ServiceInstanceListSupplier> lazyProvider = 
-                loadBalancerClientFactory.getLazyProvider(name, ServiceInstanceListSupplier.class);
-        
-        return new AdaptiveLoadBalancer(lazyProvider, metricsCache, inflightTracker);
-    }
+	@ConditionalOnProperty(name = "alb.strategy", havingValue = "adaptive", matchIfMissing = true)
+	public ReactorLoadBalancer<ServiceInstance> adaptiveLoadBalancer(Environment environment,
+			LoadBalancerClientFactory loadBalancerClientFactory, MetricsCache metricsCache,
+			InflightTracker inflightTracker) {
+
+		String name = environment.getProperty(LoadBalancerClientFactory.PROPERTY_NAME);
+		ObjectProvider<ServiceInstanceListSupplier> lazyProvider = loadBalancerClientFactory.getLazyProvider(name,
+				ServiceInstanceListSupplier.class);
+
+		return new AdaptiveLoadBalancer(lazyProvider, metricsCache, inflightTracker);
+	}
 
 	// 2. Kích hoạt thuật toán ROUND ROBIN
-    @Bean
-    @ConditionalOnProperty(name = "alb.strategy", havingValue = "round-robin")
-    public ReactorLoadBalancer<ServiceInstance> roundRobinLoadBalancer(
-            Environment environment, LoadBalancerClientFactory loadBalancerClientFactory) {
-        String name = environment.getProperty(LoadBalancerClientFactory.PROPERTY_NAME);
-        ObjectProvider<ServiceInstanceListSupplier> lazyProvider = loadBalancerClientFactory.getLazyProvider(name, ServiceInstanceListSupplier.class);
-        
-        // BỌC CLASS CỦA SPRING BẰNG WRAPPER CỦA BẠN
-        return new MetricAwareLoadBalancer(new RoundRobinLoadBalancer(lazyProvider, name));
-    }
+	@Bean
+	@ConditionalOnProperty(name = "alb.strategy", havingValue = "round-robin")
+	public ReactorLoadBalancer<ServiceInstance> roundRobinLoadBalancer(Environment environment,
+			LoadBalancerClientFactory loadBalancerClientFactory) {
+		String name = environment.getProperty(LoadBalancerClientFactory.PROPERTY_NAME);
+		ObjectProvider<ServiceInstanceListSupplier> lazyProvider = loadBalancerClientFactory.getLazyProvider(name,
+				ServiceInstanceListSupplier.class);
 
-    // 3. Kích hoạt thuật toán RANDOM
-    @Bean
-    @ConditionalOnProperty(name = "alb.strategy", havingValue = "random")
-    public ReactorLoadBalancer<ServiceInstance> randomLoadBalancer(
-            Environment environment, LoadBalancerClientFactory loadBalancerClientFactory) {
-        String name = environment.getProperty(LoadBalancerClientFactory.PROPERTY_NAME);
-        ObjectProvider<ServiceInstanceListSupplier> lazyProvider = loadBalancerClientFactory.getLazyProvider(name, ServiceInstanceListSupplier.class);
-        
-        // BỌC CLASS CỦA SPRING BẰNG WRAPPER CỦA BẠN
-        return new MetricAwareLoadBalancer(new RandomLoadBalancer(lazyProvider, name));
-    }
+		return new MetricAwareLoadBalancer(new RoundRobinLoadBalancer(lazyProvider, name));
+	}
 
-    // Kích hoạt thuật toán LEAST CONNECTIONS
-    @Bean
-    @ConditionalOnProperty(name = "alb.strategy", havingValue = "least-connections")
-    public ReactorLoadBalancer<ServiceInstance> leastConnectionsLoadBalancer(
-            Environment environment,
-            LoadBalancerClientFactory loadBalancerClientFactory,
-            InflightTracker inflightTracker) {
-        
-        String name = environment.getProperty(LoadBalancerClientFactory.PROPERTY_NAME);
-        ObjectProvider<ServiceInstanceListSupplier> lazyProvider = 
-                loadBalancerClientFactory.getLazyProvider(name, ServiceInstanceListSupplier.class);
-        
-        return new LeastConnectionsLoadBalancer(lazyProvider, inflightTracker);
-    }
+	// 3. Kích hoạt thuật toán RANDOM
+	@Bean
+	@ConditionalOnProperty(name = "alb.strategy", havingValue = "random")
+	public ReactorLoadBalancer<ServiceInstance> randomLoadBalancer(Environment environment,
+			LoadBalancerClientFactory loadBalancerClientFactory) {
+		String name = environment.getProperty(LoadBalancerClientFactory.PROPERTY_NAME);
+		ObjectProvider<ServiceInstanceListSupplier> lazyProvider = loadBalancerClientFactory.getLazyProvider(name,
+				ServiceInstanceListSupplier.class);
+
+		return new MetricAwareLoadBalancer(new RandomLoadBalancer(lazyProvider, name));
+	}
+
+	// Kích hoạt thuật toán LEAST CONNECTIONS
+	@Bean
+	@ConditionalOnProperty(name = "alb.strategy", havingValue = "least-connections")
+	public ReactorLoadBalancer<ServiceInstance> leastConnectionsLoadBalancer(Environment environment,
+			LoadBalancerClientFactory loadBalancerClientFactory, InflightTracker inflightTracker) {
+
+		String name = environment.getProperty(LoadBalancerClientFactory.PROPERTY_NAME);
+		ObjectProvider<ServiceInstanceListSupplier> lazyProvider = loadBalancerClientFactory.getLazyProvider(name,
+				ServiceInstanceListSupplier.class);
+
+		return new LeastConnectionsLoadBalancer(lazyProvider, inflightTracker);
+	}
 }

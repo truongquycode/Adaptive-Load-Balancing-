@@ -15,7 +15,7 @@ public class SimulateController {
     private final Random random = new Random();
     private static final AtomicLong requestCount = new AtomicLong(0);
 
-    @GetMapping("/simulate-call")
+	@GetMapping("/simulate-call")
     public ResponseEntity<String> simulateInterServiceCommunication()
             throws InterruptedException {
         long count = requestCount.incrementAndGet();

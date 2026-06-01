@@ -70,13 +70,13 @@ public class MetricsPoller {
 
 		WebClient webClient = webClientBuilder.build();
 
-		// Luồng chính giờ đây chỉ là ánh xạ từng instance vào hàm pollSingleInstance
+		// Luồng chính ánh xạ từng instance vào hàm pollSingleInstance
 		List<Mono<Void>> polls = instances.stream().map(instance -> pollSingleInstance(instance, webClient)).toList();
 
 		Mono.when(polls).doFinally(signal -> isPolling.set(false)).subscribe();
 	}
 
-	// --- Tách hàm: Lấy dữ liệu từ một instance duy nhất ---
+	// Lấy dữ liệu từ một instance duy nhất
 	private Mono<Void> pollSingleInstance(ServiceInstance instance, WebClient webClient) {
 		String instanceId = instance.getInstanceId();
 
@@ -105,7 +105,7 @@ public class MetricsPoller {
 				}).then();
 	}
 
-	// --- Tách hàm: Dọn dẹp cache của các instance đã offline ---
+	// Dọn dẹp cache của các instance đã offline
 	private void cleanupStaleData(List<ServiceInstance> instances) {
 		List<String> activeIds = instances.stream().map(ServiceInstance::getInstanceId).toList();
 		trafficStates.keySet().retainAll(activeIds);
@@ -113,7 +113,7 @@ public class MetricsPoller {
 		latencyValues.keySet().retainAll(activeIds);
 		queueValues.keySet().retainAll(activeIds);
 		scoreValues.keySet().retainAll(activeIds);
-		consecutiveFailures.keySet().retainAll(activeIds); // ← thêm dòng này
+		consecutiveFailures.keySet().retainAll(activeIds);
 		smoothedScores.keySet().retainAll(activeIds);
 	}
 
@@ -133,13 +133,6 @@ public class MetricsPoller {
 
 			ScoreBreakdown rawBreakdown = scoreCalculator.calculateScore(instanceId, metrics);
 
-			// ── EMA smoothing: ngăn score nhảy đột ngột ─────────────────────
-//			double smoothedFinal = applyScoreEma(instanceId, rawBreakdown.finalScore());
-
-//			ScoreBreakdown smoothedBreakdown = new ScoreBreakdown(rawBreakdown.instanceId(), rawBreakdown.ewmaLatency(),
-//					rawBreakdown.normLatency(), rawBreakdown.normQueue(), rawBreakdown.normCpu(),
-//					rawBreakdown.baseScore(), rawBreakdown.pidPenalty(), rawBreakdown.finalScore(), // ← dùng smoothed score
-//					rawBreakdown.updatedAtMs());
 			metricsCache.putScore(instanceId, rawBreakdown);
 			latencyValues.put(instanceId, rawBreakdown.ewmaLatency());
 			queueValues.put(instanceId, realQueue);
@@ -165,7 +158,7 @@ public class MetricsPoller {
 			// Phản ứng NHANH để loại node ra khỏi pool trong vòng 1-2 giây
 			alpha = 0.60;
 		} else if (delta > 0.0) {
-			// Tăng nhỏ → có thể là network jitter (LRC-Student, Tailscale overhead)
+			// Tăng nhỏ → có thể là network jitter
 			// Phản ứng VỪA PHẢI để lọc noise
 			alpha = 0.35;
 		} else {
@@ -179,38 +172,37 @@ public class MetricsPoller {
 	}
 
 	private double calculateDeltaLatency(String id, double currentCount, double currentTotalTime) {
-        double p50 = windowManager.getSnapshot(id).p50();
- 
-        TrafficState prev = trafficStates.get(id);
- 
-        if (prev == null) {
-            // POST-RESET: Thiết lập baseline mới từ giá trị backend hiện tại.
-            // Trả về p50 (mặc định 50ms khi histogram rỗng) thay vì tính
-            // historical average từ toàn bộ backend timer (gây ghost latency).
-            double initLatency = Math.min(Math.max(1.0, p50), 3000.0);
-            trafficStates.put(id, new TrafficState(currentCount, currentTotalTime, initLatency));
-            log.debug("[MetricsPoller] Baseline established for {}: count={}, initLatency={}ms",
-                    id, currentCount, initLatency);
-            return initLatency;
-        }
- 
-        double deltaCount = currentCount - prev.count();
-        double deltaTotal = currentTotalTime - prev.totalTimeSec();
- 
-        double currentLatency;
-        if (deltaCount > 0) {
-            currentLatency = (deltaTotal / deltaCount) * 1000.0;
-        } else {
-            // Không có request mới: giữ nguyên latency cũ, không decay
-            currentLatency = prev.lastLatency();
-        }
- 
-        currentLatency = Math.min(Math.max(currentLatency, 1.0), 3000.0);
-        trafficStates.put(id, new TrafficState(currentCount, currentTotalTime, currentLatency));
-        return currentLatency;
-    }
+		double p50 = windowManager.getSnapshot(id).p50();
 
-	// Thêm hàm này vào MetricsPoller.java
+		TrafficState prev = trafficStates.get(id);
+
+		if (prev == null) {
+			// POST-RESET: Thiết lập baseline mới từ giá trị backend hiện tại.
+			// Trả về p50 (mặc định 50ms khi histogram rỗng) thay vì tính
+			// historical average từ toàn bộ backend timer (gây ghost latency).
+			double initLatency = Math.min(Math.max(1.0, p50), 3000.0);
+			trafficStates.put(id, new TrafficState(currentCount, currentTotalTime, initLatency));
+			log.debug("[MetricsPoller] Baseline established for {}: count={}, initLatency={}ms", id, currentCount,
+					initLatency);
+			return initLatency;
+		}
+
+		double deltaCount = currentCount - prev.count();
+		double deltaTotal = currentTotalTime - prev.totalTimeSec();
+
+		double currentLatency;
+		if (deltaCount > 0) {
+			currentLatency = (deltaTotal / deltaCount) * 1000.0;
+		} else {
+			// Không có request mới: giữ nguyên latency cũ, không decay
+			currentLatency = prev.lastLatency();
+		}
+
+		currentLatency = Math.min(Math.max(currentLatency, 1.0), 3000.0);
+		trafficStates.put(id, new TrafficState(currentCount, currentTotalTime, currentLatency));
+		return currentLatency;
+	}
+
 	public void resetAllStates() {
 		trafficStates.clear();
 		consecutiveFailures.clear();
@@ -218,10 +210,9 @@ public class MetricsPoller {
 		latencyValues.clear();
 		queueValues.clear();
 		scoreValues.clear();
-//		log.info("[MetricsPoller] States cleared for new benchmark run.");
 	}
 
-	// --- Tách hàm: Đăng ký Prometheus Gauges ---
+	// Đăng ký Prometheus Gauges
 	private void registerPrometheusGauges(String id) {
 		if (registeredGauges.add(id)) {
 			Gauge.builder("alb.latency.ewma", latencyValues, map -> map.getOrDefault(id, 0.0)).tag("backend", id)
@@ -241,7 +232,6 @@ public class MetricsPoller {
 
 				double inflightPenalty = 0.0;
 				if (totalInflight > 0) {
-					// Giả định cụm luôn có 3 node để vẽ đồ thị
 					double excessShare = Math.max(0.0, ((double) localInflight / totalInflight) - (1.0 / 3.0));
 					inflightPenalty = 0.8 * Math.log(1.0 + excessShare);
 				}

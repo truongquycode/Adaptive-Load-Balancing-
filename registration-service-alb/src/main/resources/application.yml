@@ -27,7 +27,6 @@ management:
     tags:
       application: ${spring.application.name}
     enable:
-      # Tắt bớt các metric cồng kềnh lấy liên tục gây hao CPU. 
       jvm: false    
       tomcat: false 
   observations:

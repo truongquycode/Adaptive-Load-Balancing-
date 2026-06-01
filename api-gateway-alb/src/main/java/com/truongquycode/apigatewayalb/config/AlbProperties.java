@@ -5,28 +5,79 @@ import org.springframework.context.annotation.Configuration;
 import com.truongquycode.apigatewayalb.model.PidConfig;
 import lombok.Data;
 
+/**
+ * Bind toàn bộ config có prefix "alb" trong application.yml thành Java object.
+ *
+ * Mục đích: thay vì dùng @Value rải rác, tập trung config vào một chỗ, có
+ * type-safety và dễ inject qua constructor.
+ *
+ * Các default value trong file này = fallback khi không có application.yml.
+ * YAML override Java default
+ *
+ * Được inject vào: 
+ * ScoreCalculator → ewma (tauMin, tauMax, k), pid 
+ * GatewayRoutingConfig → strategy 
+ * MetricsPoller → polling.interval (qua @Scheduled)
+ * DynamicWeightEngine → weights.updateInterval (qua @Scheduled)
+ * 
+ * 
+ */
 @Data
 @Configuration
 @ConfigurationProperties(prefix = "alb")
 public class AlbProperties {
-    // Thuộc tính mới để chọn thuật toán
-    private String strategy = "adaptive"; 
-    
-    private Polling polling = new Polling();
-    private Ewma ewma = new Ewma();
-    private PidConfig pid = new PidConfig();
-    private Weights weights = new Weights();
 
-    @Data public static class Polling { private long interval = 1000; }
-    @Data public static class Ewma { 
-    	private double tau    = 3000.0;  // Giữ làm τ_max (ms)
-        private double tauMin = 300.0;   // τ_min khi hệ thống biến động mạnh (ms)
-        private double tauMax = 8000.0;  // τ_max khi hệ thống ổn định (ms)
-        private double k      = 1.0;     // Hệ số độ dốc của hàm mũ
-        // Giải thích k:
-        // k = 1.0: τ thay đổi chậm, cần δ ≈ 1.0 (100% deviation) để giảm τ về ~τ_min
-        // k = 2.0: τ thay đổi nhanh hơn, δ ≈ 0.5 (50% deviation) đã đủ kéo τ xuống mức thấp
-        // k = 3.0: rất nhạy với biến động nhỏ, phù hợp hệ thống cần phản ứng rất nhanh
-    }
-    @Data public static class Weights { private long updateInterval = 5000; }
+	/**
+	 * Thuật toán load balancing: adaptive | round-robin | random |
+	 * least-connections
+	 */
+	private String strategy = "adaptive";
+
+	private Polling polling = new Polling();
+	private Ewma ewma = new Ewma();
+	private PidConfig pid = new PidConfig();
+	private Weights weights = new Weights();
+
+	// ─────────────────────────────────────────────────────────────────────────
+	// Tần suất MetricsPoller gọi /api/alb-metrics trên từng backend instance.
+	// Giá trị nhỏ → phát hiện degradation nhanh hơn, nhưng tốn băng thông hơn.
+	// 200ms: đủ nhạy với burst 800 RPS (mỗi cycle stale tối đa 160 requests).
+	// ─────────────────────────────────────────────────────────────────────────
+	@Data
+	public static class Polling {
+		private long interval = 200; // ms
+	}
+
+	// ─────────────────────────────────────────────────────────────────────────
+	// Tham số cho Adaptive EWMA (AEWMA) trong EwmaSmoother.
+	//
+	// τ (tau) điều chỉnh tốc độ phản ứng của EWMA:
+	// τ nhỏ → phản ứng nhanh với biến động, dễ bị nhiễu
+	// τ lớn → mượt hơn, phản ứng chậm hơn
+	//
+	// AEWMA tự động điều chỉnh τ theo độ lệch tức thời (deviation):
+	// τ(t) = tauMin + (tauMax - tauMin) × exp(-k × δ(t))
+	// δ = 0 (ổn định) → τ = tauMax (smooth nhiều)
+	// δ → ∞ (spike) → τ → tauMin (phản ứng nhanh)
+	//
+	// k: hệ số độ dốc của hàm mũ
+	// k = 1.0 → cần δ ≈ 100% deviation để τ giảm về ~tauMin
+	// k = 2.0 → cần δ ≈ 50% deviation
+	// k = 4.0 → cần δ ≈ 25% deviation (rất nhạy, phù hợp workload CPU-intensive)
+	// ─────────────────────────────────────────────────────────────────────────
+	@Data
+	public static class Ewma {
+		private double tauMin = 150.0; // ms — τ tối thiểu khi hệ thống biến động mạnh
+		private double tauMax = 2000.0; // ms — τ tối đa khi hệ thống ổn định
+		private double k = 4.0; // hệ số độ nhạy với deviation
+	}
+
+	// ─────────────────────────────────────────────────────────────────────────
+	// Tần suất DynamicWeightEngine tính lại trọng số MCDM (α, β, γ).
+	// 5000ms: đủ để EWM thu thập đủ sample sau mỗi burst trước khi re-weight.
+	// ─────────────────────────────────────────────────────────────────────────
+	@Data
+	public static class Weights {
+		private long updateInterval = 5000; // ms
+	}
 }
