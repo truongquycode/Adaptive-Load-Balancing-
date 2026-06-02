@@ -177,6 +177,13 @@ public class DynamicWeightEngine {
         this.alpha = newAlpha / s;
         this.beta  = newBeta  / s;
         this.gamma = newGamma / s;
+        
+        if (this.beta < 0.08) {
+            double deficit = 0.08 - this.beta;
+            this.beta = 0.08;
+            this.alpha = Math.max(0.15, this.alpha - deficit * 0.70);
+            this.gamma = Math.max(0.08, this.gamma - deficit * 0.30);
+        }
 
         log.debug("MCDM weights updated: α={:.3f} β={:.3f} γ={:.3f}", this.alpha, this.beta, this.gamma);
     }
