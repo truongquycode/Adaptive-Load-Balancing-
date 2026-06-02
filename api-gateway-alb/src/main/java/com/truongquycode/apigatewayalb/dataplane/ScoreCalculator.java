@@ -80,6 +80,10 @@ public class ScoreCalculator {
 		// ── PID Penalty: vẫn dùng system P5/P95 cho nhất quán ───────────────
 		double p5 = sysP5;
 		double p95 = sysP95;
+		
+		if (p95 <= p5) {
+	        p95 = p5 + 1.0; 
+	    }
 
 		double normalizedEwma = Math.max(0.0, Math.min(1.0, (ewmaLat - p5) / (p95 - p5)));
 		double normalizedP75 = Math.max(0.0, Math.min(1.0, (p75System - p5) / (p95 - p5)));

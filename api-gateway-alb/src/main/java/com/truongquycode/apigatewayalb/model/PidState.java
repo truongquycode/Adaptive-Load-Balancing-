@@ -9,4 +9,5 @@ public class PidState {
     private double lastFilteredD = 0.0;
     private double lastOutput = 0.0;
     private long lastTimestamp = 0;
+    private double lastRawLat = 0.0;
 }

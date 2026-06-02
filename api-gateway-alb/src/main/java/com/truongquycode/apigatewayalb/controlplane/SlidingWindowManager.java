@@ -92,35 +92,40 @@ public class SlidingWindowManager {
 				lh.getValueAtPercentile(95.0), qP99);
 	}
 
-	// global P5 cho cross-instance normalization
-	// khi normalizeLatency dùng system-wide bounds, node luôn chậm
-	// (như 8083) sẽ có nL cao hơn thay vì bị "normalize về 0.5" theo bounds
-	// riêng của nó
+	private Histogram getSafeGlobalHistogram() {
+		int gi = globalActiveIdx.get();
+		if (globalPair[gi].getTotalCount() >= 20) {
+			return globalPair[gi];
+		} else if (globalPair[1 - gi].getTotalCount() > 0) {
+			return globalPair[1 - gi]; // Dùng histogram trước đó nếu cái hiện tại quá mới
+		}
+		return globalPair[gi];
+	}
+
 	public double getSystemP5() {
 		synchronized (globalLock) {
-			int gi = globalActiveIdx.get();
-			if (globalPair[gi].getTotalCount() == 0)
+			Histogram safeHist = getSafeGlobalHistogram();
+			if (safeHist.getTotalCount() == 0)
 				return 5.0;
-			return globalPair[gi].getValueAtPercentile(5.0);
+			return safeHist.getValueAtPercentile(5.0);
 		}
 	}
 
-	// global P95 cho cross-instance normalization
 	public double getSystemP95() {
 		synchronized (globalLock) {
-			int gi = globalActiveIdx.get();
-			if (globalPair[gi].getTotalCount() == 0)
+			Histogram safeHist = getSafeGlobalHistogram();
+			if (safeHist.getTotalCount() == 0)
 				return 200.0;
-			return globalPair[gi].getValueAtPercentile(95.0);
+			return safeHist.getValueAtPercentile(95.0);
 		}
 	}
 
 	public double getSystemP75() {
 		synchronized (globalLock) {
-			int gi = globalActiveIdx.get();
-			if (globalPair[gi].getTotalCount() == 0)
+			Histogram safeHist = getSafeGlobalHistogram();
+			if (safeHist.getTotalCount() == 0)
 				return 50.0;
-			return globalPair[gi].getValueAtPercentile(75.0);
+			return safeHist.getValueAtPercentile(75.0);
 		}
 	}
 

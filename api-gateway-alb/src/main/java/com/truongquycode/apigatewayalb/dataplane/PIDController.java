@@ -2,7 +2,6 @@ package com.truongquycode.apigatewayalb.dataplane;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
-import com.truongquycode.apigatewayalb.math.EwmaSmoother;
 import com.truongquycode.apigatewayalb.model.PidConfig;
 import com.truongquycode.apigatewayalb.model.PidState;
 
@@ -15,73 +14,72 @@ import java.util.concurrent.TimeUnit;
 @Slf4j
 public class PIDController {
 
-    // Cache lưu trạng thái PID của từng instance
-    // expireAfterAccess: nếu instance không được truy cập trong 5 phút thì xóa
-    private final Cache<String, PidState> states = Caffeine.newBuilder()
-            .expireAfterAccess(5, TimeUnit.MINUTES).build();
+	private final Cache<String, PidState> states = Caffeine.newBuilder().expireAfterAccess(5, TimeUnit.MINUTES).build();
 
-    public double calculatePenalty(String instanceId, double rawLat, 
-                               double setpoint, PidConfig cfg) {
+	public double calculatePenalty(String instanceId, double rawLat, double setpoint, PidConfig cfg) {
 
-    long now = System.currentTimeMillis();
+		long now = System.currentTimeMillis();
 
-    PidState finalState = states.asMap().compute(instanceId, (k, state) -> {
+		PidState finalState = states.asMap().compute(instanceId, (k, state) -> {
 
-        if (state == null) {
-            state = new PidState();
-            state.setLastTimestamp(now - 1000L); // Đúng 1 chu kỳ poll
-        }
+			if (state == null) {
+				state = new PidState();
+				// FIX LỖI 3: Để 200L cho khớp với polling interval
+				state.setLastTimestamp(now - 200L);
+				state.setLastRawLat(rawLat);
+			}
 
-        // Giới hạn cả hai đầu: tránh chia 0 và tránh spike tích phân khi restart
-        double actualDt = Math.min(5.0, Math.max(0.001,
-            (now - state.getLastTimestamp()) / 1000.0));
+			double actualDt = Math.min(5.0, Math.max(0.001, (now - state.getLastTimestamp()) / 1000.0));
 
-        double error = rawLat - setpoint;
+			double error = rawLat - setpoint;
 
-        // ----- P -----
-        double p = cfg.getKp() * error;
+			// ----- P -----
+			double p = cfg.getKp() * error;
 
-        // ----- I với Conditional Anti-Windup -----
-        boolean isSaturated = Math.abs(state.getLastOutput()) >= 2.0;
-        boolean sameSign = Math.signum(error) == Math.signum(state.getLastOutput());
+			// ----- I với Conditional Anti-Windup -----
+			boolean isSaturated = Math.abs(state.getLastOutput()) >= 2.0;
+			boolean sameSign = Math.signum(error) == Math.signum(state.getLastOutput());
 
-        if (!(isSaturated && sameSign)) {
-            double newI = state.getIntegral() + (error * actualDt);
-            
-            // Leaky integrator: khi error gần 0, integral tự giảm dần
-            // Ngăn tình trạng một node bị "tẩy chay" vĩnh viễn sau chaos
-            if (Math.abs(error) < 0.1) {
-                newI = newI * 0.97; // Giảm 3% mỗi giây khi ổn định
-            }
-            
-            state.setIntegral(Math.max(cfg.getMinI(), Math.min(cfg.getMaxI(), newI)));
-        }
+			if (!(isSaturated && sameSign)) {
+				double newI = state.getIntegral() + (error * actualDt);
 
-        double i = cfg.getKi() * state.getIntegral();
+				// FIX LỖI 1: Time-dependent decay (Bảo đảm rò rỉ đúng 3% mỗi 1 giây THỰC TẾ)
+				if (Math.abs(error) < 0.1) {
+					double decayFactor = Math.pow(0.97, actualDt);
+					newI = newI * decayFactor;
+				}
 
-        // ----- D với Low-Pass Filter (Butterworth rời rạc) -----
-        double rawD = (error - state.getLastError()) / actualDt;
-        double dynamicThetaD = 1.0 - Math.exp(-actualDt / cfg.getTauD());
-        double filteredD = (dynamicThetaD * rawD)
-                         + ((1.0 - dynamicThetaD) * state.getLastFilteredD());
-        double d = cfg.getKd() * filteredD;
+				state.setIntegral(Math.max(cfg.getMinI(), Math.min(cfg.getMaxI(), newI)));
+			}
 
-        double u = p + i + d;
+			double i = cfg.getKi() * state.getIntegral();
 
-        state.setLastError(error);
-        state.setLastFilteredD(filteredD);
-        state.setLastOutput(u);
-        state.setLastTimestamp(now);
+			// ----- D với Low-Pass Filter -----
+			// FIX LỖI 2: Đạo hàm trên Process Variable (tránh Derivative Kick do Setpoint
+			// nhảy)
+			double rawD = (rawLat - state.getLastRawLat()) / actualDt;
 
-        return state;
-    });
+			double dynamicThetaD = 1.0 - Math.exp(-actualDt / cfg.getTauD());
+			double filteredD = (dynamicThetaD * rawD) + ((1.0 - dynamicThetaD) * state.getLastFilteredD());
+			double d = cfg.getKd() * filteredD;
 
-    // ReLU + tanh: chỉ phạt node chậm, penalty ∈ [0, λ]
-    return cfg.getLambda() *
-           Math.tanh(cfg.getKappa() * Math.max(0.0, finalState.getLastOutput()));
-}
-    public void resetAllStates() {
-        states.invalidateAll();
-        log.info("PID states cleared — all instance integrals reset to 0");
-    }
+			double u = p + i + d;
+
+			state.setLastError(error);
+			state.setLastRawLat(rawLat); // Lưu lại cho chu kỳ sau tính Derivative
+			state.setLastFilteredD(filteredD);
+			state.setLastOutput(u);
+			state.setLastTimestamp(now);
+
+			return state;
+		});
+
+		// ReLU + tanh
+		return cfg.getLambda() * Math.tanh(cfg.getKappa() * Math.max(0.0, finalState.getLastOutput()));
+	}
+
+	public void resetAllStates() {
+		states.invalidateAll();
+		log.info("PID states cleared — all instance integrals reset to 0");
+	}
 }

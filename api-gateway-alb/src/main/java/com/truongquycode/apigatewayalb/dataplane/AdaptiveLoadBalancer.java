@@ -56,7 +56,7 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
 	// - ConcurrentHashMap thread-safe cho multi-thread access
 	// - reset() chỉ gọi khi benchmark kết thúc (không có concurrent request)
 
-	private static final ConcurrentHashMap<String, Double> smoothedCapMcdm = new ConcurrentHashMap<>();
+//	private static final ConcurrentHashMap<String, Double> smoothedCapMcdm = new ConcurrentHashMap<>();
 
 	private static final ConcurrentHashMap<String, Long> firstSeenMs = new ConcurrentHashMap<>();
 
@@ -73,11 +73,9 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
 	 * round-robin bắt đầu từ đầu
 	 */
 	public static void resetStaticState() {
-		smoothedCapMcdm.clear();
+//		smoothedCapMcdm.clear();
 		firstSeenMs.clear();
 		rrCounter.set(0);
-		log.info("[ALB] Static state reset: smoothedCapMcdm={} entries cleared, "
-				+ "firstSeenMs cleared, rrCounter reset to 0", smoothedCapMcdm.size());
 	}
 
 	@Override
@@ -104,21 +102,18 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
 		List<NodeInfo> nodes = new ArrayList<>(n);
 
 		for (ServiceInstance inst : instances) {
-			String id = inst.getInstanceId();
-			long firstSeen = firstSeenMs.computeIfAbsent(id, k -> now);
-			boolean inWarmup = (now - firstSeen) < WARMUP_MS;
+		    String id = inst.getInstanceId();
+		    long firstSeen = firstSeenMs.computeIfAbsent(id, k -> now);
+		    boolean inWarmup = (now - firstSeen) < WARMUP_MS;
 
-			ScoreBreakdown bd = cache.getScore(id);
-			double rawMcdm = (bd != null) ? Math.max(SCORE_FLOOR, bd.finalScore()) : DEFAULT_SCORE;
+		    ScoreBreakdown bd = cache.getScore(id);
+		    
+		    // Đã có EWMA và PID từ Control Plane, dùng trực tiếp rawMcdm làm smoothed
+		    double rawMcdm = (bd != null) ? Math.max(SCORE_FLOOR, bd.finalScore()) : DEFAULT_SCORE;
+		    double smoothed = rawMcdm; // Xóa logic EMA cũ, truyền thẳng dữ liệu
 
-			// Symmetric EMA 0.20: phân kỳ đủ nhanh (half-life ≈ 3 polls = 600ms)
-			// mà không oscillate theo từng request
-			double prevSmoothed = smoothedCapMcdm.getOrDefault(id, rawMcdm);
-			double smoothed = CAP_WEIGHT_EMA * rawMcdm + (1.0 - CAP_WEIGHT_EMA) * prevSmoothed;
-			smoothedCapMcdm.put(id, smoothed);
-
-			int inflight = inflightTracker.getInflight(id);
-			nodes.add(new NodeInfo(inst, rawMcdm, smoothed, inflight, inWarmup));
+		    int inflight = inflightTracker.getInflight(id);
+		    nodes.add(new NodeInfo(inst, rawMcdm, smoothed, inflight, inWarmup));
 		}
 
 		// ══ Warmup guard: tất cả nodes chưa có score → round-robin ══════════

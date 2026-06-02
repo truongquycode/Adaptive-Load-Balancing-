@@ -79,7 +79,7 @@ public class DynamicWeightEngine {
 		double avgQueue = totalQueue / n;
 
 		// Hệ thống đang idle → giữ nguyên AHP default, không cần EWM
-		if (avgQueue < 0.3 && avgCpu < 0.02) {
+		if (avgQueue < 2.0 && avgCpu < 0.06) {
 			log.debug("System idle — weights frozen at AHP defaults");
 			// Tạo record mới (bất biến) và gán lại cho volatile reference
 			this.weights = new McdmWeights(ahpWeights[0], ahpWeights[1], ahpWeights[2]);
@@ -153,9 +153,8 @@ public class DynamicWeightEngine {
 		double sumFusion = 0;
 		double[] fusion = new double[CRITERIA_COUNT];
 		for (int j = 0; j < CRITERIA_COUNT; j++) {
-			double blended = BLEND_FACTOR * ewmNorm[j] + (1 - BLEND_FACTOR) * ahpWeights[j];
-			fusion[j] = ahpWeights[j] * blended;
-			sumFusion += fusion[j];
+			fusion[j] = BLEND_FACTOR * ewmNorm[j] + (1 - BLEND_FACTOR) * ahpWeights[j];
+            sumFusion += fusion[j];
 		}
 
 		double rawAlpha = fusion[0] / sumFusion;
