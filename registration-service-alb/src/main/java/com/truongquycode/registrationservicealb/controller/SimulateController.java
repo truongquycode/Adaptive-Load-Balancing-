@@ -27,7 +27,7 @@ public class SimulateController {
         // Đáp án: CÓ — EWMA latency + PID penalty phát hiện trong 200–400ms.
         // LeastConn: phát hiện qua inflight tăng, nhưng chậm hơn 0.8–1.5s.
         if (ChaosController.asyncIoEnabled.get()) {
-            int ioDelay = 600 + random.nextInt(200); // 600–800ms per request
+            int ioDelay = 600 + random.nextInt(400); // 600–1000ms per request
             Thread.sleep(ioDelay);
             return ResponseEntity.ok(String.format(
                 "I/O Bottleneck simulated | Request #%d | I/O wait: %dms",
@@ -66,14 +66,14 @@ public class SimulateController {
         // burnCpu bên dưới sẽ tự chậm lại khi tranh CPU với burner threads.
 
         // Pha 1: CPU parse / serialize
-        burnCpu(3_000);
+        burnCpu(4_000);
 
         // Pha 2: Network I/O (không tốn CPU)
-        int networkDelay = 15 + random.nextInt(35); // 15–50ms
+        int networkDelay = 50 + random.nextInt(100); // 50-150ms
         Thread.sleep(networkDelay);
 
         // Pha 3: CPU deserialize / business logic
-        burnCpu(4_000);
+        burnCpu(6_000);
 
         return ResponseEntity.ok(String.format(
             "Inter-service call completed | Request #%d | Network I/O: %dms",
