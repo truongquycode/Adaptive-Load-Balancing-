@@ -47,10 +47,10 @@ public class DynamicWeightEngine {
 
     // Trọng số AHP — định nghĩa tay, ưu tiên latency nhất
     // Workload CPU-intensive → CPU và latency quan trọng hơn queue
-    private final double[] ahpWeights = { 0.50, 0.25, 0.25 };
+    private final double[] ahpWeights = { 0.648, 0.230, 0.122 };
 
     // Trọng số hiện tại — volatile vì đọc từ nhiều thread (routing thread + scheduler)
-    private volatile double alpha = 0.50, beta = 0.25, gamma = 0.25;
+    private volatile double alpha = 0.648, beta = 0.230, gamma = 0.122;
 
     // Đăng ký gauge để Prometheus theo dõi trọng số thay đổi theo thời gian
     @PostConstruct
@@ -138,7 +138,7 @@ public class DynamicWeightEngine {
 
     /**
      * Blend EWM + AHP → làm mượt bằng EMA → áp giới hạn → cập nhật α/β/γ.
-     * Giới hạn: γ ≤ 0.55, α ≤ 0.70, β ≤ 0.45 — tránh một tiêu chí chiếm quá nhiều.
+     * Giới hạn: γ ≤ 0.35, α ≤ 0.75, β ≤ 0.45 — tránh một tiêu chí chiếm quá nhiều.
      */
     private void blendAndApplyFinalWeights(double[] ewmNorm) {
         double sumFusion = 0;
@@ -164,14 +164,14 @@ public class DynamicWeightEngine {
         newGamma /= s;
 
         // Giới hạn trên — tránh một tiêu chí độc chiếm, phần dư phân bổ sang tiêu chí khác
-        if (newGamma > 0.55) { double e = newGamma - 0.55; newGamma = 0.55; newAlpha += e * 0.70; newBeta  += e * 0.30; }
-        if (newAlpha > 0.70) { double e = newAlpha - 0.70; newAlpha = 0.70; newBeta  += e * 0.60; newGamma += e * 0.40; }
+        if (newGamma > 0.35) { double e = newGamma - 0.35; newGamma = 0.35; newAlpha += e * 0.70; newBeta  += e * 0.30; }
+        if (newAlpha > 0.75) { double e = newAlpha - 0.75; newAlpha = 0.75; newBeta  += e; }
         if (newBeta  > 0.45) { double e = newBeta  - 0.45; newBeta  = 0.45; newAlpha += e; }
 
         // Giới hạn dưới — đảm bảo mỗi tiêu chí luôn có tiếng nói tối thiểu
         newAlpha = Math.max(0.15, newAlpha);
         newBeta  = Math.max(0.08, newBeta);
-        newGamma = Math.max(0.10, newGamma);
+        newGamma = Math.max(0.08, newGamma);
 
         s = newAlpha + newBeta + newGamma;
         this.alpha = newAlpha / s;
