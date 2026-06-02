@@ -30,12 +30,12 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
 
 	// ── Tuning constants ─────────────────────────────────────────────────────
 	private static final int INFLIGHT_HARD_CAP = 200;
-	private static final double OMEGA_REL = 0.008;
-	private static final double OMEGA_ABS = 0.3;
+	private static final double OMEGA_REL = 0.015;
+	private static final double OMEGA_ABS = 1.5;
 	private static final double PENALTY_EXPONENT = 1.3;
 	private static final double SCORE_FLOOR = 0.05;
 	private static final double DEFAULT_SCORE = 0.35;
-	private static final double CAP_WEIGHT_EMA = 0.20;
+	private static final double CAP_WEIGHT_EMA = 0.35;
 	private static final double MAX_CAP_WEIGHT_RATIO = 3.0;
 	private static final long WARMUP_MS = 5_000;
 

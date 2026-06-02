@@ -16,195 +16,231 @@ import java.util.List;
 /**
  * Tính toán trọng số MCDM (α, β, γ) cho 3 tiêu chí: latency, queue, CPU.
  *
- * Kết hợp 2 phương pháp:
- *   - EWM (Entropy Weight Method): tự động tăng trọng số tiêu chí nào đang biến động nhiều nhất
- *   - AHP (Analytic Hierarchy Process): trọng số cố định do chuyên gia định nghĩa
+ * Kết hợp 2 phương pháp: - EWM (Entropy Weight Method): tự động tăng trọng số
+ * tiêu chí nào đang biến động nhiều nhất - AHP (Analytic Hierarchy Process):
+ * trọng số cố định do chuyên gia định nghĩa
  *
- * Công thức blend: finalWeight = AHP × (0.8×EWM + 0.2×AHP), sau đó normalize về tổng = 1
- * Kết quả được làm mượt bằng EMA trước khi cập nhật α/β/γ.
+ * Công thức blend: finalWeight = AHP × (0.8×EWM + 0.2×AHP), sau đó normalize về
+ * tổng = 1 Kết quả được làm mượt bằng EMA trước khi cập nhật α/β/γ.
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class DynamicWeightEngine {
 
-    // Hằng số dịch chuyển khi normalize ma trận — tránh chia 0 khi các instance có metric bằng nhau
-    // [latency, queue, CPU] — latency dùng mu lớn vì đơn vị ms (dao động hàng chục ms)
-    private static final double[] MU = { 5.0, 1.0, 0.05 };
+	// Hằng số dịch chuyển khi normalize ma trận — tránh chia 0 khi các instance có
+	// metric bằng nhau
+	// [latency, queue, CPU] — latency dùng mu lớn vì đơn vị ms (dao động hàng chục
+	// ms)
+	private static final double[] MU = { 5.0, 1.0, 0.05 };
 
-    // Tốc độ EMA khi cập nhật trọng số — nhỏ = thay đổi chậm, ổn định hơn
-    private static final double WEIGHT_EMA_ALPHA = 0.15;
+	// Tốc độ EMA khi cập nhật trọng số — nhỏ = thay đổi chậm, ổn định hơn
+	private static final double WEIGHT_EMA_ALPHA = 0.15;
 
-    private static final double EPSILON = 1e-6;
+	private static final double EPSILON = 1e-6;
 
-    // Tỉ lệ EWM trong blend: 0.8 = EWM chiếm 80%, AHP chiếm 20%
-    private static final double BLEND_FACTOR = 0.80;
+	// Tỉ lệ EWM trong blend: 0.8 = EWM chiếm 80%, AHP chiếm 20%
+	private static final double BLEND_FACTOR = 0.80;
 
-    private static final int CRITERIA_COUNT = 3; // latency, queue, CPU
+	private static final int CRITERIA_COUNT = 3; // latency, queue, CPU
 
-    private final MetricsCache cache;
-    private final MeterRegistry registry;
+	private final MetricsCache cache;
+	private final MeterRegistry registry;
 
-    // Trọng số AHP — định nghĩa tay, ưu tiên latency nhất
-    // Workload CPU-intensive → CPU và latency quan trọng hơn queue
-    private final double[] ahpWeights = { 0.648, 0.230, 0.122 };
+	// Trọng số AHP — định nghĩa tay, ưu tiên latency nhất
+	// Workload CPU-intensive → CPU và latency quan trọng hơn queue
+	private final double[] ahpWeights = { 0.648, 0.230, 0.122 };
 
-    // Trọng số hiện tại — volatile vì đọc từ nhiều thread (routing thread + scheduler)
-    private volatile double alpha = 0.648, beta = 0.230, gamma = 0.122;
+	// Sử dụng Immutable Record để đảm bảo tính Nguyên tử (Atomicity) khi nhiều
+	// Thread cùng đọc/ghi
+	private record McdmWeights(double alpha, double beta, double gamma) {
+	}
 
-    // Đăng ký gauge để Prometheus theo dõi trọng số thay đổi theo thời gian
-    @PostConstruct
-    public void registerMetrics() {
-        Gauge.builder("alb.mcdm.weight", () -> alpha).tag("criterion", "latency").register(registry);
-        Gauge.builder("alb.mcdm.weight", () -> beta).tag("criterion", "queue").register(registry);
-        Gauge.builder("alb.mcdm.weight", () -> gamma).tag("criterion", "cpu").register(registry);
-    }
+	private volatile McdmWeights weights = new McdmWeights(0.648, 0.230, 0.122);
 
-    @Scheduled(fixedRateString = "${alb.weights.update-interval:5000}")
-    public void computeMCDMWeights() {
-        List<InstanceMetrics> instances = cache.getAllMetrics();
-        int n = instances.size();
-        if (n < 2) return; // EWM cần ít nhất 2 instance để tính entropy
+	// Đăng ký gauge để Prometheus theo dõi trọng số thay đổi theo thời gian
+	@PostConstruct
+	public void registerMetrics() {
+		// Dùng Method Reference để luôn đọc qua getter (đảm bảo tính volatile)
+		Gauge.builder("alb.mcdm.weight", this::getAlpha).tag("criterion", "latency").register(registry);
+		Gauge.builder("alb.mcdm.weight", this::getBeta).tag("criterion", "queue").register(registry);
+		Gauge.builder("alb.mcdm.weight", this::getGamma).tag("criterion", "cpu").register(registry);
+	}
 
-        double totalQueue = instances.stream().mapToDouble(InstanceMetrics::getQueueLength).sum();
-        double avgCpu     = instances.stream().mapToDouble(InstanceMetrics::getCpu).average().orElse(0.0);
-        double avgQueue   = totalQueue / n;
+	@Scheduled(fixedRateString = "${alb.weights.update-interval:5000}")
+	public void computeMCDMWeights() {
+		List<InstanceMetrics> instances = cache.getAllMetrics();
+		int n = instances.size();
+		if (n < 2)
+			return; // EWM cần ít nhất 2 instance để tính entropy
 
-        // Hệ thống đang idle → giữ nguyên AHP default, không cần EWM
-        if (avgQueue < 0.3 && avgCpu < 0.02) {
-            log.debug("System idle — weights frozen at AHP defaults");
-            this.alpha = ahpWeights[0];
-            this.beta  = ahpWeights[1];
-            this.gamma = ahpWeights[2];
-            return;
-        }
+		double totalQueue = instances.stream().mapToDouble(InstanceMetrics::getQueueLength).sum();
+		double avgCpu = instances.stream().mapToDouble(InstanceMetrics::getCpu).average().orElse(0.0);
+		double avgQueue = totalQueue / n;
 
-        double[][] normalizedMatrix = buildNormalizedMatrix(instances, n);
-        double[]   ewmWeights       = calculateEntropyWeights(normalizedMatrix, n);
-        blendAndApplyFinalWeights(ewmWeights);
-    }
+		// Hệ thống đang idle → giữ nguyên AHP default, không cần EWM
+		if (avgQueue < 0.3 && avgCpu < 0.02) {
+			log.debug("System idle — weights frozen at AHP defaults");
+			// Tạo record mới (bất biến) và gán lại cho volatile reference
+			this.weights = new McdmWeights(ahpWeights[0], ahpWeights[1], ahpWeights[2]);
+			return;
+		}
 
-    /**
-     * Normalize ma trận metrics: giá trị tốt hơn → điểm cao hơn.
-     * Công thức: (minVal + mu) / (val + mu)
-     * → instance có metric thấp nhất được điểm cao nhất (gần 1.0)
-     */
-    private double[][] buildNormalizedMatrix(List<InstanceMetrics> instances, int n) {
-        double[][] data = new double[n][CRITERIA_COUNT];
+		double[][] normalizedMatrix = buildNormalizedMatrix(instances, n);
+		double[] ewmWeights = calculateEntropyWeights(normalizedMatrix, n);
+		blendAndApplyFinalWeights(ewmWeights);
+	}
 
-        for (int j = 0; j < CRITERIA_COUNT; j++) {
-            double minVal = Double.MAX_VALUE;
-            for (int i = 0; i < n; i++) {
-                double val = getMetric(instances.get(i), j);
-                if (val < minVal) minVal = val;
-            }
-            for (int i = 0; i < n; i++) {
-                double val = getMetric(instances.get(i), j);
-                data[i][j] = (minVal + MU[j]) / (val + MU[j]);
-            }
-        }
-        return data;
-    }
+	/**
+	 * Normalize ma trận metrics: giá trị tốt hơn → điểm cao hơn. Công thức: (minVal
+	 * + mu) / (val + mu) → instance có metric thấp nhất được điểm cao nhất (gần
+	 * 1.0)
+	 */
+	private double[][] buildNormalizedMatrix(List<InstanceMetrics> instances, int n) {
+		double[][] data = new double[n][CRITERIA_COUNT];
 
-    /**
-     * Tính trọng số EWM từ entropy của từng tiêu chí.
-     * Tiêu chí nào có entropy thấp (các instance chênh lệch nhau nhiều) → trọng số cao hơn.
-     */
-    private double[] calculateEntropyWeights(double[][] data, int n) {
-        double[] ewm    = new double[CRITERIA_COUNT];
-        double   sumEwm = 0;
-        double   k      = 1.0 / Math.log(n);
+		for (int j = 0; j < CRITERIA_COUNT; j++) {
+			double minVal = Double.MAX_VALUE;
+			for (int i = 0; i < n; i++) {
+				double val = getMetric(instances.get(i), j);
+				if (val < minVal)
+					minVal = val;
+			}
+			for (int i = 0; i < n; i++) {
+				double val = getMetric(instances.get(i), j);
+				data[i][j] = (minVal + MU[j]) / (val + MU[j]);
+			}
+		}
+		return data;
+	}
 
-        for (int j = 0; j < CRITERIA_COUNT; j++) {
-            double colSum     = 0;
-            for (int i = 0; i < n; i++) colSum += data[i][j];
+	/**
+	 * Tính trọng số EWM từ entropy của từng tiêu chí. Tiêu chí nào có entropy thấp
+	 * (các instance chênh lệch nhau nhiều) → trọng số cao hơn.
+	 */
+	private double[] calculateEntropyWeights(double[][] data, int n) {
+		double[] ewm = new double[CRITERIA_COUNT];
+		double sumEwm = 0;
+		double k = 1.0 / Math.log(n);
 
-            double sumEntropy = 0;
-            for (int i = 0; i < n; i++) {
-                double p = data[i][j] / colSum;
-                if (p > 0) sumEntropy += p * Math.log(p);
-            }
-            ewm[j]  = Math.max(0.0, 1.0 - (-k * sumEntropy));
-            sumEwm += ewm[j];
-        }
+		for (int j = 0; j < CRITERIA_COUNT; j++) {
+			double colSum = 0;
+			for (int i = 0; i < n; i++)
+				colSum += data[i][j];
 
-        // Normalize EWM về tổng = 1
-        double[] ewmNorm = new double[CRITERIA_COUNT];
-        for (int j = 0; j < CRITERIA_COUNT; j++) {
-            ewmNorm[j] = (sumEwm == 0) ? (1.0 / CRITERIA_COUNT) : (ewm[j] / sumEwm);
-        }
-        return ewmNorm;
-    }
+			double sumEntropy = 0;
+			for (int i = 0; i < n; i++) {
+				double p = data[i][j] / colSum;
+				if (p > 0)
+					sumEntropy += p * Math.log(p);
+			}
+			ewm[j] = Math.max(0.0, 1.0 - (-k * sumEntropy));
+			sumEwm += ewm[j];
+		}
 
-    /**
-     * Blend EWM + AHP → làm mượt bằng EMA → áp giới hạn → cập nhật α/β/γ.
-     * Giới hạn: γ ≤ 0.35, α ≤ 0.75, β ≤ 0.45 — tránh một tiêu chí chiếm quá nhiều.
-     */
-    private void blendAndApplyFinalWeights(double[] ewmNorm) {
-        double sumFusion = 0;
-        double[] fusion  = new double[CRITERIA_COUNT];
-        for (int j = 0; j < CRITERIA_COUNT; j++) {
-            double blended = BLEND_FACTOR * ewmNorm[j] + (1 - BLEND_FACTOR) * ahpWeights[j];
-            fusion[j]  = ahpWeights[j] * blended;
-            sumFusion += fusion[j];
-        }
+		// Normalize EWM về tổng = 1
+		double[] ewmNorm = new double[CRITERIA_COUNT];
+		for (int j = 0; j < CRITERIA_COUNT; j++) {
+			ewmNorm[j] = (sumEwm == 0) ? (1.0 / CRITERIA_COUNT) : (ewm[j] / sumEwm);
+		}
+		return ewmNorm;
+	}
 
-        double rawAlpha = fusion[0] / sumFusion;
-        double rawBeta  = fusion[1] / sumFusion;
-        double rawGamma = fusion[2] / sumFusion;
+	/**
+	 * Blend EWM + AHP → làm mượt bằng EMA → áp giới hạn → cập nhật α/β/γ.
+	 */
+	private void blendAndApplyFinalWeights(double[] ewmNorm) {
+		double sumFusion = 0;
+		double[] fusion = new double[CRITERIA_COUNT];
+		for (int j = 0; j < CRITERIA_COUNT; j++) {
+			double blended = BLEND_FACTOR * ewmNorm[j] + (1 - BLEND_FACTOR) * ahpWeights[j];
+			fusion[j] = ahpWeights[j] * blended;
+			sumFusion += fusion[j];
+		}
 
-        // EMA làm mượt — tránh trọng số nhảy đột ngột giữa các chu kỳ
-        double newAlpha = WEIGHT_EMA_ALPHA * rawAlpha + (1 - WEIGHT_EMA_ALPHA) * this.alpha;
-        double newBeta  = WEIGHT_EMA_ALPHA * rawBeta  + (1 - WEIGHT_EMA_ALPHA) * this.beta;
-        double newGamma = WEIGHT_EMA_ALPHA * rawGamma + (1 - WEIGHT_EMA_ALPHA) * this.gamma;
+		double rawAlpha = fusion[0] / sumFusion;
+		double rawBeta = fusion[1] / sumFusion;
+		double rawGamma = fusion[2] / sumFusion;
 
-        double s = newAlpha + newBeta + newGamma;
-        newAlpha /= s;
-        newBeta  /= s;
-        newGamma /= s;
+		// EMA làm mượt — tránh trọng số nhảy đột ngột giữa các chu kỳ
+		double newAlpha = WEIGHT_EMA_ALPHA * rawAlpha + (1 - WEIGHT_EMA_ALPHA) * this.weights.alpha();
+		double newBeta = WEIGHT_EMA_ALPHA * rawBeta + (1 - WEIGHT_EMA_ALPHA) * this.weights.beta();
+		double newGamma = WEIGHT_EMA_ALPHA * rawGamma + (1 - WEIGHT_EMA_ALPHA) * this.weights.gamma();
 
-        // Giới hạn trên — tránh một tiêu chí độc chiếm, phần dư phân bổ sang tiêu chí khác
-        if (newGamma > 0.35) { double e = newGamma - 0.35; newGamma = 0.35; newAlpha += e * 0.70; newBeta  += e * 0.30; }
-        if (newAlpha > 0.75) { double e = newAlpha - 0.75; newAlpha = 0.75; newBeta  += e; }
-        if (newBeta  > 0.45) { double e = newBeta  - 0.45; newBeta  = 0.45; newAlpha += e; }
+		double s = newAlpha + newBeta + newGamma;
+		newAlpha /= s;
+		newBeta /= s;
+		newGamma /= s;
 
-        // Giới hạn dưới — đảm bảo mỗi tiêu chí luôn có tiếng nói tối thiểu
-        newAlpha = Math.max(0.15, newAlpha);
-        newBeta  = Math.max(0.08, newBeta);
-        newGamma = Math.max(0.08, newGamma);
+		// ── 1. GIỚI HẠN TRÊN (Upper bounds) ──
+		if (newGamma > 0.35) {
+			double e = newGamma - 0.35;
+			newGamma = 0.35;
+			newAlpha += e * 0.60;
+			newBeta += e * 0.40;
+		}
+		if (newAlpha > 0.70) {
+			double e = newAlpha - 0.70;
+			newAlpha = 0.70;
+			newBeta += e;
+		}
+		if (newBeta > 0.55) {
+			double e = newBeta - 0.55;
+			newBeta = 0.55;
+			newAlpha += e;
+		}
 
-        s = newAlpha + newBeta + newGamma;
-        this.alpha = newAlpha / s;
-        this.beta  = newBeta  / s;
-        this.gamma = newGamma / s;
-        
-        if (this.beta < 0.08) {
-            double deficit = 0.08 - this.beta;
-            this.beta = 0.08;
-            this.alpha = Math.max(0.15, this.alpha - deficit * 0.70);
-            this.gamma = Math.max(0.08, this.gamma - deficit * 0.30);
-        }
+		// ── 2. GIỚI HẠN DƯỚI (Lower bounds - Phân bổ bù trừ trực tiếp) ──
+		if (newGamma < 0.08) {
+			double deficit = 0.08 - newGamma;
+			newGamma = 0.08;
+			newAlpha -= deficit * 0.70;
+			newBeta -= deficit * 0.30;
+		}
 
-        log.debug("MCDM weights updated: α={:.3f} β={:.3f} γ={:.3f}", this.alpha, this.beta, this.gamma);
-    }
+		if (newBeta < 0.08) {
+			double deficit = 0.08 - newBeta;
+			newBeta = 0.08;
+			newAlpha -= deficit;
+		}
 
-    private double getMetric(InstanceMetrics m, int criteriaIndex) {
-        return switch (criteriaIndex) {
-            case 0 -> m.getLatency();
-            case 1 -> m.getQueueLength();
-            case 2 -> m.getCpu();
-            default -> EPSILON;
-        };
-    }
+		if (newAlpha < 0.15) {
+			double deficit = 0.15 - newAlpha;
+			newAlpha = 0.15;
+			newBeta -= deficit;
+		}
 
-    public double getAlpha() { return alpha; }
-    public double getBeta()  { return beta;  }
-    public double getGamma() { return gamma; }
+		// ── 3. GÁN KẾT QUẢ ──
+		// Gán toàn bộ 3 trọng số vào 1 Record bất biến, đảm bảo Atomicity cho Data
+		// Plane
+		this.weights = new McdmWeights(newAlpha, newBeta, newGamma);
 
-    // Reset về AHP default — gọi trước mỗi lần benchmark
-    public void resetWeights() {
-        this.alpha = ahpWeights[0];
-        this.beta  = ahpWeights[1];
-        this.gamma = ahpWeights[2];
-    }
+		log.debug("MCDM weights updated: α={:.3f} β={:.3f} γ={:.3f}", newAlpha, newBeta, newGamma);
+	}
+
+	private double getMetric(InstanceMetrics m, int criteriaIndex) {
+		return switch (criteriaIndex) {
+		case 0 -> m.getLatency();
+		case 1 -> m.getQueueLength();
+		case 2 -> m.getCpu();
+		default -> EPSILON;
+		};
+	}
+
+	public double getAlpha() {
+		return weights.alpha();
+	}
+
+	public double getBeta() {
+		return weights.beta();
+	}
+
+	public double getGamma() {
+		return weights.gamma();
+	}
+
+	// Reset về AHP default — gọi trước mỗi lần benchmark
+	public void resetWeights() {
+		this.weights = new McdmWeights(ahpWeights[0], ahpWeights[1], ahpWeights[2]);
+	}
 }
