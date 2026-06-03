@@ -37,19 +37,36 @@ public class RegistrationController {
 		long count = requestCount.incrementAndGet();
 		int port = request.getServerPort();
 
-		// Mô phỏng 1: CPU overhead cho việc Validate dữ liệu và Business Logic
+		// 🔴 MÔ PHỎNG 1: TĂNG CPU OVERHEAD CỰC ĐẠI
+		// Trong thực tế, lúc đăng ký user hệ thống phải chạy thuật toán băm mật khẩu
+		// (BCrypt/Argon2).
+		// 8.000 vòng lặp là quá nhẹ. Ta tăng lên 80.000 để mô phỏng thuật toán mã hóa
+		// nặng.
 		double dummy = 0;
-		for (int i = 0; i < 8000; i++) {
+		for (int i = 0; i < 20_000; i++) {
 			dummy += Math.sqrt(Math.random());
 		}
 
-		// Mô phỏng 2: I/O Database (Lưu user vào DB)
-		// Lưu data thực tế tốn thời gian hơn đọc (GET), ta set khoảng 60-150ms
-		int delay = 60 + random.nextInt(90);
+		// 🔴 MÔ PHỎNG 2: TĂNG ÁP LỰC RAM VÀ GARBAGE COLLECTOR (GC)
+		// Tạo ra các Object rác để mô phỏng việc thư viện ORM (như Hibernate)
+		// hoặc Jackson phải cấp phát bộ nhớ khi map JSON phức tạp.
+		StringBuilder dummyMemory = new StringBuilder();
+		for (int i = 0; i < 5000; i++) {
+			dummyMemory.append(java.util.UUID.randomUUID().toString());
+		}
+		String trashData = dummyMemory.toString(); // Sinh rác để GC phải dọn
+
+		// 🔴 MÔ PHỎNG 3: TĂNG TRỄ I/O (Database Transaction + Gửi Email)
+		// Đăng ký user thường mất nhiều thời gian do phải mở Transaction ghi vào DB
+		// và gọi API bên thứ 3 (như gửi Email OTP/Welcome).
+		// Nâng delay từ 60-150ms lên thành 150-350ms.
+		int delay = 150 + random.nextInt(200);
 		Thread.sleep(delay);
 
 		return ResponseEntity.ok(Map.of("status", "success", "port", port, "requestId", count, "processedUser",
-				payload.username, "latency", delay));
+				payload.username, "latency", delay, "trashLength", trashData.length() // Ngăn compiler tối ưu hóa biến
+																						// rác
+		));
 	}
 
 	@GetMapping("/register")
