@@ -29,7 +29,7 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
 	private final InflightTracker inflightTracker;
 
 	// ── Tuning constants ─────────────────────────────────────────────────────
-	private static final int INFLIGHT_HARD_CAP = 450;
+	private static final int INFLIGHT_HARD_CAP = 200;
 	private static final double OMEGA_REL = 0.015;
 	private static final double OMEGA_ABS = 1.5;
 	private static final double PENALTY_EXPONENT = 1.3;
