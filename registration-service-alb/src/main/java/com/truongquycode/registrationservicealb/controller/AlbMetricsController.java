@@ -35,7 +35,7 @@ public class AlbMetricsController {
 					continue;
 				String method = meter.getId().getTag("method");
 				String status = meter.getId().getTag("status");
-				if (!"GET".equals(method))
+				if (!"GET".equals(method) && !"POST".equals(method))
 					continue;
 				if (status != null && status.startsWith("4"))
 					continue; // bỏ 4xx
