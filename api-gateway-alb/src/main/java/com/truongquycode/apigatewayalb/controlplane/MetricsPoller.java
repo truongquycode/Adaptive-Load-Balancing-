@@ -52,7 +52,7 @@ public class MetricsPoller {
 	private record TrafficState(double count, double totalTimeSec, double lastLatency) {
 	}
 
-	@Scheduled(fixedRateString = "${alb.polling.interval:500}")
+	@Scheduled(fixedRateString = "${alb.polling.interval:200}")
 	public void pollMetrics() {
 		if (!isPolling.compareAndSet(false, true)) {
 			log.debug("Poll cycle skipped — previous cycle still running");
@@ -82,7 +82,7 @@ public class MetricsPoller {
 
 		String url = instance.getUri().toString() + "/api/alb-metrics";
 
-		return webClient.get().uri(url).retrieve().bodyToMono(JsonNode.class).timeout(Duration.ofMillis(800))
+		return webClient.get().uri(url).retrieve().bodyToMono(JsonNode.class).timeout(Duration.ofMillis(150))
 				.doOnNext(node -> {
 					// Reset failure counter khi poll thành công
 					consecutiveFailures.put(instanceId, 0);

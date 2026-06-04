@@ -91,14 +91,12 @@ public class ChaosController {
 					// ── check cả isInterrupted() ──
 					while (hiddenDegradationEnabled.get() && !Thread.currentThread().isInterrupted()) {
 
-						for (int j = 0; j < 200000; j++) {
+						for (int j = 0; j < 80000; j++) {
 							dummy += Math.sqrt(Math.random());
 						}
 
-						Thread.onSpinWait();
-
 						try {
-							Thread.sleep(1);
+							Thread.sleep(4);
 						} catch (InterruptedException e) {
 							Thread.currentThread().interrupt();
 							break;
