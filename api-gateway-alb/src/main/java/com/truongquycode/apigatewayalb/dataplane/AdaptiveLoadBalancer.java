@@ -3,6 +3,7 @@ package com.truongquycode.apigatewayalb.dataplane;
 import com.truongquycode.apigatewayalb.model.ScoreBreakdown;
 import com.truongquycode.apigatewayalb.util.MetricsCache;
 import io.micrometer.core.instrument.Metrics;
+import io.micrometer.core.instrument.Counter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
@@ -35,7 +36,6 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
 	private static final double PENALTY_EXPONENT = 1.3;
 	private static final double SCORE_FLOOR = 0.05;
 	private static final double DEFAULT_SCORE = 0.35;
-	private static final double CAP_WEIGHT_EMA = 0.35;
 	private static final double MAX_CAP_WEIGHT_RATIO = 3.0;
 	private static final long WARMUP_MS = 5_000;
 
@@ -61,6 +61,8 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
 	private static final ConcurrentHashMap<String, Long> firstSeenMs = new ConcurrentHashMap<>();
 
 	private static final AtomicLong rrCounter = new AtomicLong(0);
+
+	private static final ConcurrentHashMap<String, Counter> counterCache = new ConcurrentHashMap<>();
 
 	/**
 	 * Reset toàn bộ state của AdaptiveLoadBalancer. Phải gọi qua AdminController
@@ -100,20 +102,24 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
 		record NodeInfo(ServiceInstance inst, double rawMcdm, double smoothedMcdm, int inflight, boolean inWarmup) {
 		}
 		List<NodeInfo> nodes = new ArrayList<>(n);
+		
+		int minCurrentInflight = Integer.MAX_VALUE;
 
 		for (ServiceInstance inst : instances) {
-		    String id = inst.getInstanceId();
-		    long firstSeen = firstSeenMs.computeIfAbsent(id, k -> now);
-		    boolean inWarmup = (now - firstSeen) < WARMUP_MS;
+			String id = inst.getInstanceId();
+			long firstSeen = firstSeenMs.computeIfAbsent(id, k -> now);
+			boolean inWarmup = (now - firstSeen) < WARMUP_MS;
 
-		    ScoreBreakdown bd = cache.getScore(id);
-		    
-		    // Đã có EWMA và PID từ Control Plane, dùng trực tiếp rawMcdm làm smoothed
-		    double rawMcdm = (bd != null) ? Math.max(SCORE_FLOOR, bd.finalScore()) : DEFAULT_SCORE;
-		    double smoothed = rawMcdm; // Xóa logic EMA cũ, truyền thẳng dữ liệu
+			ScoreBreakdown bd = cache.getScore(id);
 
-		    int inflight = inflightTracker.getInflight(id);
-		    nodes.add(new NodeInfo(inst, rawMcdm, smoothed, inflight, inWarmup));
+			// Đã có EWMA và PID từ Control Plane, dùng trực tiếp rawMcdm làm smoothed
+			double rawMcdm = (bd != null) ? Math.max(SCORE_FLOOR, bd.finalScore()) : DEFAULT_SCORE;
+			double smoothed = rawMcdm; // Xóa logic EMA cũ, truyền thẳng dữ liệu
+
+			int inflight = inflightTracker.getInflight(id);
+			//tính min infight ngay tại đây mà không cần tách riêng ra ở dưới
+			if (inflight < minCurrentInflight) minCurrentInflight = inflight;
+			nodes.add(new NodeInfo(inst, rawMcdm, smoothed, inflight, inWarmup));
 		}
 
 		// ══ Warmup guard: tất cả nodes chưa có score → round-robin ══════════
@@ -144,15 +150,8 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
 		for (int i = 0; i < n; i++)
 			fairShare[i] = capWeights[i] / sumCap;
 
-		// ══ PASS 3: Minimum inflight để tính relative penalty ════════════════
-		int minCurrentInflight = Integer.MAX_VALUE;
-		for (NodeInfo node : nodes) {
-			if (node.inflight() < minCurrentInflight) {
-				minCurrentInflight = node.inflight();
-			}
-		}
 
-		// ══ PASS 4: Routing score = rawMcdm + relPenalty + absPenalty ════════
+		// ══ PASS 3: Routing score = rawMcdm + relPenalty + absPenalty ════════
 		ServiceInstance best = null;
 		double bestScore = Double.MAX_VALUE;
 		ServiceInstance leastLoadFb = null;
@@ -174,10 +173,16 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
 			double relPenalty = OMEGA_REL * relLoad;
 
 			// Absolute penalty: chỉ khi vượt capacity-weighted expected
-			double expectedInflight = totalInflight > 0 ? totalInflight * fairShare[i] : 0.0;
-			double excessRatio = expectedInflight > 0 ? Math.max(0.0, (double) node.inflight() / expectedInflight - 1.0)
-					: 0.0;
-			double absPenalty = OMEGA_ABS * Math.pow(excessRatio, PENALTY_EXPONENT);
+			double absPenalty = 0.0;
+			if (totalInflight > 0) {
+			    double expected = totalInflight * fairShare[i];
+			    if (expected > 0) {
+			        double excessRatio = (double) node.inflight() / expected - 1.0;
+			        if (excessRatio > 0) {   
+			            absPenalty = OMEGA_ABS * Math.pow(excessRatio, PENALTY_EXPONENT);
+			        }
+			    }
+			}
 
 			double routingScore = node.rawMcdm() + relPenalty + absPenalty;
 
@@ -197,7 +202,7 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
 	}
 
 	private void emitMetric(ServiceInstance inst) {
-		Metrics.counter("alb.routing.selected", "backend", inst.getInstanceId(), "port", String.valueOf(inst.getPort()))
-				.increment();
+		counterCache.computeIfAbsent(inst.getInstanceId(), k -> Metrics.counter("alb.routing.selected", "backend",
+				inst.getInstanceId(), "port", String.valueOf(inst.getPort()))).increment();
 	}
 }
