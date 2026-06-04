@@ -35,7 +35,7 @@ public class DynamicWeightEngine {
 	private static final double[] MU = { 5.0, 1.0, 0.05 };
 
 	// Tốc độ EMA khi cập nhật trọng số — nhỏ = thay đổi chậm, ổn định hơn
-	private static final double WEIGHT_EMA_ALPHA = 0.15;
+	private static final double WEIGHT_EMA_ALPHA = 0.08;
 
 	private static final double EPSILON = 1e-6;
 

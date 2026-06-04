@@ -133,10 +133,17 @@ public class MetricsPoller {
 
 			ScoreBreakdown rawBreakdown = scoreCalculator.calculateScore(instanceId, metrics);
 
-			metricsCache.putScore(instanceId, rawBreakdown);
+			double smoothedFinalScore = applyScoreEma(instanceId, rawBreakdown.finalScore());
+
+			ScoreBreakdown smoothedBreakdown = new ScoreBreakdown(instanceId, rawBreakdown.ewmaLatency(),
+					rawBreakdown.normLatency(), rawBreakdown.normQueue(), rawBreakdown.normCpu(),
+					rawBreakdown.baseScore(), rawBreakdown.pidPenalty(), smoothedFinalScore,
+					rawBreakdown.updatedAtMs());
+
+			metricsCache.putScore(instanceId, smoothedBreakdown);
 			latencyValues.put(instanceId, rawBreakdown.ewmaLatency());
 			queueValues.put(instanceId, realQueue);
-			scoreValues.put(instanceId, rawBreakdown.finalScore());
+			scoreValues.put(instanceId, smoothedFinalScore);
 
 			registerPrometheusGauges(instanceId);
 
