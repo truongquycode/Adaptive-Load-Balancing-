@@ -38,7 +38,9 @@ public class ScoreCalculator {
 		}
 
 		PercentileSnapshot snap = windowManager.getSnapshot(instanceId);
-		double p75System = windowManager.getSystemP75();
+		SlidingWindowManager.SystemSnapshot sysSs = windowManager.getSystemSnapshot(); // 1 lock
+
+		double p75System = sysSs.p75();
 
 		// ── EWMA latency smoothing ────────────────────────────────────────────
 		double lRaw = current.getLatency() > 0 ? current.getLatency() : snap.p50();
@@ -58,8 +60,8 @@ public class ScoreCalculator {
 		// 8081: EWMA=80ms → nL = (80-30)/(500-30) = 0.106 ← thấp rõ ràng
 		// Chênh lệch 0.68 → MCDM phân kỳ mạnh, routing tránh 8083 đúng cách
 
-		double sysP5 = windowManager.getSystemP5();
-		double sysP95 = windowManager.getSystemP95();
+		double sysP5     = sysSs.p5();
+		double sysP95    = sysSs.p95();
 
 		// Fallback khi global histogram chưa đủ sample (warmup <160 observations)
 		if (sysP95 <= sysP5 || sysP5 < 1.0) {
@@ -80,10 +82,6 @@ public class ScoreCalculator {
 		// ── PID Penalty: vẫn dùng system P5/P95 cho nhất quán ───────────────
 		double p5 = sysP5;
 		double p95 = sysP95;
-		
-		if (p95 <= p5) {
-	        p95 = p5 + 1.0; 
-	    }
 
 		double normalizedEwma = Math.max(0.0, Math.min(1.0, (ewmaLat - p5) / (p95 - p5)));
 		double normalizedP75 = Math.max(0.0, Math.min(1.0, (p75System - p5) / (p95 - p5)));

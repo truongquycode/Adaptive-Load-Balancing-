@@ -28,13 +28,58 @@ public class SlidingWindowManager {
 			new Histogram(1, MAX_LATENCY_MS, SIGNIFICANT_DIGITS) };
 	private final AtomicInteger globalActiveIdx = new AtomicInteger(0);
 
+	private record InstanceState(Histogram[] latHists, AtomicInteger latIdx, Histogram[] qHists, AtomicInteger qIdx) {
+	}
+
+	public record SystemSnapshot(double p5, double p75, double p95) {
+	}
+
+	public SystemSnapshot getSystemSnapshot() {
+		synchronized (globalLock) {
+			Histogram h = getSafeGlobalHistogram();
+			if (h.getTotalCount() == 0)
+				return new SystemSnapshot(5.0, 50.0, 200.0);
+			return new SystemSnapshot(h.getValueAtPercentile(5.0), h.getValueAtPercentile(75.0),
+					h.getValueAtPercentile(95.0));
+		}
+	}
+
+	private final ConcurrentHashMap<String, InstanceState> instanceStates = new ConcurrentHashMap<>();
+
 	public void addMetrics(String instanceId, double lat, double queue) {
 		long latVal = Math.min(Math.max(1, (long) lat), MAX_LATENCY_MS);
 		long qVal = Math.min(Math.max(1, (long) queue), MAX_QUEUE_SIZE);
 
-		recordRotating(latHistPairs, latActiveIdx, instanceId, latVal, MAX_LATENCY_MS, WINDOW_SIZE);
-		recordRotating(qHistPairs, qActiveIdx, instanceId, qVal, MAX_QUEUE_SIZE, WINDOW_SIZE);
+		// 1 lookup duy nhất thay vì 4
+		InstanceState s = instanceStates.computeIfAbsent(instanceId,
+				k -> new InstanceState(
+						new Histogram[] { new Histogram(1, MAX_LATENCY_MS, SIGNIFICANT_DIGITS),
+								new Histogram(1, MAX_LATENCY_MS, SIGNIFICANT_DIGITS) },
+						new AtomicInteger(0), new Histogram[] { new Histogram(1, MAX_QUEUE_SIZE, SIGNIFICANT_DIGITS),
+								new Histogram(1, MAX_QUEUE_SIZE, SIGNIFICANT_DIGITS) },
+						new AtomicInteger(0)));
 
+		// ── Latency histogram ──────────────────────────────────────
+		int lActive = s.latIdx().get();
+		s.latHists()[lActive].recordValue(latVal);
+		if (s.latHists()[lActive].getTotalCount() > WINDOW_SIZE) {
+			int lNext = 1 - lActive;
+			if (s.latIdx().compareAndSet(lActive, lNext)) {
+				s.latHists()[lNext].reset();
+			}
+		}
+
+		// ── Queue histogram ────────────────────────────────────────
+		int qActive = s.qIdx().get();
+		s.qHists()[qActive].recordValue(qVal);
+		if (s.qHists()[qActive].getTotalCount() > WINDOW_SIZE) {
+			int qNext = 1 - qActive;
+			if (s.qIdx().compareAndSet(qActive, qNext)) {
+				s.qHists()[qNext].reset();
+			}
+		}
+
+		// ── Global histogram (vẫn giữ lock như cũ) ────────────────
 		synchronized (globalLock) {
 			int gi = globalActiveIdx.get();
 			globalPair[gi].recordValue(latVal);
@@ -46,46 +91,25 @@ public class SlidingWindowManager {
 		}
 	}
 
-	private void recordRotating(ConcurrentHashMap<String, Histogram[]> pairsMap,
-			ConcurrentHashMap<String, AtomicInteger> idxMap, String instanceId, long value, long maxVal,
-			int windowSize) {
-		Histogram[] hists = pairsMap.computeIfAbsent(instanceId, k -> new Histogram[] {
-				new Histogram(1, maxVal, SIGNIFICANT_DIGITS), new Histogram(1, maxVal, SIGNIFICANT_DIGITS) });
-		AtomicInteger idx = idxMap.computeIfAbsent(instanceId, k -> new AtomicInteger(0));
-
-		int active = idx.get();
-		hists[active].recordValue(value);
-
-		if (hists[active].getTotalCount() > windowSize) {
-			int next = 1 - active;
-			if (idx.compareAndSet(active, next)) {
-				hists[next].reset();
-			}
-		}
-	}
-
 	public PercentileSnapshot getSnapshot(String instanceId) {
-		Histogram[] lHists = latHistPairs.get(instanceId);
-		Histogram[] qHists = qHistPairs.get(instanceId);
+		InstanceState s = instanceStates.get(instanceId); // 1 lookup thay vì 4
 
-		if (lHists == null) {
+		if (s == null) {
 			return new PercentileSnapshot(0.0, 50.0, 100.0, 10.0);
 		}
 
-		int lIdx = latActiveIdx.getOrDefault(instanceId, new AtomicInteger(0)).get();
-		Histogram lh = lHists[lIdx];
+		int lIdx = s.latIdx().get();
+		Histogram lh = s.latHists()[lIdx];
 
 		if (lh.getTotalCount() == 0) {
 			return new PercentileSnapshot(0.0, 50.0, 100.0, 10.0);
 		}
 
 		double qP99 = 10.0;
-		if (qHists != null) {
-			int qIdx = qActiveIdx.getOrDefault(instanceId, new AtomicInteger(0)).get();
-			Histogram qh = qHists[qIdx];
-			if (qh.getTotalCount() > 0) {
-				qP99 = qh.getValueAtPercentile(99.0);
-			}
+		int qIdx = s.qIdx().get();
+		Histogram qh = s.qHists()[qIdx];
+		if (qh.getTotalCount() > 0) {
+			qP99 = qh.getValueAtPercentile(99.0);
 		}
 
 		return new PercentileSnapshot(lh.getValueAtPercentile(5.0), lh.getValueAtPercentile(50.0),
@@ -129,20 +153,8 @@ public class SlidingWindowManager {
 		}
 	}
 
-	public double getSystemP50() {
-		synchronized (globalLock) {
-			int gi = globalActiveIdx.get();
-			if (globalPair[gi].getTotalCount() == 0)
-				return 50.0;
-			return globalPair[gi].getValueAtPercentile(50.0);
-		}
-	}
-
 	public void resetAll() {
-		latHistPairs.clear();
-		qHistPairs.clear();
-		latActiveIdx.clear();
-		qActiveIdx.clear();
+		instanceStates.clear();
 		globalPair[0].reset();
 		globalPair[1].reset();
 		globalActiveIdx.set(0);
