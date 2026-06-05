@@ -39,6 +39,10 @@ public class AlbMetricsController {
 					continue;
 				if (status != null && status.startsWith("4"))
 					continue; // bỏ 4xx
+				String uri = meter.getId().getTag("uri");
+	            if (uri != null && (uri.equals("/api/alb-metrics") || uri.startsWith("/actuator"))) {
+	                continue;
+	            }
 				if (meter instanceof Timer t) {
 					count += t.count();
 					totalTime += t.totalTime(TimeUnit.SECONDS);

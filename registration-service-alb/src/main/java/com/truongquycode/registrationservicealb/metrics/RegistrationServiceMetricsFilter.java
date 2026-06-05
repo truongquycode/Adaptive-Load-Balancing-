@@ -22,6 +22,12 @@ public class RegistrationServiceMetricsFilter extends OncePerRequestFilter {
              .description("Số lượng HTTP requests đang được xử lý song song")
              .register(registry);
     }
+    
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        String uri = request.getRequestURI();
+        return uri.equals("/api/alb-metrics") || uri.startsWith("/actuator");
+    }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
