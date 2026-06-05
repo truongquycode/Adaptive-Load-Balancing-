@@ -8,6 +8,7 @@ import com.truongquycode.apigatewayalb.model.ScoreBreakdown;
 import com.truongquycode.apigatewayalb.util.MetricsCache;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cloud.client.ServiceInstance;
@@ -23,6 +24,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Component
@@ -38,6 +40,8 @@ public class MetricsPoller {
 	private final SlidingWindowManager windowManager;
 	private final WebClient.Builder webClientBuilder;
 	private final InflightTracker inflightTracker;
+	private WebClient webClient;
+	private Set<String> lastActiveIds = Set.of();
 
 	private final Map<String, Double> latencyValues = new ConcurrentHashMap<>();
 	private final Map<String, Double> queueValues = new ConcurrentHashMap<>();
@@ -50,6 +54,11 @@ public class MetricsPoller {
 	private final AtomicBoolean isPolling = new AtomicBoolean(false);
 
 	private record TrafficState(double count, double totalTimeSec, double lastLatency) {
+	}
+
+	@PostConstruct
+	public void init() {
+		this.webClient = webClientBuilder.build();
 	}
 
 	@Scheduled(fixedRateString = "${alb.polling.interval:200}")
@@ -66,18 +75,22 @@ public class MetricsPoller {
 		}
 
 		// Tách logic dọn dẹp ra hàm riêng
-		cleanupStaleData(instances);
-
-		WebClient webClient = webClientBuilder.build();
+		Set<String> currentIds = instances.stream()
+			    .map(ServiceInstance::getInstanceId)
+			    .collect(Collectors.toSet());
+			if (!currentIds.equals(lastActiveIds)) {
+			    lastActiveIds = currentIds;
+			    cleanupStaleData(currentIds);
+			}
 
 		// Luồng chính ánh xạ từng instance vào hàm pollSingleInstance
-		List<Mono<Void>> polls = instances.stream().map(instance -> pollSingleInstance(instance, webClient)).toList();
+		List<Mono<Void>> polls = instances.stream().map(this::pollSingleInstance).toList();
 
 		Mono.when(polls).doFinally(signal -> isPolling.set(false)).subscribe();
 	}
 
 	// Lấy dữ liệu từ một instance duy nhất
-	private Mono<Void> pollSingleInstance(ServiceInstance instance, WebClient webClient) {
+	private Mono<Void> pollSingleInstance(ServiceInstance instance) {
 		String instanceId = instance.getInstanceId();
 
 		String url = instance.getUri().toString() + "/api/alb-metrics";
@@ -100,21 +113,20 @@ public class MetricsPoller {
 							smoothed, // finalScore (đã smoothed)
 							System.currentTimeMillis());
 					metricsCache.putScore(instanceId, penaltyBreakdown);
-					log.warn("Poll failed for {} (attempt #{}), smoothedScore={:.2f}", instanceId, failures, smoothed);
+					log.warn("Poll failed for {} (attempt #{}), smoothedScore={}", instanceId, failures, smoothed);
 					return Mono.empty();
 				}).then();
 	}
 
 	// Dọn dẹp cache của các instance đã offline
-	private void cleanupStaleData(List<ServiceInstance> instances) {
-		List<String> activeIds = instances.stream().map(ServiceInstance::getInstanceId).toList();
-		trafficStates.keySet().retainAll(activeIds);
-		metricsCache.removeStaleInstances(activeIds);
-		latencyValues.keySet().retainAll(activeIds);
-		queueValues.keySet().retainAll(activeIds);
-		scoreValues.keySet().retainAll(activeIds);
-		consecutiveFailures.keySet().retainAll(activeIds);
-		smoothedScores.keySet().retainAll(activeIds);
+	private void cleanupStaleData(Set<String> activeIds) {
+	    trafficStates.keySet().retainAll(activeIds);
+	    metricsCache.removeStaleInstances(activeIds);
+	    latencyValues.keySet().retainAll(activeIds);
+	    queueValues.keySet().retainAll(activeIds);
+	    scoreValues.keySet().retainAll(activeIds);
+	    consecutiveFailures.keySet().retainAll(activeIds);
+	    smoothedScores.keySet().retainAll(activeIds);
 	}
 
 	private void processMetrics(String instanceId, JsonNode node) {
@@ -132,15 +144,8 @@ public class MetricsPoller {
 			windowManager.addMetrics(instanceId, latency, realQueue);
 
 			ScoreBreakdown rawBreakdown = scoreCalculator.calculateScore(instanceId, metrics);
-
 			double smoothedFinalScore = applyScoreEma(instanceId, rawBreakdown.finalScore());
-
-			ScoreBreakdown smoothedBreakdown = new ScoreBreakdown(instanceId, rawBreakdown.ewmaLatency(),
-					rawBreakdown.normLatency(), rawBreakdown.normQueue(), rawBreakdown.normCpu(),
-					rawBreakdown.baseScore(), rawBreakdown.pidPenalty(), smoothedFinalScore,
-					rawBreakdown.updatedAtMs());
-
-			metricsCache.putScore(instanceId, smoothedBreakdown);
+			metricsCache.putScore(instanceId, rawBreakdown.withFinalScore(smoothedFinalScore));
 			latencyValues.put(instanceId, rawBreakdown.ewmaLatency());
 			queueValues.put(instanceId, realQueue);
 			scoreValues.put(instanceId, smoothedFinalScore);
@@ -179,11 +184,12 @@ public class MetricsPoller {
 	}
 
 	private double calculateDeltaLatency(String id, double currentCount, double currentTotalTime) {
-		double p50 = windowManager.getSnapshot(id).p50();
+		
 
 		TrafficState prev = trafficStates.get(id);
 
 		if (prev == null) {
+			double p50 = windowManager.getSnapshot(id).p50();
 			// POST-RESET: Thiết lập baseline mới từ giá trị backend hiện tại.
 			// Trả về p50 (mặc định 50ms khi histogram rỗng) thay vì tính
 			// historical average từ toàn bộ backend timer (gây ghost latency).

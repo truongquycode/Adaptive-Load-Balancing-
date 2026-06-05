@@ -5,6 +5,7 @@ import com.truongquycode.apigatewayalb.model.ScoreBreakdown;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -31,7 +32,7 @@ public class MetricsCache {
         scoreMap.remove(id); 
     }
     
-    public void removeStaleInstances(List<String> activeIds) {
+    public void removeStaleInstances(Collection<String> activeIds) {
         metricsMap.keySet().retainAll(activeIds);
         scoreMap.keySet().retainAll(activeIds);
     }

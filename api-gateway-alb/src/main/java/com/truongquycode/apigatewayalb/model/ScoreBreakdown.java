@@ -10,4 +10,12 @@ public record ScoreBreakdown(
     double pidPenalty,
     double finalScore,
     long updatedAtMs
-) {}
+) {
+	public ScoreBreakdown withFinalScore(double newFinalScore) {
+        return new ScoreBreakdown(
+            instanceId, ewmaLatency, normLatency, normQueue, normCpu,
+            baseScore, pidPenalty, newFinalScore, updatedAtMs
+        );
+    }
+	
+}
