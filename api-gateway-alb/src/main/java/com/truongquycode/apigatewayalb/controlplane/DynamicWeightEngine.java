@@ -233,6 +233,15 @@ public class DynamicWeightEngine {
 		return weights.gamma();
 	}
 
+	/**
+	 * Tính α·nL + β·nQ + γ·nC trong 1 volatile read thay vì 3. Gọi từ
+	 * ScoreCalculator trên hot path.
+	 */
+	public double computeBaseScore(double nL, double nQ, double nC) {
+		McdmWeights w = weights; // 1 volatile read duy nhất
+		return (w.alpha() * nL) + (w.beta() * nQ) + (w.gamma() * nC);
+	}
+
 	// Đăng ký gauge để Prometheus theo dõi trọng số thay đổi theo thời gian
 	@PostConstruct
 	public void registerMetrics() {
