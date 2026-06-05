@@ -67,7 +67,7 @@ public class ScoreCalculator {
 		// Guards trong normalizeLatency không bao giờ kích hoạt tại đây:
 		// - ewmaLat từ EWMA smoother luôn finite > 0 → guard NaN/negative bỏ qua
 		// - fallback check trên đảm bảo sysP95 > sysP5 → guard p95<=p5 bỏ qua
-		double nL = Math.max(0.0, Math.min(1.0, (ewmaLat - sysP5) * invRange));
+		double nL = norm.normalizeLatency(ewmaLat, sysP5, invRange);
 		double nQ = norm.normalizeQueue(current.getQueueLength(), snap.qP99());
 		double nC = norm.normalizeCpu(current.getCpu());
 
@@ -80,7 +80,7 @@ public class ScoreCalculator {
 		// sau khi fallback check loại bỏ 2 guard trả về 0.5 trong normalizeLatency
 		// [OPT-2] p5/p95 bị xóa — chỉ là bản sao vô nghĩa của sysP5/sysP95
 		// [OPT-3 tiếp] normalizedP75 dùng lại invRange đã tính
-		double normalizedP75 = Math.max(0.0, Math.min(1.0, (sysSs.p75() - sysP5) * invRange));
+		double normalizedP75 = norm.normalizeLatency(sysSs.p75(), sysP5, invRange);
 
 		double penalty = pidController.calculatePenalty(instanceId, nL, normalizedP75, props.getPid());
 		double finalScore = baseScore + penalty;
