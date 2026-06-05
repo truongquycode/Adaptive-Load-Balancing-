@@ -20,11 +20,10 @@ public class InflightLifecycle implements LoadBalancerLifecycle<Object, Object, 
 
 	private final InflightTracker tracker;
 
-	/**
-	 * lbResponseKey → instanceId: dùng cho onComplete để decrement chính xác. Key =
-	 * System.identityHashCode(lbResponse) — đồng nhất với onComplete.
-	 */
-	private final ConcurrentHashMap<Integer, String> pendingComplete = new ConcurrentHashMap<>();
+	private record PendingEntry(String instanceId, int reqKey) {
+	}
+
+	private final ConcurrentHashMap<Integer, PendingEntry> pendingComplete = new ConcurrentHashMap<>();
 
 	/**
 	 * requestKey → lbResponseKey: dùng để phát hiện retry (cùng request, nhưng load
@@ -54,17 +53,15 @@ public class InflightLifecycle implements LoadBalancerLifecycle<Object, Object, 
 		int reqKey = System.identityHashCode(request);
 		int resKey = System.identityHashCode(lbResponse);
 
-		// Retry detection: nếu request này đã được gán lbResponse khác trước đó,
-		// decrement counter của instance cũ (attempt thất bại).
 		Integer prevResKey = requestToResponse.put(reqKey, resKey);
-		if (prevResKey != null && !prevResKey.equals(resKey)) {
-			String prevInstanceId = pendingComplete.remove(prevResKey);
-			if (prevInstanceId != null) {
-				tracker.decrement(prevInstanceId);
+		if (prevResKey != null && prevResKey.intValue() != resKey) {
+			PendingEntry prev = pendingComplete.remove(prevResKey);
+			if (prev != null) {
+				tracker.decrement(prev.instanceId());
 			}
 		}
 
-		pendingComplete.put(resKey, instanceId);
+		pendingComplete.put(resKey, new PendingEntry(instanceId, reqKey));
 		tracker.increment(instanceId);
 	}
 
@@ -74,15 +71,13 @@ public class InflightLifecycle implements LoadBalancerLifecycle<Object, Object, 
 				|| !completionContext.getLoadBalancerResponse().hasServer())
 			return;
 
-		// dùng lbResponse hash — khớp chính xác với onStartRequest
 		int resKey = System.identityHashCode(completionContext.getLoadBalancerResponse());
-		String instanceId = pendingComplete.remove(resKey);
+		PendingEntry e = pendingComplete.remove(resKey);
 
-		if (instanceId != null) {
-			tracker.decrement(instanceId);
+		if (e != null) {
+			tracker.decrement(e.instanceId());
+			requestToResponse.remove(e.reqKey());
 		}
-		// Nếu null: onStartRequest chưa được gọi hoặc đã bị retry cleanup — an toàn để
-		// bỏ qua.
 	}
 
 	public void resetActiveRequests() {
