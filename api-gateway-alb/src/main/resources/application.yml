@@ -7,8 +7,8 @@ spring:
     cloud:
         gateway:
             httpclient:
-                connect-timeout: 2000
-                response-timeout: 15s
+                connect-timeout: 1000
+                response-timeout: 4s
                 pool:
                     type: elastic
                     max-connections: 1000
@@ -64,3 +64,14 @@ eureka:
     instance:
         prefer-ip-address: true
         lease-renewal-interval-in-seconds: 10
+# application.yml — Resilience4j config
+resilience4j:
+  circuitbreaker:
+    instances:
+      backend-cb:
+        sliding-window-size: 20
+        failure-rate-threshold: 25           # mở circuit khi 25% fail
+        slow-call-rate-threshold: 50         # slow = request > slow-call-duration
+        slow-call-duration-threshold: 3s     # 3s là "slow" cho workload này
+        wait-duration-in-open-state: 5s      # giữ open 5s trước khi thử lại
+      permitted-calls-in-half-open-state: 3
