@@ -53,7 +53,6 @@ public class NormalizationFunctions {
 	public double normalizeCpu(double cpuRaw) {
 		if (Double.isNaN(cpuRaw) || cpuRaw < 0)
 			return 0.5;
-		// Math.max(0.0, ...) thừa: guard trên đã đảm bảo cpuRaw >= 0
 		return Math.min(1.0, cpuRaw);
 	}
 }

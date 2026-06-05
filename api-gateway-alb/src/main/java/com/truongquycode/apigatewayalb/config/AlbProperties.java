@@ -38,11 +38,6 @@ public class AlbProperties {
 	private PidConfig pid = new PidConfig();
 	private Weights weights = new Weights();
 
-	// ─────────────────────────────────────────────────────────────────────────
-	// Tần suất MetricsPoller gọi /api/alb-metrics trên từng backend instance.
-	// Giá trị nhỏ → phát hiện degradation nhanh hơn, nhưng tốn băng thông hơn.
-	// 200ms: đủ nhạy với burst 800 RPS (mỗi cycle stale tối đa 160 requests).
-	// ─────────────────────────────────────────────────────────────────────────
 	@Data
 	public static class Polling {
 		private long interval = 200; // ms

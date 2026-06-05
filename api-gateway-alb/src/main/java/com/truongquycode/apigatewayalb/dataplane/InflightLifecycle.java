@@ -9,12 +9,6 @@ import org.springframework.cloud.client.loadbalancer.Request;
 import org.springframework.cloud.client.loadbalancer.Response;
 import org.springframework.stereotype.Component;
 
-/**
- * Theo dõi số request đang bay (in-flight) cho mỗi instance. Dùng duy nhất
- * LB_RESPONSE hash cho cả hai hook. Retry detection vẫn hoạt động qua
- * requestKey map riêng biệt: requestKey tracks request → current lbResponse,
- * phát hiện khi retry chọn instance khác và giảm counter cho instance cũ.
- */
 @Component
 public class InflightLifecycle implements LoadBalancerLifecycle<Object, Object, ServiceInstance> {
 
@@ -25,10 +19,6 @@ public class InflightLifecycle implements LoadBalancerLifecycle<Object, Object, 
 
 	private final ConcurrentHashMap<Integer, PendingEntry> pendingComplete = new ConcurrentHashMap<>();
 
-	/**
-	 * requestKey → lbResponseKey: dùng để phát hiện retry (cùng request, nhưng load
-	 * balancer chọn instance khác lần này).
-	 */
 	private final ConcurrentHashMap<Integer, Integer> requestToResponse = new ConcurrentHashMap<>();
 
 	public InflightLifecycle(InflightTracker tracker) {

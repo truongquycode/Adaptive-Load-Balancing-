@@ -8,8 +8,8 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @NoArgsConstructor
 public class InstanceMetrics {
-    private String instanceId;
-    private double latency;
-    private double queueLength;
-    private double cpu;
+	private String instanceId;
+	private double latency;
+	private double queueLength;
+	private double cpu;
 }

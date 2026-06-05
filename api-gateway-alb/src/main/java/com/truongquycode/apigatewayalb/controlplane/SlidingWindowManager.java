@@ -19,11 +19,6 @@ public class SlidingWindowManager {
 
 	private final Object globalLock = new Object();
 
-	private final ConcurrentHashMap<String, Histogram[]> latHistPairs = new ConcurrentHashMap<>();
-	private final ConcurrentHashMap<String, Histogram[]> qHistPairs = new ConcurrentHashMap<>();
-	private final ConcurrentHashMap<String, AtomicInteger> latActiveIdx = new ConcurrentHashMap<>();
-	private final ConcurrentHashMap<String, AtomicInteger> qActiveIdx = new ConcurrentHashMap<>();
-
 	private final Histogram[] globalPair = { new Histogram(1, MAX_LATENCY_MS, SIGNIFICANT_DIGITS),
 			new Histogram(1, MAX_LATENCY_MS, SIGNIFICANT_DIGITS) };
 	private final AtomicInteger globalActiveIdx = new AtomicInteger(0);
@@ -50,7 +45,6 @@ public class SlidingWindowManager {
 		long latVal = Math.min(Math.max(1, (long) lat), MAX_LATENCY_MS);
 		long qVal = Math.min(Math.max(1, (long) queue), MAX_QUEUE_SIZE);
 
-		// 1 lookup duy nhất thay vì 4
 		InstanceState s = instanceStates.computeIfAbsent(instanceId,
 				k -> new InstanceState(
 						new Histogram[] { new Histogram(1, MAX_LATENCY_MS, SIGNIFICANT_DIGITS),
@@ -79,7 +73,7 @@ public class SlidingWindowManager {
 			}
 		}
 
-		// ── Global histogram (vẫn giữ lock như cũ) ────────────────
+		// ── Global histogram ────────────────
 		synchronized (globalLock) {
 			int gi = globalActiveIdx.get();
 			globalPair[gi].recordValue(latVal);
@@ -92,7 +86,7 @@ public class SlidingWindowManager {
 	}
 
 	public PercentileSnapshot getSnapshot(String instanceId) {
-		InstanceState s = instanceStates.get(instanceId); // 1 lookup thay vì 4
+		InstanceState s = instanceStates.get(instanceId);
 
 		if (s == null) {
 			return new PercentileSnapshot(0.0, 50.0, 100.0, 10.0);

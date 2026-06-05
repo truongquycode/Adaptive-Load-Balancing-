@@ -43,6 +43,11 @@ public class MetricsPoller {
 	private WebClient webClient;
 	private Set<String> lastActiveIds = Set.of();
 
+	private static final double EMA_ALPHA_SPIKE = 0.60;
+	private static final double EMA_ALPHA_RISE = 0.35;
+	private static final double EMA_ALPHA_RECOVER = 0.25;
+	private static final double EMA_SPIKE_THRESHOLD = 0.30;
+
 	private final Map<String, Double> latencyValues = new ConcurrentHashMap<>();
 	private final Map<String, Double> queueValues = new ConcurrentHashMap<>();
 	private final Map<String, Double> scoreValues = new ConcurrentHashMap<>();
@@ -50,7 +55,6 @@ public class MetricsPoller {
 	private final Map<String, Integer> consecutiveFailures = new ConcurrentHashMap<>();
 	private final Map<String, Double> smoothedScores = new ConcurrentHashMap<>();
 	private final Set<String> registeredGauges = ConcurrentHashMap.newKeySet();
-	private final Set<String> registeredRoutingGauges = ConcurrentHashMap.newKeySet();
 	private final AtomicBoolean isPolling = new AtomicBoolean(false);
 
 	private record TrafficState(double count, double totalTimeSec, double lastLatency) {
@@ -74,14 +78,11 @@ public class MetricsPoller {
 			return;
 		}
 
-		// Tách logic dọn dẹp ra hàm riêng
-		Set<String> currentIds = instances.stream()
-			    .map(ServiceInstance::getInstanceId)
-			    .collect(Collectors.toSet());
-			if (!currentIds.equals(lastActiveIds)) {
-			    lastActiveIds = currentIds;
-			    cleanupStaleData(currentIds);
-			}
+		Set<String> currentIds = instances.stream().map(ServiceInstance::getInstanceId).collect(Collectors.toSet());
+		if (!currentIds.equals(lastActiveIds)) {
+			lastActiveIds = currentIds;
+			cleanupStaleData(currentIds);
+		}
 
 		// Luồng chính ánh xạ từng instance vào hàm pollSingleInstance
 		List<Mono<Void>> polls = instances.stream().map(this::pollSingleInstance).toList();
@@ -120,13 +121,13 @@ public class MetricsPoller {
 
 	// Dọn dẹp cache của các instance đã offline
 	private void cleanupStaleData(Set<String> activeIds) {
-	    trafficStates.keySet().retainAll(activeIds);
-	    metricsCache.removeStaleInstances(activeIds);
-	    latencyValues.keySet().retainAll(activeIds);
-	    queueValues.keySet().retainAll(activeIds);
-	    scoreValues.keySet().retainAll(activeIds);
-	    consecutiveFailures.keySet().retainAll(activeIds);
-	    smoothedScores.keySet().retainAll(activeIds);
+		trafficStates.keySet().retainAll(activeIds);
+		metricsCache.removeStaleInstances(activeIds);
+		latencyValues.keySet().retainAll(activeIds);
+		queueValues.keySet().retainAll(activeIds);
+		scoreValues.keySet().retainAll(activeIds);
+		consecutiveFailures.keySet().retainAll(activeIds);
+		smoothedScores.keySet().retainAll(activeIds);
 	}
 
 	private void processMetrics(String instanceId, JsonNode node) {
@@ -158,33 +159,34 @@ public class MetricsPoller {
 	}
 
 	// ── Helper: Asymmetric EMA ────────────────────────────────────────────────
-	// Phát hiện degradation NHANH (alpha=0.55), phục hồi CHẬM (alpha=0.20)
+	// Phát hiện degradation NHANH (alpha=0.60), phục hồi CHẬM (alpha=0.25)
 	// → Tránh yo-yo: instance phục hồi nhưng ngay lập tức bị flood traffic lại
 	private double applyScoreEma(String instanceId, double rawScore) {
-		double prev = smoothedScores.getOrDefault(instanceId, rawScore);
+		// Cold start: không smooth, tránh tính vòng vô nghĩa
+		Double prevObj = smoothedScores.get(instanceId);
+		if (prevObj == null) {
+			smoothedScores.put(instanceId, rawScore);
+			return rawScore;
+		}
+
+		double prev = prevObj;
 		double delta = rawScore - prev;
 
 		double alpha;
-		if (delta > 0.30) {
-			// Tăng đột ngột lớn → chaos event thực sự (không phải network noise)
-			// Phản ứng NHANH để loại node ra khỏi pool trong vòng 1-2 giây
-			alpha = 0.60;
+		if (delta > EMA_SPIKE_THRESHOLD) {
+			alpha = EMA_ALPHA_SPIKE; // chaos event thực sự → phản ứng nhanh
 		} else if (delta > 0.0) {
-			// Tăng nhỏ → có thể là network jitter
-			// Phản ứng VỪA PHẢI để lọc noise
-			alpha = 0.35;
+			alpha = EMA_ALPHA_RISE; // jitter nhỏ → phản ứng vừa phải
 		} else {
-			// Giảm → recovery, phục hồi thận trọng tránh flood traffic trở lại
-			alpha = 0.25;
+			alpha = EMA_ALPHA_RECOVER; // recovery → thận trọng, tránh flood
 		}
 
-		double smoothed = alpha * rawScore + (1 - alpha) * prev;
+		double smoothed = prev + alpha * delta; // tái dùng delta đã tính
 		smoothedScores.put(instanceId, smoothed);
 		return smoothed;
 	}
 
 	private double calculateDeltaLatency(String id, double currentCount, double currentTotalTime) {
-		
 
 		TrafficState prev = trafficStates.get(id);
 
@@ -235,20 +237,24 @@ public class MetricsPoller {
 			Gauge.builder("alb.final.score", scoreValues, map -> map.getOrDefault(id, 0.0)).tag("backend", id)
 					.register(registry);
 
-		}
+			Gauge.builder("alb.routing.score", this, self -> {
+				double finalScore = self.scoreValues.getOrDefault(id, 0.5);
+				int localInflight = self.inflightTracker.getInflight(id);
+				int totalInflight = self.inflightTracker.getTotalInflight();
 
-		if (registeredRoutingGauges.add(id)) {
-			Gauge.builder("alb.routing.score", () -> {
-				double finalScore = scoreValues.getOrDefault(id, 0.5);
-				int localInflight = inflightTracker.getInflight(id);
-				int totalInflight = inflightTracker.getTotalInflight();
+				if (totalInflight <= 0)
+					return finalScore;
 
-				double inflightPenalty = 0.0;
-				if (totalInflight > 0) {
-					double excessShare = Math.max(0.0, ((double) localInflight / totalInflight) - (1.0 / 3.0));
-					inflightPenalty = 0.8 * Math.log(1.0 + excessShare);
-				}
-				return finalScore + inflightPenalty;
+				// n động: đúng khi scale lên/xuống instance
+				int n = self.discoveryClient.getInstances(REGISTRATION_SERVICE_ID).size();
+				if (n <= 0)
+					return finalScore;
+
+				double excessRatio = ((double) localInflight * n / totalInflight) - 1.0;
+				if (excessRatio <= 0)
+					return finalScore;
+
+				return finalScore + 0.6 * Math.pow(excessRatio, 1.3); // OMEGA_ABS=0.6, PENALTY_EXPONENT=1.3
 			}).tag("backend", id).register(registry);
 		}
 	}

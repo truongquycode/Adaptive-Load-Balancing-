@@ -21,8 +21,6 @@ public class PIDController {
 	public double calculatePenalty(String instanceId, double rawLat, double setpoint, PidConfig cfg) {
 		long now = System.currentTimeMillis();
 
-		// [OPT 1] Cache cfg getters ra local — JIT scalar replacement + 8 field reads 1
-		// lần
 		final double kp = cfg.getKp();
 		final double ki = cfg.getKi();
 		final double kd = cfg.getKd();
@@ -40,7 +38,6 @@ public class PIDController {
 				state.setLastRawLat(rawLat);
 			}
 
-			// [OPT 2] Cache state getters ra local — tránh gọi getter nhiều lần
 			final long prevTimestamp = state.getLastTimestamp();
 			final double prevOutput = state.getLastOutput();
 			final double prevIntegral = state.getIntegral();
@@ -54,7 +51,6 @@ public class PIDController {
 			double p = kp * error;
 
 			// ----- I với Conditional Anti-Windup -----
-			// [OPT 3] Thay Math.signum() × 2 bằng phép nhân — an toàn khi isSaturated=true
 			boolean isSaturated = Math.abs(prevOutput) >= 2.0;
 			boolean sameSign = (error * prevOutput) > 0.0;
 
@@ -63,8 +59,6 @@ public class PIDController {
 				double newI = prevIntegral + (error * actualDt);
 
 				if (Math.abs(error) < 0.1) {
-					// [OPT 4] Math.exp(LN_0_97 * dt) thay vì Math.pow(0.97, dt)
-					// Loại bỏ Math.log() nội bộ trong Math.pow()
 					newI *= Math.exp(LN_0_97 * actualDt);
 				}
 
@@ -77,14 +71,12 @@ public class PIDController {
 			// ----- D với Low-Pass Filter -----
 			double rawD = (rawLat - prevRawLat) / actualDt;
 
-			// [OPT 5] Lưu expTerm và tái dùng — tránh tính 1-dynamicThetaD lần 2
 			double expTerm = Math.exp(-actualDt / tauD);
 			double filteredD = ((1.0 - expTerm) * rawD) + (expTerm * prevFilteredD);
 			double d = kd * filteredD;
 
 			double u = p + i + d;
 
-			// [OPT 6] Xóa state.setLastError(error) — dead write, không ai đọc lastError
 			state.setLastRawLat(rawLat);
 			state.setLastFilteredD(filteredD);
 			state.setLastOutput(u);

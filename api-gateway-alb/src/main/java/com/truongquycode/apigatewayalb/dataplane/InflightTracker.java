@@ -7,7 +7,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 @Component
 public class InflightTracker {
 	private final ConcurrentHashMap<String, AtomicInteger> counts = new ConcurrentHashMap<>();
-	private final AtomicInteger totalInflight = new AtomicInteger(0); // Biến tổng O(1)
+	private final AtomicInteger totalInflight = new AtomicInteger(0);
 
 	public void increment(String instanceId) {
 		AtomicInteger c = counts.get(instanceId);

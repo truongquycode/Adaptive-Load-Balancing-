@@ -48,7 +48,8 @@ public class DynamicWeightEngine {
 	private final MetricsCache cache;
 	private final MeterRegistry registry;
 
-	// Trọng số AHP — định nghĩa tay, ưu tiên latency nhất
+	// Trọng số AHP — Phương pháp Phân tích Thứ bậc dựa trên độ quan trọng của các
+	// chỉ số
 	// Workload CPU-intensive → CPU và latency quan trọng hơn queue
 	private static final double[] AHP_WEIGHTS = { 0.648, 0.230, 0.122 };
 
