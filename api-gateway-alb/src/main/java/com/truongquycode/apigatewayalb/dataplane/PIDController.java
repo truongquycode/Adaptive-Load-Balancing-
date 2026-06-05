@@ -16,57 +16,76 @@ public class PIDController {
 
 	private final Cache<String, PidState> states = Caffeine.newBuilder().expireAfterAccess(5, TimeUnit.MINUTES).build();
 
-	public double calculatePenalty(String instanceId, double rawLat, double setpoint, PidConfig cfg) {
+	private static final double LN_0_97 = Math.log(0.97);
 
+	public double calculatePenalty(String instanceId, double rawLat, double setpoint, PidConfig cfg) {
 		long now = System.currentTimeMillis();
+
+		// [OPT 1] Cache cfg getters ra local — JIT scalar replacement + 8 field reads 1
+		// lần
+		final double kp = cfg.getKp();
+		final double ki = cfg.getKi();
+		final double kd = cfg.getKd();
+		final double tauD = cfg.getTauD();
+		final double minI = cfg.getMinI();
+		final double maxI = cfg.getMaxI();
+		final double lambda = cfg.getLambda();
+		final double kappa = cfg.getKappa();
 
 		PidState finalState = states.asMap().compute(instanceId, (k, state) -> {
 
 			if (state == null) {
 				state = new PidState();
-				// FIX LỖI 3: Để 200L cho khớp với polling interval
 				state.setLastTimestamp(now - 200L);
 				state.setLastRawLat(rawLat);
 			}
 
-			double actualDt = Math.min(5.0, Math.max(0.001, (now - state.getLastTimestamp()) / 1000.0));
+			// [OPT 2] Cache state getters ra local — tránh gọi getter nhiều lần
+			final long prevTimestamp = state.getLastTimestamp();
+			final double prevOutput = state.getLastOutput();
+			final double prevIntegral = state.getIntegral();
+			final double prevRawLat = state.getLastRawLat();
+			final double prevFilteredD = state.getLastFilteredD();
 
+			double actualDt = Math.min(5.0, Math.max(0.001, (now - prevTimestamp) / 1000.0));
 			double error = rawLat - setpoint;
 
 			// ----- P -----
-			double p = cfg.getKp() * error;
+			double p = kp * error;
 
 			// ----- I với Conditional Anti-Windup -----
-			boolean isSaturated = Math.abs(state.getLastOutput()) >= 2.0;
-			boolean sameSign = Math.signum(error) == Math.signum(state.getLastOutput());
+			// [OPT 3] Thay Math.signum() × 2 bằng phép nhân — an toàn khi isSaturated=true
+			boolean isSaturated = Math.abs(prevOutput) >= 2.0;
+			boolean sameSign = (error * prevOutput) > 0.0;
 
+			double integral = prevIntegral;
 			if (!(isSaturated && sameSign)) {
-				double newI = state.getIntegral() + (error * actualDt);
+				double newI = prevIntegral + (error * actualDt);
 
-				// FIX LỖI 1: Time-dependent decay (Bảo đảm rò rỉ đúng 3% mỗi 1 giây THỰC TẾ)
 				if (Math.abs(error) < 0.1) {
-					double decayFactor = Math.pow(0.97, actualDt);
-					newI = newI * decayFactor;
+					// [OPT 4] Math.exp(LN_0_97 * dt) thay vì Math.pow(0.97, dt)
+					// Loại bỏ Math.log() nội bộ trong Math.pow()
+					newI *= Math.exp(LN_0_97 * actualDt);
 				}
 
-				state.setIntegral(Math.max(cfg.getMinI(), Math.min(cfg.getMaxI(), newI)));
+				integral = newI < minI ? minI : (newI > maxI ? maxI : newI);
+				state.setIntegral(integral);
 			}
 
-			double i = cfg.getKi() * state.getIntegral();
+			double i = ki * integral;
 
 			// ----- D với Low-Pass Filter -----
-			// FIX LỖI 2: Đạo hàm trên Process Variable (tránh Derivative Kick do Setpoint
-			// nhảy)
-			double rawD = (rawLat - state.getLastRawLat()) / actualDt;
+			double rawD = (rawLat - prevRawLat) / actualDt;
 
-			double dynamicThetaD = 1.0 - Math.exp(-actualDt / cfg.getTauD());
-			double filteredD = (dynamicThetaD * rawD) + ((1.0 - dynamicThetaD) * state.getLastFilteredD());
-			double d = cfg.getKd() * filteredD;
+			// [OPT 5] Lưu expTerm và tái dùng — tránh tính 1-dynamicThetaD lần 2
+			double expTerm = Math.exp(-actualDt / tauD);
+			double filteredD = ((1.0 - expTerm) * rawD) + (expTerm * prevFilteredD);
+			double d = kd * filteredD;
 
 			double u = p + i + d;
 
-			state.setLastError(error);
-			state.setLastRawLat(rawLat); // Lưu lại cho chu kỳ sau tính Derivative
+			// [OPT 6] Xóa state.setLastError(error) — dead write, không ai đọc lastError
+			state.setLastRawLat(rawLat);
 			state.setLastFilteredD(filteredD);
 			state.setLastOutput(u);
 			state.setLastTimestamp(now);
@@ -74,8 +93,7 @@ public class PIDController {
 			return state;
 		});
 
-		// ReLU + tanh
-		return cfg.getLambda() * Math.tanh(cfg.getKappa() * Math.max(0.0, finalState.getLastOutput()));
+		return lambda * Math.tanh(kappa * Math.max(0.0, finalState.getLastOutput()));
 	}
 
 	public void resetAllStates() {
