@@ -115,7 +115,7 @@ public class SlidingWindowManager {
 		if (globalPair[gi].getTotalCount() >= 20) {
 			return globalPair[gi];
 		} else if (globalPair[1 - gi].getTotalCount() > 0) {
-			return globalPair[1 - gi]; // Dùng histogram trước đó nếu cái hiện tại quá mới
+			return globalPair[1 - gi];
 		}
 		return globalPair[gi];
 	}

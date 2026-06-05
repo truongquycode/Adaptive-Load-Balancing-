@@ -12,7 +12,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class MetricsCache {
 
 	// capacity=4: tối thiểu chứa 3 instances tại loadFactor=0.75 mà không resize
-	// Khai báo concrete type ConcurrentHashMap, không dùng interface Map
+	// Khai báo concrete type ConcurrentHashMap
 	private final ConcurrentHashMap<String, InstanceMetrics> metricsMap = new ConcurrentHashMap<>(4);
 	private final ConcurrentHashMap<String, ScoreBreakdown> scoreMap = new ConcurrentHashMap<>(4);
 
@@ -21,8 +21,6 @@ public class MetricsCache {
 		metricsMap.put(id, metrics);
 	}
 
-	// getAllMetrics: List.copyOf → immutable, exact-size array, không có slack
-	// capacity
 	public List<InstanceMetrics> getAllMetrics() {
 		return List.copyOf(metricsMap.values());
 	}
@@ -36,9 +34,8 @@ public class MetricsCache {
 		return scoreMap.get(id);
 	}
 
-	// Tham số Set<String> thay vì Collection<String>:
+	// Tham số Set<String>
 	// - retainAll gọi activeIds.contains() cho từng key → Set đảm bảo O(1)
-	// - Collection cho phép List → O(n) contains → O(n²) tổng thể
 	public void removeStaleInstances(Set<String> activeIds) {
 		metricsMap.keySet().retainAll(activeIds);
 		scoreMap.keySet().retainAll(activeIds);

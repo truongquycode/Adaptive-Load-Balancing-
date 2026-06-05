@@ -13,48 +13,27 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 
-/**
- * Tính toán trọng số MCDM (α, β, γ) cho 3 tiêu chí: latency, queue, CPU.
- *
- * Kết hợp 2 phương pháp: - EWM (Entropy Weight Method): tự động tăng trọng số
- * tiêu chí nào đang biến động nhiều nhất - AHP (Analytic Hierarchy Process):
- * trọng số cố định do chuyên gia định nghĩa
- *
- * Công thức blend: finalWeight = AHP × (0.8×EWM + 0.2×AHP), sau đó normalize về
- * tổng = 1 Kết quả được làm mượt bằng EMA trước khi cập nhật α/β/γ.
- */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class DynamicWeightEngine {
 
-	// Hằng số dịch chuyển khi normalize ma trận — tránh chia 0 khi các instance có
-	// metric bằng nhau
-	// [latency, queue, CPU] — latency dùng mu lớn vì đơn vị ms (dao động hàng chục
-	// ms)
 	private static final double[] MU = { 5.0, 1.0, 0.05 };
 
-	// Tốc độ EMA khi cập nhật trọng số — nhỏ = thay đổi chậm, ổn định hơn
 	private static final double WEIGHT_EMA_ALPHA = 0.08;
 
-	// Tỉ lệ EWM trong blend: 0.8 = EWM chiếm 80%, AHP chiếm 20%
 	private static final double BLEND_FACTOR = 0.80;
 
-	private static final double ONE_MINUS_BLEND = 1.0 - BLEND_FACTOR; // = 0.20
-	private static final double ONE_MINUS_EMA = 1.0 - WEIGHT_EMA_ALPHA; // = 0.92
+	private static final double ONE_MINUS_BLEND = 1.0 - BLEND_FACTOR; 
+	private static final double ONE_MINUS_EMA = 1.0 - WEIGHT_EMA_ALPHA;
 
 	private static final int CRITERIA_COUNT = 3; // latency, queue, CPU
 
 	private final MetricsCache cache;
 	private final MeterRegistry registry;
 
-	// Trọng số AHP — Phương pháp Phân tích Thứ bậc dựa trên độ quan trọng của các
-	// chỉ số
-	// Workload CPU-intensive → CPU và latency quan trọng hơn queue
 	private static final double[] AHP_WEIGHTS = { 0.648, 0.230, 0.122 };
 
-	// Sử dụng Immutable Record để đảm bảo tính Nguyên tử (Atomicity) khi nhiều
-	// Thread cùng đọc/ghi
 	private record McdmWeights(double alpha, double beta, double gamma) {
 	}
 
@@ -65,7 +44,7 @@ public class DynamicWeightEngine {
 		List<InstanceMetrics> instances = cache.getAllMetrics();
 		int n = instances.size();
 		if (n < 2)
-			return; // EWM cần ít nhất 2 instance để tính entropy
+			return;
 
 		double totalQueue = 0.0, totalCpu = 0.0;
 		for (InstanceMetrics m : instances) {
@@ -75,10 +54,8 @@ public class DynamicWeightEngine {
 		double avgQueue = totalQueue / n;
 		double avgCpu = totalCpu / n;
 
-		// Hệ thống đang idle → giữ nguyên AHP default, không cần EWM
 		if (avgQueue < 2.0 && avgCpu < 0.06) {
 			log.debug("System idle — weights frozen at AHP defaults");
-			// Tạo record mới (bất biến) và gán lại cho volatile reference
 			this.weights = new McdmWeights(AHP_WEIGHTS[0], AHP_WEIGHTS[1], AHP_WEIGHTS[2]);
 			return;
 		}
@@ -88,14 +65,7 @@ public class DynamicWeightEngine {
 		blendAndApplyFinalWeights(ewmWeights);
 	}
 
-	/**
-	 * Normalize ma trận metrics: giá trị tốt hơn → điểm cao hơn. Công thức: (minVal
-	 * + mu) / (val + mu) → instance có metric thấp nhất được điểm cao nhất (gần
-	 * 1.0)
-	 */
 	private double[][] buildNormalizedMatrix(List<InstanceMetrics> instances, int n) {
-		// Pass 1: extract trực tiếp + tìm min đồng thời — loại bỏ hoàn toàn switch
-		// dispatch
 		double[][] raw = new double[n][CRITERIA_COUNT];
 		double[] minVal = { Double.MAX_VALUE, Double.MAX_VALUE, Double.MAX_VALUE };
 
@@ -110,10 +80,9 @@ public class DynamicWeightEngine {
 			}
 		}
 
-		// Pass 2: normalize — numerator cố định cho cả cột, tính ngoài vòng lặp
 		double[][] data = new double[n][CRITERIA_COUNT];
 		for (int j = 0; j < CRITERIA_COUNT; j++) {
-			double numerator = minVal[j] + MU[j]; // tính 1 lần thay vì n lần
+			double numerator = minVal[j] + MU[j];
 			double mu = MU[j];
 			for (int i = 0; i < n; i++) {
 				data[i][j] = numerator / (raw[i][j] + mu);
@@ -122,10 +91,6 @@ public class DynamicWeightEngine {
 		return data;
 	}
 
-	/**
-	 * Tính trọng số EWM từ entropy của từng tiêu chí. Tiêu chí nào có entropy thấp
-	 * (các instance chênh lệch nhau nhiều) → trọng số cao hơn.
-	 */
 	private double[] calculateEntropyWeights(double[][] data, int n) {
 		double[] ewm = new double[CRITERIA_COUNT];
 		double sumEwm = 0;
@@ -136,17 +101,16 @@ public class DynamicWeightEngine {
 			for (int i = 0; i < n; i++)
 				colSum += data[i][j];
 
-			double invColSum = 1.0 / colSum; // 1 phép chia thay vì n phép chia
+			double invColSum = 1.0 / colSum; 
 			double sumEntropy = 0;
 			for (int i = 0; i < n; i++) {
-				double p = data[i][j] * invColSum; // nhân nhanh hơn chia
-				sumEntropy += p * Math.log(p); // bỏ if (p>0) — luôn đúng
+				double p = data[i][j] * invColSum; 
+				sumEntropy += p * Math.log(p);
 			}
 			ewm[j] = Math.max(0.0, 1.0 - (-k * sumEntropy));
 			sumEwm += ewm[j];
 		}
 
-		// Normalize EWM về tổng = 1
 		double[] ewmNorm = new double[CRITERIA_COUNT];
 		for (int j = 0; j < CRITERIA_COUNT; j++) {
 			ewmNorm[j] = (sumEwm == 0) ? (1.0 / CRITERIA_COUNT) : (ewm[j] / sumEwm);
@@ -154,9 +118,6 @@ public class DynamicWeightEngine {
 		return ewmNorm;
 	}
 
-	/**
-	 * Blend EWM + AHP → làm mượt bằng EMA → áp giới hạn → cập nhật α/β/γ.
-	 */
 	private void blendAndApplyFinalWeights(double[] ewmNorm) {
 		double sumFusion = 0;
 		double[] fusion = new double[CRITERIA_COUNT];
@@ -165,7 +126,6 @@ public class DynamicWeightEngine {
 			sumFusion += fusion[j];
 		}
 
-		// Inline trực tiếp, dùng hằng số đã tính sẵn
 		double invSumFusion = 1.0 / sumFusion;
 		double newAlpha = WEIGHT_EMA_ALPHA * (fusion[0] * invSumFusion) + ONE_MINUS_EMA * this.weights.alpha();
 		double newBeta = WEIGHT_EMA_ALPHA * (fusion[1] * invSumFusion) + ONE_MINUS_EMA * this.weights.beta();
@@ -215,8 +175,6 @@ public class DynamicWeightEngine {
 		}
 
 		// ── 3. GÁN KẾT QUẢ ──
-		// Gán toàn bộ 3 trọng số vào 1 Record bất biến, đảm bảo Atomicity cho Data
-		// Plane
 		this.weights = new McdmWeights(newAlpha, newBeta, newGamma);
 
 		log.debug("MCDM weights updated: α={} β={} γ={}", newAlpha, newBeta, newGamma);
@@ -234,10 +192,6 @@ public class DynamicWeightEngine {
 		return weights.gamma();
 	}
 
-	/**
-	 * Tính α·nL + β·nQ + γ·nC trong 1 volatile read thay vì 3. Gọi từ
-	 * ScoreCalculator trên hot path.
-	 */
 	public double computeBaseScore(double nL, double nQ, double nC) {
 		McdmWeights w = weights; // 1 volatile read duy nhất
 		return (w.alpha() * nL) + (w.beta() * nQ) + (w.gamma() * nC);
@@ -252,7 +206,6 @@ public class DynamicWeightEngine {
 		Gauge.builder("alb.mcdm.weight", this::getGamma).tag("criterion", "cpu").register(registry);
 	}
 
-	// Reset về AHP default — gọi trước mỗi lần benchmark
 	public void resetWeights() {
 		this.weights = new McdmWeights(AHP_WEIGHTS[0], AHP_WEIGHTS[1], AHP_WEIGHTS[2]);
 	}

@@ -84,13 +84,11 @@ public class MetricsPoller {
 			cleanupStaleData(currentIds);
 		}
 
-		// Luồng chính ánh xạ từng instance vào hàm pollSingleInstance
 		List<Mono<Void>> polls = instances.stream().map(this::pollSingleInstance).toList();
 
 		Mono.when(polls).doFinally(signal -> isPolling.set(false)).subscribe();
 	}
 
-	// Lấy dữ liệu từ một instance duy nhất
 	private Mono<Void> pollSingleInstance(ServiceInstance instance) {
 		String instanceId = instance.getInstanceId();
 
@@ -98,20 +96,16 @@ public class MetricsPoller {
 
 		return webClient.get().uri(url).retrieve().bodyToMono(JsonNode.class).timeout(Duration.ofMillis(150))
 				.doOnNext(node -> {
-					// Reset failure counter khi poll thành công
 					consecutiveFailures.put(instanceId, 0);
 					processMetrics(instanceId, node);
 				}).onErrorResume(e -> {
-					// ── Progressive penalty: không nhảy thẳng lên 10.0 ──────
-					// Failure 1 → score ≈ 2.0, Failure 2 → ≈ 4.5, Failure 3+ → ≈ 8.0
 					int failures = consecutiveFailures.merge(instanceId, 1, Integer::sum);
 					double rawPenaltyScore = Math.min(10.0, failures * 2.5);
 
-					// Áp dụng EMA smoothing ngay cả với penalty score
 					double smoothed = applyScoreEma(instanceId, rawPenaltyScore);
 					ScoreBreakdown penaltyBreakdown = new ScoreBreakdown(instanceId, 0, 1, 1, 1, rawPenaltyScore * 0.8, // baseScore
-							rawPenaltyScore * 0.2, // pidPenalty
-							smoothed, // finalScore (đã smoothed)
+							rawPenaltyScore * 0.2,
+							smoothed,
 							System.currentTimeMillis());
 					metricsCache.putScore(instanceId, penaltyBreakdown);
 					log.warn("Poll failed for {} (attempt #{}), smoothedScore={}", instanceId, failures, smoothed);
@@ -119,7 +113,6 @@ public class MetricsPoller {
 				}).then();
 	}
 
-	// Dọn dẹp cache của các instance đã offline
 	private void cleanupStaleData(Set<String> activeIds) {
 		trafficStates.keySet().retainAll(activeIds);
 		metricsCache.removeStaleInstances(activeIds);
@@ -158,11 +151,7 @@ public class MetricsPoller {
 		}
 	}
 
-	// ── Helper: Asymmetric EMA ────────────────────────────────────────────────
-	// Phát hiện degradation NHANH (alpha=0.60), phục hồi CHẬM (alpha=0.25)
-	// → Tránh yo-yo: instance phục hồi nhưng ngay lập tức bị flood traffic lại
 	private double applyScoreEma(String instanceId, double rawScore) {
-		// Cold start: không smooth, tránh tính vòng vô nghĩa
 		Double prevObj = smoothedScores.get(instanceId);
 		if (prevObj == null) {
 			smoothedScores.put(instanceId, rawScore);
@@ -174,14 +163,14 @@ public class MetricsPoller {
 
 		double alpha;
 		if (delta > EMA_SPIKE_THRESHOLD) {
-			alpha = EMA_ALPHA_SPIKE; // chaos event thực sự → phản ứng nhanh
+			alpha = EMA_ALPHA_SPIKE; 
 		} else if (delta > 0.0) {
-			alpha = EMA_ALPHA_RISE; // jitter nhỏ → phản ứng vừa phải
+			alpha = EMA_ALPHA_RISE; 
 		} else {
-			alpha = EMA_ALPHA_RECOVER; // recovery → thận trọng, tránh flood
+			alpha = EMA_ALPHA_RECOVER; 
 		}
 
-		double smoothed = prev + alpha * delta; // tái dùng delta đã tính
+		double smoothed = prev + alpha * delta;
 		smoothedScores.put(instanceId, smoothed);
 		return smoothed;
 	}
@@ -192,9 +181,6 @@ public class MetricsPoller {
 
 		if (prev == null) {
 			double p50 = windowManager.getSnapshot(id).p50();
-			// POST-RESET: Thiết lập baseline mới từ giá trị backend hiện tại.
-			// Trả về p50 (mặc định 50ms khi histogram rỗng) thay vì tính
-			// historical average từ toàn bộ backend timer (gây ghost latency).
 			double initLatency = Math.min(Math.max(1.0, p50), 3000.0);
 			trafficStates.put(id, new TrafficState(currentCount, currentTotalTime, initLatency));
 			log.debug("[MetricsPoller] Baseline established for {}: count={}, initLatency={}ms", id, currentCount,
@@ -209,7 +195,6 @@ public class MetricsPoller {
 		if (deltaCount > 0) {
 			currentLatency = (deltaTotal / deltaCount) * 1000.0;
 		} else {
-			// Không có request mới: giữ nguyên latency cũ, không decay
 			currentLatency = prev.lastLatency();
 		}
 
@@ -245,7 +230,6 @@ public class MetricsPoller {
 				if (totalInflight <= 0)
 					return finalScore;
 
-				// n động: đúng khi scale lên/xuống instance
 				int n = self.discoveryClient.getInstances(REGISTRATION_SERVICE_ID).size();
 				if (n <= 0)
 					return finalScore;
@@ -254,7 +238,7 @@ public class MetricsPoller {
 				if (excessRatio <= 0)
 					return finalScore;
 
-				return finalScore + 0.6 * Math.pow(excessRatio, 1.3); // OMEGA_ABS=0.6, PENALTY_EXPONENT=1.3
+				return finalScore + 0.6 * Math.pow(excessRatio, 1.3);
 			}).tag("backend", id).register(registry);
 		}
 	}

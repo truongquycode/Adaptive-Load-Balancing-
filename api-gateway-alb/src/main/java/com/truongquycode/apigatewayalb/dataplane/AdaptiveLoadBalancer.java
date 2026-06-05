@@ -39,18 +39,6 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
 	private static final double MAX_CAP_WEIGHT_RATIO = 3.0;
 	private static final long WARMUP_MS = 5_000;
 
-	// ── Static state: dùng static để AdminController.resetStaticState() tiếp cận
-	// được
-	//
-	// firstSeenMs : thời điểm instance xuất hiện lần đầu → dùng cho warmup guard
-	// rrCounter : bộ đếm round-robin khi toàn bộ node đang trong warmup
-	// counterCache : cache Micrometer Counter để tránh registry lookup trên mỗi
-	// request
-	//
-	// Tại sao static:
-	// AdaptiveLoadBalancer được tạo trong Spring Cloud LB child context →
-	// AdminController (parent context) không thể inject để reset field thường.
-	// Static + ConcurrentHashMap đảm bảo thread-safe và accessible từ bất kỳ đâu.
 	private static final ConcurrentHashMap<String, Long> firstSeenMs = new ConcurrentHashMap<>();
 	private static final AtomicLong rrCounter = new AtomicLong(0);
 	private static final ConcurrentHashMap<String, Counter> counterCache = new ConcurrentHashMap<>();
@@ -79,7 +67,6 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
 		int totalInflight = inflightTracker.getTotalInflight();
 		long now = System.currentTimeMillis();
 
-		// PASS 1: Thu thập score + min inflight
 		record NodeInfo(ServiceInstance inst, double rawMcdm, int inflight, boolean inWarmup) {
 		}
 		List<NodeInfo> nodes = new ArrayList<>(n);
@@ -95,12 +82,11 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
 
 			int inflight = inflightTracker.getInflight(id);
 			if (inflight < minCurrentInflight)
-				minCurrentInflight = inflight; // ← merged từ PASS 3 cũ
+				minCurrentInflight = inflight;
 
 			nodes.add(new NodeInfo(inst, rawMcdm, inflight, inWarmup));
 		}
 
-		// ══ Warmup guard: tất cả node chưa có score → round-robin ════════════
 		boolean allWarmup = true;
 		for (NodeInfo node : nodes) {
 			if (!node.inWarmup()) {
@@ -115,10 +101,6 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
 			return new DefaultResponse(sel);
 		}
 
-		// ══ PASS 2: Capacity-weighted fair share (capped 3:1) ════════════════
-		//
-		// share[] được tái sử dụng: đầu tiên chứa capWeight, cuối cùng chứa fairShare.
-		// Tránh allocate thêm mảng fairShare[] thứ hai.
 		double[] share = new double[n];
 		double maxCapW = 0;
 		for (int i = 0; i < n; i++) {
@@ -137,7 +119,6 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
 		for (int i = 0; i < n; i++)
 			share[i] /= sumCap;
 
-		// ══ PASS 3: Routing score = rawMcdm + relPenalty + absPenalty ════════
 		ServiceInstance best = null;
 		double bestScore = Double.MAX_VALUE;
 		ServiceInstance leastLoadFb = null;
@@ -155,12 +136,8 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
 				leastLoadFb = node.inst();
 			}
 
-			// Relative penalty: crossover ở delta=4 inflight (4 × 0.010 = 0.040)
 			double relPenalty = OMEGA_REL * Math.max(0.0, inf - minCurrentInflight);
 
-			// Absolute penalty: guard excessRatio <= 0 để tránh Math.pow() thừa.
-			// Trong điều kiện bình thường (load cân bằng), excessRatio = 0 cho tất cả node.
-			// Math.pow(x, 1.3) là native call — bỏ qua khi không cần thiết.
 			double absPenalty = 0.0;
 			if (totalInflight > 0) {
 				double expected = totalInflight * share[i];
