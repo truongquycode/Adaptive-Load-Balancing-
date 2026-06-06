@@ -8,21 +8,15 @@ import com.truongquycode.apigatewayalb.util.MetricsCache;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.cloud.client.ServiceInstance;
-import org.springframework.cloud.loadbalancer.annotation.LoadBalancerClient;
-import org.springframework.cloud.loadbalancer.annotation.LoadBalancerClients;
 import org.springframework.cloud.loadbalancer.core.RandomLoadBalancer;
 import org.springframework.cloud.loadbalancer.core.ReactorLoadBalancer;
 import org.springframework.cloud.loadbalancer.core.RoundRobinLoadBalancer;
 import org.springframework.cloud.loadbalancer.core.ServiceInstanceListSupplier;
 import org.springframework.cloud.loadbalancer.support.LoadBalancerClientFactory;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
 import com.truongquycode.apigatewayalb.dataplane.MetricAwareLoadBalancer;
 
-@Configuration
-@LoadBalancerClients({
-		@LoadBalancerClient(name = "REGISTRATION-SERVICE-ALB", configuration = LoadBalancerConfiguration.class) })
 public class LoadBalancerConfiguration {
 
 	// 1. Kích hoạt thuật toán THÍCH NGHI (Adaptive)

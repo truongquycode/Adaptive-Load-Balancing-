@@ -3,13 +3,20 @@ package com.truongquycode.apigatewayalb;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
+import org.springframework.cloud.loadbalancer.annotation.LoadBalancerClient;
+import org.springframework.cloud.loadbalancer.annotation.LoadBalancerClients;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.context.annotation.Bean;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import com.truongquycode.apigatewayalb.config.LoadBalancerConfiguration;
+
 @SpringBootApplication
 @EnableDiscoveryClient
 @EnableScheduling
+@LoadBalancerClients({
+    @LoadBalancerClient(name = "REGISTRATION-SERVICE-ALB", configuration = LoadBalancerConfiguration.class) 
+})
 public class ApiGatewayAlbApplication {
 	public static void main(String[] args) {
 		SpringApplication.run(ApiGatewayAlbApplication.class, args);
