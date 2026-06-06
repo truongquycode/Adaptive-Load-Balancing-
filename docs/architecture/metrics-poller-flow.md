@@ -94,16 +94,9 @@ và tag.
 | Tên metric           | Ý nghĩa                                                  |
 |----------------------|----------------------------------------------------------|
 | alb.latency.ewma     | EWMA latency (ms) của instance                           |
-|----------------------|----------------------------------------------------------|
 | alb.queue.current    | Số request đang chờ xử lý                                |
-|----------------------|----------------------------------------------------------|
 | alb.final.score      | Score sau EMA, càng thấp càng tốt                        |
-|----------------------|----------------------------------------------------------|
-|                      | Score có cộng thêm penalty nếu instance nhận quá nhiều   |
-| alb.routing.score    | traffic so với phần chia công bằng. Dùng để debug tại	  |
-|                      | sao một instance ít được chọn dù score thấp.             |
-|----------------------|----------------------------------------------------------|
-
+| alb.routing.score    | Score có cộng thêm penalty nếu instance nhận quá nhiều traffic so với phần chia công bằng. Dùng để debug tại sao một instance ít được chọn dù score thấp. |
 
 ## Mối quan hệ với các component khác
 
