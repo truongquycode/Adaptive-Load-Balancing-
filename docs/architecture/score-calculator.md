@@ -23,6 +23,7 @@ MetricsPoller là bên gọi ScoreCalculator. Trước khi gọi, MetricsPoller 
 - CPU usage (process.cpu.usage từ Micrometer)
 
 ScoreCalculator nhận ba giá trị thô này và đi qua một pipeline gồm bốn tầng:\
+
 	raw metrics\
 	|\
 	|-- EWMA smoothing (EwmaSmoother)\
