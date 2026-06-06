@@ -292,7 +292,7 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
         }
         if (allWarmup) {
             // rrCounter tăng dần, lấy modulo n → chọn lần lượt 0, 1, 2, 0, 1, 2, ...
-        	int idx = Math.abs((int) (rrCounter.getAndIncrement() % n));
+        	int idx = (int) (rrCounter.getAndIncrement() % n);
         	ServiceInstance sel = nodes.get(idx).inst();
             emitMetric(sel);
             return new DefaultResponse(sel);
