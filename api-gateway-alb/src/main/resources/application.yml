@@ -8,7 +8,7 @@ spring:
         gateway:
             httpclient:
                 connect-timeout: 2000
-                response-timeout: 10s
+                response-timeout: 15s
                 pool:
                     type: elastic
                     max-connections: 1000

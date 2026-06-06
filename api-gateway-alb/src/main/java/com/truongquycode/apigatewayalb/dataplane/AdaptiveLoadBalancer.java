@@ -177,7 +177,10 @@ public class AdaptiveLoadBalancer implements ReactorLoadBalancer<ServiceInstance
      * - counterCache bị xóa → Prometheus Counter được tạo lại (không ảnh hưởng đến data)
      */
     public static void resetStaticState() {
-        firstSeenMs.clear();
+    	// Thay vì clear() hoàn toàn, seed với current time - WARMUP_MS
+        // để instances đã ổn định không phải qua warmup lại
+        long alreadyWarmedUp = System.currentTimeMillis() - WARMUP_MS - 1;
+        firstSeenMs.replaceAll((k, v) -> alreadyWarmedUp);
         rrCounter.set(0);
         counterCache.clear();
     }
