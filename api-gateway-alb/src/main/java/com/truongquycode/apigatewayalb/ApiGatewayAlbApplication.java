@@ -14,9 +14,6 @@ import com.truongquycode.apigatewayalb.config.LoadBalancerConfiguration;
 @SpringBootApplication
 @EnableDiscoveryClient
 @EnableScheduling
-@LoadBalancerClients({
-    @LoadBalancerClient(name = "REGISTRATION-SERVICE-ALB", configuration = LoadBalancerConfiguration.class) 
-})
 public class ApiGatewayAlbApplication {
 	public static void main(String[] args) {
 		SpringApplication.run(ApiGatewayAlbApplication.class, args);
