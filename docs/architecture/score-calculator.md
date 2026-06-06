@@ -215,3 +215,129 @@ baseScore nằm trong khoảng [0, 1].
 
 Trước khi gọi PIDController, ScoreCalculator chuẩn hóa sysP75 về cùng thang đo
 với nL để PID có thể so sánh apples-to-apples:
+
+	normalizedP75 = clamp((sysP75 - sysP5) / (sysP95 - sysP5), 0, 1)
+normalizedP75 đóng vai trò setpoint: ngưỡng mà một instance được coi là
+"hoạt động bình thường". Khi nL của instance vượt quá normalizedP75, PID bắt
+đầu tích lũy penalty.
+
+PIDController trả về penalty trong khoảng [0, lambda] với lambda = 0.8 theo
+cấu hình mặc định.
+
+Chi tiết cách PID tính penalty (thành phần P, I, D; anti-windup; decay integral;
+low-pass filter cho D) được mô tả trong tài liệu riêng của PIDController.
+
+### Bước 9 — Tổng hợp finalScore và trả về
+
+finalScore = baseScore + penalty
+
+Khoảng thực tế trong điều kiện bình thường:
+- Instance khỏe: khoảng 0.05 đến 0.3
+- Instance bình thường: khoảng 0.3 đến 0.7
+- Instance đang quá tải: khoảng 0.7 đến 1.8
+
+ScoreCalculator trả về ScoreBreakdown chứa toàn bộ giá trị trung gian. MetricsPoller
+nhận ScoreBreakdown này, áp thêm một lớp EMA bất đối xứng lên finalScore (phản
+ứng nhanh khi xấu đi, phục hồi chậm khi tốt trở lại), rồi mới lưu vào MetricsCache.
+
+AdaptiveLoadBalancer đọc finalScore từ MetricsCache mỗi khi có request cần routing.
+
+---
+
+## Mối quan hệ với các component khác
+
+| Component | Chiều | Mô tả |
+|---|---|---|
+| MetricsPoller | Gọi ScoreCalculator | Gọi calculateScore() mỗi 200ms sau khi tính delta latency từ Micrometer. Truyền vào InstanceMetrics gồm latency, queueLength, cpu. |
+| SlidingWindowManager | ScoreCalculator đọc | Cung cấp per-instance snapshot (p50, qP99) và system-wide snapshot (sysP5, sysP75, sysP95). ScoreCalculator không ghi vào SlidingWindowManager, chỉ đọc. |
+| EwmaSmoother | ScoreCalculator gọi | Nhận lRaw và trả về ewmaLat. EwmaSmoother giữ state nội bộ (giá trị EWMA hiện tại) per-instance trong Caffeine Cache. |
+| DynamicWeightEngine | ScoreCalculator gọi | Nhận nL, nQ, nC và trả về baseScore đã nhân với trọng số hiện tại. DynamicWeightEngine cập nhật trọng số nền riêng mỗi 5 giây. |
+| PIDController | ScoreCalculator gọi | Nhận nL và normalizedP75 (setpoint) rồi trả về penalty. PIDController giữ state PID (integral, derivative) per-instance trong Caffeine Cache. |
+| NormalizationFunctions | ScoreCalculator gọi | Stateless utility: normalizeLatency, normalizeQueue, normalizeCpu. Không có state nội bộ. |
+| AlbProperties | ScoreCalculator đọc | Cung cấp tham số EWMA (tauMin, tauMax, k) và PID (kp, ki, kd, lambda...) từ application.yml. |
+| MetricsCache | Ghi gián tiếp qua MetricsPoller | ScoreCalculator không ghi trực tiếp vào MetricsCache. Nó trả về ScoreBreakdown cho MetricsPoller, MetricsPoller mới quyết định lưu vào cache sau khi áp EMA. |
+| AdminController | Gọi gián tiếp | POST /actuator/alb/reset gọi reset trên EwmaSmoother và PIDController, xóa state EWMA và integral PID. Lần gọi calculateScore() tiếp theo sẽ cold-start lại cả hai. |
+
+---
+
+## Ví dụ kịch bản thực tế
+
+Kịch bản: instance 8083 (1.0 CPU) bật CPU spike. Hai instance còn lại (8081, 8082)
+bình thường.
+
+**Trước khi bật CPU spike:**
+
+MetricsPoller poll xong, ScoreCalculator nhận được cho 8083:
+- latency = 80ms, queue = 2, cpu = 0.15
+
+SlidingWindowManager trả về sysP5 = 40ms, sysP75 = 80ms, sysP95 = 150ms.
+
+invRange = 1 / (150 - 40) = 0.00909
+
+ewmaLat sau smooth ≈ 82ms (EWMA gần với raw vì latency ổn định)
+
+nL = (82 - 40) * 0.00909 ≈ 0.38
+nQ ≈ 0.12 (queue thấp)
+nC ≈ 0.15
+
+baseScore = 0.648 * 0.38 + 0.230 * 0.12 + 0.122 * 0.15 ≈ 0.29
+
+normalizedP75 = (80 - 40) * 0.00909 ≈ 0.36
+
+nL (0.38) vừa vượt normalizedP75 (0.36) một chút → penalty ≈ 0.02
+
+finalScore ≈ 0.31
+
+**Sau khi bật CPU spike (vài giây sau):**
+
+latency tăng lên 700ms vì CPU bị burner thread chiếm. cpu = 0.90.
+
+sysP95 tăng lên (global histogram ghi nhận thêm latency cao từ 8083) ≈ 350ms.
+
+ewmaLat phản ứng nhanh (tau giảm về tauMin vì deviation lớn) ≈ 500ms.
+
+nL = (500 - 40) / (350 - 40) ≈ 1.0 (clamp về 1.0)
+
+nC = 0.90
+
+DynamicWeightEngine sau vài chu kỳ 5 giây: gamma tăng lên ≈ 0.28 (CPU đang có
+variance lớn giữa các instance).
+
+baseScore = 0.55 * 1.0 + 0.17 * nQ + 0.28 * 0.90 ≈ 0.80
+
+normalizedP75 đã tăng theo vì global P75 tăng ≈ 0.45. Nhưng nL của 8083 = 1.0
+nên error vẫn lớn. PID đã tích lũy integral sau vài giây → penalty ≈ 0.65.
+
+finalScore ≈ 1.45
+
+AdaptiveLoadBalancer thấy 8083 có finalScore 1.45 so với 8081 khoảng 0.25 và
+8082 khoảng 0.30 → traffic gần như không được route đến 8083.
+
+---
+
+## Lưu ý khi debug
+
+**Nếu tất cả instance đều bị coi là "tệ" (score cao bất thường):**
+
+Kiểm tra system snapshot có đang dùng fallback không. Nếu sysP5 = 30ms và
+sysP95 = 300ms cố định sau nhiều giây, nghĩa là global histogram chưa có đủ
+data. Nguyên nhân thường là MetricsPoller đang không gọi được addMetrics() do
+poll thất bại liên tục.
+
+**Nếu một instance có score thấp bất thường dù đang chậm:**
+
+Kiểm tra EwmaSmoother có đang giữ ewmaLat quá thấp do state cũ không. Gọi
+POST /actuator/alb/reset để xóa EWMA state và PID state. Lần tính score tiếp
+theo sẽ bắt đầu từ p50 của instance đó.
+
+**Để xem chi tiết từng thành phần của score:**
+
+ScoreBreakdown trả về đầy đủ ewmaLat, nL, nQ, nC, baseScore, pidPenalty, finalScore.
+Prometheus Gauges alb.latency.ewma, alb.queue.current, alb.final.score hiển thị
+các giá trị này theo thời gian thực trên Grafana.
+
+**Nếu score không thay đổi dù instance đã bật chaos:**
+
+Kiểm tra polling có đang bị skip liên tục do isPolling mutex không. Log của
+MetricsPoller sẽ có "Poll cycle skipped" nếu cycle trước chưa xong trong 200ms.
+Đây thường xảy ra khi response timeout của backend cao hơn polling interval.
