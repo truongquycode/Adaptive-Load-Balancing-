@@ -13,6 +13,7 @@ import org.springframework.cloud.client.loadbalancer.EmptyResponse;
 import org.springframework.cloud.client.loadbalancer.Request;
 import org.springframework.cloud.client.loadbalancer.Response;
 import org.springframework.cloud.loadbalancer.core.ReactorLoadBalancer;
+import org.springframework.cloud.loadbalancer.core.ReactorServiceInstanceLoadBalancer;
 import org.springframework.cloud.loadbalancer.core.ServiceInstanceListSupplier;
 import reactor.core.publisher.Mono;
 
@@ -48,7 +49,7 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 @Slf4j
 @RequiredArgsConstructor
-public class AdaptiveLoadBalancer implements ReactorLoadBalancer<ServiceInstance> {
+public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer {
 
     // ──────────────────────────────────────────────────────────────────────────
     // DEPENDENCY INJECTION

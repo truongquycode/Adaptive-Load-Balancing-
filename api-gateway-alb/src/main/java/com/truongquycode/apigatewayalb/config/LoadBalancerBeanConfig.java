@@ -11,6 +11,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.cloud.client.ServiceInstance;
 import org.springframework.cloud.loadbalancer.core.RandomLoadBalancer;
 import org.springframework.cloud.loadbalancer.core.ReactorLoadBalancer;
+import org.springframework.cloud.loadbalancer.core.ReactorServiceInstanceLoadBalancer;
 import org.springframework.cloud.loadbalancer.core.RoundRobinLoadBalancer;
 import org.springframework.cloud.loadbalancer.core.ServiceInstanceListSupplier;
 import org.springframework.cloud.loadbalancer.support.LoadBalancerClientFactory;
@@ -36,7 +37,7 @@ public class LoadBalancerBeanConfig {
     // 1. Kích hoạt thuật toán THÍCH NGHI (Adaptive)
     @Bean
     @ConditionalOnProperty(name = "alb.strategy", havingValue = "adaptive", matchIfMissing = true)
-    public ReactorLoadBalancer<ServiceInstance> adaptiveLoadBalancer(
+    public ReactorServiceInstanceLoadBalancer adaptiveLoadBalancer(
             Environment environment,
             LoadBalancerClientFactory loadBalancerClientFactory,
             MetricsCache metricsCache,
