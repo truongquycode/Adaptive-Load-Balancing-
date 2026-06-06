@@ -12,24 +12,24 @@ không biết instance nào đang khỏe, instance nào đang quá tải.
 
 
 ## Luồng chạy tổng quát
-	@Scheduled(200ms)
-	       │
-	       ├─ [mutex isPolling] skip nếu đang bận
-	       │
-	       ├─ Eureka → List<ServiceInstance>
-	       │
-	       ├─ topology changed? → cleanupStaleData()
-	       │
-	       └─ Parallel WebClient.GET /api/alb-metrics × N instances
-	              │
-	              ├─ SUCCESS → processMetrics()
-	              │     ├─ calculateDeltaLatency() → latency (ms)
-	              │     ├─ ScoreCalculator.calculateScore() → ScoreBreakdown
-	              │     │     └─ [EWMA → normalize p5/p95 → MCDM → PID penalty]
-	              │     ├─ applyScoreEma() → smoothedFinalScore
-	              │     └─ metricsCache.putScore() ← AdaptiveLoadBalancer đọc từ đây
-	              │
-	              └─ FAILURE → penalty score tăng dần, lưu vào cache
+@Scheduled(200ms)
+       │
+       ├─ [mutex isPolling] skip nếu đang bận
+       │
+       ├─ Eureka → List<ServiceInstance>
+       │
+       ├─ topology changed? → cleanupStaleData()
+       │
+       └─ Parallel WebClient.GET /api/alb-metrics × N instances
+              │
+              ├─ SUCCESS → processMetrics()
+              │     ├─ calculateDeltaLatency() → latency (ms)
+              │     ├─ ScoreCalculator.calculateScore() → ScoreBreakdown
+              │     │     └─ [EWMA → normalize p5/p95 → MCDM → PID penalty]
+              │     ├─ applyScoreEma() → smoothedFinalScore
+              │     └─ metricsCache.putScore() ← AdaptiveLoadBalancer đọc từ đây
+              │
+              └─ FAILURE → penalty score tăng dần, lưu vào cache
 ## Các thành phần chính
 
 ### isPolling
@@ -91,14 +91,14 @@ và tag.
 
 ## Các metric được đẩy lên Prometheus
 
-	| Tên metric           | Ý nghĩa                                                  |
-	|----------------------|----------------------------------------------------------|
-	| alb.latency.ewma     | EWMA latency (ms) của instance                           |
-	| alb.queue.current    | Số request đang chờ xử lý                                |
-	| alb.final.score      | Score sau EMA, càng thấp càng tốt                        |
-	| alb.routing.score    | Score có cộng thêm penalty nếu instance nhận quá nhiều   |
-	|                      | traffic so với phần chia công bằng. Dùng để debug tại    |
-	|                      | sao một instance ít được chọn dù score thấp.             |
+| Tên metric           | Ý nghĩa                                                  |
+|----------------------|----------------------------------------------------------|
+| alb.latency.ewma     | EWMA latency (ms) của instance                           |
+| alb.queue.current    | Số request đang chờ xử lý                                |
+| alb.final.score      | Score sau EMA, càng thấp càng tốt                        |
+| alb.routing.score    | Score có cộng thêm penalty nếu instance nhận quá nhiều   |
+|                      | traffic so với phần chia công bằng. Dùng để debug tại    |
+|                      | sao một instance ít được chọn dù score thấp.             |
 
 
 ## Mối quan hệ với các component khác
@@ -125,4 +125,4 @@ Nếu một instance liên tục bị tránh dù đang chạy bình thường, k
 
 Để reset toàn bộ state về ban đầu, gọi POST /actuator/alb/reset.
 Sau reset, lần poll tiếp theo sẽ cold-start lại: calculateDeltaLatency dùng p50
-histogram làm baseline, applyScoreEma khởi tạo lại từ rawScore đầu tiên.
+histogram làm baseline, applyScoreEma khởi tạo lại từ rawScore đầu tiên.ầu tiên.
