@@ -12,22 +12,13 @@ spring:
                 pool:
                     type: elastic
                     max-connections: 1000
-            discovery:
-              locator:
-                enabled: true
-                lower-case-service-id: true
-            routes:
-              - id: registration-service-route
-                uri: lb://REGISTRATION-SERVICE-ALB   # Phải KHỚP CHÍNH XÁC tên trong Eureka
-                predicates:
-                  - Path=/api/**
         loadbalancer:
             cache:
                 ttl: 5s
 
 alb:
     # adaptive, round-robin, random, least-connections
-    strategy: adaptive
+    strategy: least-connections
     polling:
         interval: 200
 
