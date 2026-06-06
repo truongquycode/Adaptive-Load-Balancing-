@@ -28,11 +28,11 @@ Trong hệ thống này, SlidingWindowManager phục vụ hai mục đích song 
 ### InstanceState
 
 Record lưu trạng thái histogram riêng của một instance. Mỗi instance có bốn histogram: hai cái cho latency và hai cái cho queue, theo cấu trúc double-buffer.
-	\n`InstanceState`
-		\n`latHists[0], latHists[1]  — cặp histogram latency, dùng luân phiên`
-		\n`latIdx                    — trỏ vào histogram latency đang active (0 hoặc 1)`
-		\n`qHists[0], qHists[1]      — cặp histogram queue length, dùng luân phiên`
-		\n`qIdx                      — trỏ vào histogram queue đang active (0 hoặc 1)`
+	`InstanceState`\
+		`latHists[0], latHists[1]  — cặp histogram latency, dùng luân phiên`\
+		`latIdx                    — trỏ vào histogram latency đang active (0 hoặc 1)`\
+		`qHists[0], qHists[1]      — cặp histogram queue length, dùng luân phiên`\
+		`qIdx                      — trỏ vào histogram queue đang active (0 hoặc 1)`
 ### GlobalPair
 
 Hai histogram dùng chung cho toàn bộ hệ thống, lưu latency của tất cả instance gộp lại. Không phân biệt request đến từ instance nào. Dùng để tính system-wide percentile làm thước đo chung khi chuẩn hóa.
