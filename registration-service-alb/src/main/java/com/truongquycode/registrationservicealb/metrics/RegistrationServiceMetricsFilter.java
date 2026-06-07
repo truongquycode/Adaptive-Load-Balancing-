@@ -26,7 +26,7 @@ public class RegistrationServiceMetricsFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String uri = request.getRequestURI();
-        return uri.equals("/api/alb-metrics") || uri.startsWith("/actuator");
+        return uri.equals("/api/alb-metrics") || uri.startsWith("/actuator") || uri.startsWith("/api/chaos");
     }
 
     @Override

@@ -52,6 +52,8 @@ public class MetricsPoller {
 	private static final double EMA_ALPHA_RECOVER = 0.25; // Score giảm (instance đang hồi phục) → react chậm, tránh
 															// flap
 	private static final double EMA_SPIKE_THRESHOLD = 0.30; // Ngưỡng delta để phân loại "spike" vs "tăng nhẹ"
+	private static final double IDLE_LATENCY_BASELINE_MS = 100.0;
+	private static final double IDLE_DECAY_ALPHA = 0.35;
 
 	// ── Backing maps cho Prometheus Gauges ──────────────────────────────────
 	// Các map này là nguồn dữ liệu trực tiếp cho Gauge.builder().
@@ -250,131 +252,161 @@ public class MetricsPoller {
 	}
 
 	private double applyScoreEma(String instanceId, double rawScore) {
-        Double prevObj = smoothedScores.get(instanceId);
+		Double prevObj = smoothedScores.get(instanceId);
 
-        // Lần đầu gặp instance: khởi tạo EMA state với rawScore hiện tại (cold start)
-        if (prevObj == null) {
-            smoothedScores.put(instanceId, rawScore);
-            return rawScore;
-        }
+		// Lần đầu gặp instance: khởi tạo EMA state với rawScore hiện tại (cold start)
+		if (prevObj == null) {
+			smoothedScores.put(instanceId, rawScore);
+			return rawScore;
+		}
 
-        double prev = prevObj;
-        double delta = rawScore - prev; // Dương = score tăng (xấu hơn), âm = score giảm (tốt hơn)
+		double prev = prevObj;
+		double delta = rawScore - prev; // Dương = score tăng (xấu hơn), âm = score giảm (tốt hơn)
 
-        // Chọn alpha dựa vào chiều và độ lớn của delta:
-        double alpha;
-        if (delta > EMA_SPIKE_THRESHOLD) {
-            // Score tăng đột biến >30% → phản ứng rất nhanh (alpha=0.60)
-            // Mục đích: phát hiện degradation ngay lập tức, tránh gửi traffic đến instance đang chết
-            alpha = EMA_ALPHA_SPIKE;
-        } else if (delta > 0.0) {
-            // Score tăng nhẹ → phản ứng vừa (alpha=0.35)
-            alpha = EMA_ALPHA_RISE;
-        } else {
-            // Score giảm (instance đang hồi phục) → phản ứng chậm (alpha=0.25)
-            // Mục đích: tránh flapping — không vội route lại traffic khi instance mới "xanh" vài giây
-            alpha = EMA_ALPHA_RECOVER;
-        }
+		// Chọn alpha dựa vào chiều và độ lớn của delta:
+		double alpha;
+		if (delta > EMA_SPIKE_THRESHOLD) {
+			// Score tăng đột biến >30% → phản ứng rất nhanh (alpha=0.60)
+			// Mục đích: phát hiện degradation ngay lập tức, tránh gửi traffic đến instance
+			// đang chết
+			alpha = EMA_ALPHA_SPIKE;
+		} else if (delta > 0.0) {
+			// Score tăng nhẹ → phản ứng vừa (alpha=0.35)
+			alpha = EMA_ALPHA_RISE;
+		} else {
+			// Score giảm (instance đang hồi phục) → phản ứng chậm (alpha=0.25)
+			// Mục đích: tránh flapping — không vội route lại traffic khi instance mới
+			// "xanh" vài giây
+			alpha = EMA_ALPHA_RECOVER;
+		}
 
-        // Công thức EMA: smoothed = prev + alpha * (rawScore - prev)
-        // Tương đương: smoothed = alpha * rawScore + (1 - alpha) * prev
-        double smoothed = prev + alpha * delta;
-        smoothedScores.put(instanceId, smoothed);
-        return smoothed;
-    }
+		// Công thức EMA: smoothed = prev + alpha * (rawScore - prev)
+		// Tương đương: smoothed = alpha * rawScore + (1 - alpha) * prev
+		double smoothed = prev + alpha * delta;
+		smoothedScores.put(instanceId, smoothed);
+		return smoothed;
+	}
 
 	private double calculateDeltaLatency(String id, double currentCount, double currentTotalTime) {
-        TrafficState prev = trafficStates.get(id);
+		TrafficState prev = trafficStates.get(id);
 
-        // Lần đầu gặp instance (cold start): không có baseline để tính delta.
-        // Dùng p50 từ histogram làm latency khởi tạo thay vì 0 (tránh gây nhiễu score ban đầu).
-        if (prev == null) {
-            double p50 = windowManager.getSnapshot(id).p50();
-            double initLatency = Math.min(Math.max(1.0, p50), 3000.0); // Clamp vào [1ms, 3000ms]
-            trafficStates.put(id, new TrafficState(currentCount, currentTotalTime, initLatency));
-            log.debug("[MetricsPoller] Baseline established for {}: count={}, initLatency={}ms",
-                id, currentCount, initLatency);
-            return initLatency;
-        }
+		// Lần đầu gặp instance: thiết lập baseline counter của Micrometer Timer.
+		if (prev == null) {
+			double initLatency = initialLatencyFor(id);
 
-        // Tính delta giữa 2 lần poll liên tiếp:
-        // deltaCount = số request mới hoàn thành trong ~200ms vừa qua
-        // deltaTotal = tổng thời gian xử lý (giây) của những request đó
-        double deltaCount = currentCount - prev.count();
-        double deltaTotal = currentTotalTime - prev.totalTimeSec();
+			trafficStates.put(id, new TrafficState(currentCount, currentTotalTime, initLatency));
 
-        double currentLatency;
-        if (deltaCount > 0) {
-            // Có traffic mới → tính latency trung bình của window vừa qua
-            // × 1000 để đổi từ giây → milliseconds
-            currentLatency = (deltaTotal / deltaCount) * 1000.0;
-        } else {
-            // Không có request nào hoàn thành trong window này (idle instance).
-            // Giữ nguyên giá trị latency lần trước để không làm nhiễu EWMA.
-            currentLatency = prev.lastLatency();
-        }
+			log.debug("[MetricsPoller] Baseline established for {}: count={}, initLatency={}ms", id, currentCount,
+					initLatency);
 
-        // Clamp vào [1ms, 3000ms]: loại trừ outlier do counter reset hoặc clock drift
-        currentLatency = Math.min(Math.max(currentLatency, 1.0), 3000.0);
-        trafficStates.put(id, new TrafficState(currentCount, currentTotalTime, currentLatency));
-        return currentLatency;
-    }
+			return initLatency;
+		}
+
+		// Tính delta giữa 2 lần poll liên tiếp.
+		double deltaCount = currentCount - prev.count();
+		double deltaTotal = currentTotalTime - prev.totalTimeSec();
+
+		double currentLatency;
+
+		if (deltaCount > 0 && deltaTotal >= 0) {
+			// Có request nghiệp vụ hoàn thành trong window vừa qua.
+			// totalTime là giây, nên nhân 1000 để đổi sang millisecond.
+			currentLatency = (deltaTotal / deltaCount) * 1000.0;
+
+		} else if (deltaCount < 0 || deltaTotal < 0) {
+			// Trường hợp backend container/JVM restart làm counter Micrometer reset về 0.
+			// Nếu không xử lý, delta âm có thể làm latency/score sai.
+			currentLatency = initialLatencyFor(id);
+
+			log.info("[MetricsPoller] Counter reset detected for {}, re-baseline count={}", id, currentCount);
+
+		} else {
+			// Không có request mới hoàn thành.
+			// Code cũ giữ nguyên lastLatency, làm latency cao kéo dài giữa các lần
+			// benchmark.
+			// Code mới kéo latency dần về baseline idle để lần chạy sau sạch hơn.
+			currentLatency = prev.lastLatency() + IDLE_DECAY_ALPHA * (IDLE_LATENCY_BASELINE_MS - prev.lastLatency());
+		}
+
+		// Clamp vào [1ms, 3000ms] để tránh outlier.
+		currentLatency = Math.min(Math.max(currentLatency, 1.0), 3000.0);
+
+		trafficStates.put(id, new TrafficState(currentCount, currentTotalTime, currentLatency));
+
+		return currentLatency;
+	}
+	
+	private double initialLatencyFor(String id) {
+	    double p50 = windowManager.getSnapshot(id).p50();
+
+	    if (p50 <= 1.0 || Double.isNaN(p50) || Double.isInfinite(p50)) {
+	        p50 = IDLE_LATENCY_BASELINE_MS;
+	    }
+
+	    return Math.min(Math.max(1.0, p50), 3000.0);
+	}
 
 	public void resetAllStates() {
-        // Xóa toàn bộ state để bắt đầu benchmark sạch.
-        // Sau reset, lần poll tiếp theo sẽ cold-start lại từ đầu:
-        // - trafficStates: calculateDeltaLatency sẽ dùng p50 histogram làm baseline
-        // - smoothedScores: applyScoreEma sẽ khởi tạo lại
-        // Lưu ý: registeredGauges KHÔNG reset → Prometheus Gauges vẫn còn, chỉ backing map bị xóa
-        trafficStates.clear();
-        consecutiveFailures.clear();
-        smoothedScores.clear();
-        latencyValues.clear();
-        queueValues.clear();
-        scoreValues.clear();
-    }
+		// Xóa toàn bộ state để bắt đầu benchmark sạch.
+		// Sau reset, lần poll tiếp theo sẽ cold-start lại từ đầu:
+		// - trafficStates: calculateDeltaLatency sẽ dùng p50 histogram làm baseline
+		// - smoothedScores: applyScoreEma sẽ khởi tạo lại
+		// Lưu ý: registeredGauges KHÔNG reset → Prometheus Gauges vẫn còn, chỉ backing
+		// map bị xóa
+		trafficStates.clear();
+		consecutiveFailures.clear();
+		smoothedScores.clear();
+		latencyValues.clear();
+		queueValues.clear();
+		scoreValues.clear();
+	}
 
 	// Đăng ký Prometheus Gauges
 	private void registerPrometheusGauges(String id) {
-        // registeredGauges.add() trả về false nếu id đã tồn tại → skip, tránh DuplicateMeterException
-        if (registeredGauges.add(id)) {
+		// registeredGauges.add() trả về false nếu id đã tồn tại → skip, tránh
+		// DuplicateMeterException
+		if (registeredGauges.add(id)) {
 
-            // alb.latency.ewma{backend=...}: EWMA latency (ms) của instance
-            // Gauge đọc từ latencyValues map theo pull model
-            Gauge.builder("alb.latency.ewma", latencyValues, map -> map.getOrDefault(id, 0.0))
-                .tag("backend", id).register(registry);
+			// alb.latency.ewma{backend=...}: EWMA latency (ms) của instance
+			// Gauge đọc từ latencyValues map theo pull model
+			Gauge.builder("alb.latency.ewma", latencyValues, map -> map.getOrDefault(id, 0.0)).tag("backend", id)
+					.register(registry);
 
-            // alb.queue.current{backend=...}: số request đang chờ xử lý
-            Gauge.builder("alb.queue.current", queueValues, map -> map.getOrDefault(id, 0.0))
-                .tag("backend", id).register(registry);
+			// alb.queue.current{backend=...}: số request đang chờ xử lý
+			Gauge.builder("alb.queue.current", queueValues, map -> map.getOrDefault(id, 0.0)).tag("backend", id)
+					.register(registry);
 
-            // alb.final.score{backend=...}: score sau EMA (càng thấp càng tốt)
-            // AdaptiveLoadBalancer dùng score này để chọn instance
-            Gauge.builder("alb.final.score", scoreValues, map -> map.getOrDefault(id, 0.0))
-                .tag("backend", id).register(registry);
+			// alb.final.score{backend=...}: score sau EMA (càng thấp càng tốt)
+			// AdaptiveLoadBalancer dùng score này để chọn instance
+			Gauge.builder("alb.final.score", scoreValues, map -> map.getOrDefault(id, 0.0)).tag("backend", id)
+					.register(registry);
 
-            // alb.routing.score{backend=...}: score có điều chỉnh theo inflight
-            // = finalScore + hệ số phạt nếu instance đang nhận quá nhiều traffic
-            //   so với phần chia công bằng (share[i] × totalInflight)
-            // Công thức: excessRatio = (localInflight × n / totalInflight) - 1.0
-            //            score += 0.6 × excessRatio^1.3 nếu excessRatio > 0
-            // Mục đích: Prometheus hiển thị "routing score thực tế" bao gồm cả áp lực inflight,
-            //           hữu ích khi debug tại sao một instance ít được chọn hơn dù score thấp.
-            Gauge.builder("alb.routing.score", this, self -> {
-                double finalScore = self.scoreValues.getOrDefault(id, 0.5);
-                int localInflight = self.inflightTracker.getInflight(id);
-                int totalInflight = self.inflightTracker.getTotalInflight();
+			// alb.routing.score{backend=...}: score có điều chỉnh theo inflight
+			// = finalScore + hệ số phạt nếu instance đang nhận quá nhiều traffic
+			// so với phần chia công bằng (share[i] × totalInflight)
+			// Công thức: excessRatio = (localInflight × n / totalInflight) - 1.0
+			// score += 0.6 × excessRatio^1.3 nếu excessRatio > 0
+			// Mục đích: Prometheus hiển thị "routing score thực tế" bao gồm cả áp lực
+			// inflight,
+			// hữu ích khi debug tại sao một instance ít được chọn hơn dù score thấp.
+			Gauge.builder("alb.routing.score", this, self -> {
+				double finalScore = self.scoreValues.getOrDefault(id, 0.5);
+				int localInflight = self.inflightTracker.getInflight(id);
+				int totalInflight = self.inflightTracker.getTotalInflight();
 
-                if (totalInflight <= 0) return finalScore;
+				if (totalInflight <= 0)
+					return finalScore;
 
-                int n = self.discoveryClient.getInstances(REGISTRATION_SERVICE_ID).size();
-                if (n <= 0) return finalScore;
+				int n = self.discoveryClient.getInstances(REGISTRATION_SERVICE_ID).size();
+				if (n <= 0)
+					return finalScore;
 
-                double excessRatio = ((double) localInflight * n / totalInflight) - 1.0;
-                if (excessRatio <= 0) return finalScore;
+				double excessRatio = ((double) localInflight * n / totalInflight) - 1.0;
+				if (excessRatio <= 0)
+					return finalScore;
 
-                return finalScore + 0.6 * Math.pow(excessRatio, 1.3);
-            }).tag("backend", id).register(registry);
-        }
-    }
+				return finalScore + 0.6 * Math.pow(excessRatio, 1.3);
+			}).tag("backend", id).register(registry);
+		}
+	}
 }

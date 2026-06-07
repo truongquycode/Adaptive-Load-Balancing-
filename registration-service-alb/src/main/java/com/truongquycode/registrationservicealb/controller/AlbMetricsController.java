@@ -21,6 +21,7 @@ public class AlbMetricsController {
 
 	@GetMapping("/alb-metrics")
 	public Map<String, Double> getMetrics() {
+		
 		double cpu = getMetricSafely(() -> registry.get("process.cpu.usage").gauge().value());
 		double queue = getMetricSafely(() -> registry.get("http.server.requests.inflight").gauge().value());
 
@@ -40,9 +41,9 @@ public class AlbMetricsController {
 				if (status != null && status.startsWith("4"))
 					continue; // bỏ 4xx
 				String uri = meter.getId().getTag("uri");
-	            if (uri != null && (uri.equals("/api/alb-metrics") || uri.startsWith("/actuator"))) {
-	                continue;
-	            }
+				if (isControlEndpoint(uri)) {
+				    continue;
+				}
 				if (meter instanceof Timer t) {
 					count += t.count();
 					totalTime += t.totalTime(TimeUnit.SECONDS);
@@ -52,6 +53,13 @@ public class AlbMetricsController {
 		}
 
 		return Map.of("cpu", cpu, "count", count, "totalTime", totalTime, "queue", queue);
+	}
+	
+	private boolean isControlEndpoint(String uri) {
+	    return uri == null
+	            || uri.equals("/api/alb-metrics")
+	            || uri.startsWith("/actuator")
+	            || uri.startsWith("/api/chaos");
 	}
 	
 
