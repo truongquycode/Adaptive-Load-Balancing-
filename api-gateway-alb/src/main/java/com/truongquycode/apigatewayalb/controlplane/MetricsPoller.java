@@ -52,8 +52,8 @@ public class MetricsPoller {
 	private static final double EMA_ALPHA_RECOVER = 0.25; // Score giảm (instance đang hồi phục) → react chậm, tránh
 															// flap
 	private static final double EMA_SPIKE_THRESHOLD = 0.30; // Ngưỡng delta để phân loại "spike" vs "tăng nhẹ"
-	private static final double IDLE_LATENCY_BASELINE_MS = 100.0;
-	private static final double IDLE_DECAY_ALPHA = 0.35;
+	private static final double IDLE_LATENCY_BASELINE_MS = 65.0;
+	private static final double IDLE_DECAY_ALPHA = 0.20;
 
 	// ── Backing maps cho Prometheus Gauges ──────────────────────────────────
 	// Các map này là nguồn dữ liệu trực tiếp cho Gauge.builder().
@@ -322,10 +322,10 @@ public class MetricsPoller {
 
 		} else {
 			// Không có request mới hoàn thành.
-			// Code cũ giữ nguyên lastLatency, làm latency cao kéo dài giữa các lần
-			// benchmark.
-			// Code mới kéo latency dần về baseline idle để lần chạy sau sạch hơn.
-			currentLatency = prev.lastLatency() + IDLE_DECAY_ALPHA * (IDLE_LATENCY_BASELINE_MS - prev.lastLatency());
+			// Không kéo về 100ms cố định nữa vì node ít traffic sẽ bị score xấu giả.
+			// Kéo nhẹ về baseline cụm hiện tại để tránh feedback loop gây starvation.
+			double idleTarget = idleLatencyBaselineFor(id);
+			currentLatency = prev.lastLatency() + IDLE_DECAY_ALPHA * (idleTarget - prev.lastLatency());
 		}
 
 		// Clamp vào [1ms, 3000ms] để tránh outlier.
@@ -337,13 +337,32 @@ public class MetricsPoller {
 	}
 	
 	private double initialLatencyFor(String id) {
-	    double p50 = windowManager.getSnapshot(id).p50();
+	    return idleLatencyBaselineFor(id);
+	}
 
-	    if (p50 <= 1.0 || Double.isNaN(p50) || Double.isInfinite(p50)) {
-	        p50 = IDLE_LATENCY_BASELINE_MS;
+	private double idleLatencyBaselineFor(String id) {
+		// Ưu tiên trung bình latency của các instance đang có dữ liệu thật.
+		// Cách này tránh node ít traffic bị kéo về 100ms trong khi cụm thực tế chỉ 55-60ms.
+		double sum = 0.0;
+		int count = 0;
+		for (Map.Entry<String, Double> entry : latencyValues.entrySet()) {
+			double value = entry.getValue();
+			if (value > 1.0 && !Double.isNaN(value) && !Double.isInfinite(value)) {
+				sum += value;
+				count++;
+			}
+		}
+		if (count > 0) {
+			return Math.min(Math.max(1.0, sum / count), 3000.0);
+		}
+
+		// Nếu chưa có dữ liệu cụm, dùng p50 trong sliding window của chính instance.
+	    double p50 = windowManager.getSnapshot(id).p50();
+	    if (p50 > 1.0 && !Double.isNaN(p50) && !Double.isInfinite(p50)) {
+	        return Math.min(Math.max(1.0, p50), 3000.0);
 	    }
 
-	    return Math.min(Math.max(1.0, p50), 3000.0);
+	    return IDLE_LATENCY_BASELINE_MS;
 	}
 
 	public void resetAllStates() {
@@ -401,11 +420,13 @@ public class MetricsPoller {
 				if (n <= 0)
 					return finalScore;
 
-				double excessRatio = ((double) localInflight * n / totalInflight) - 1.0;
+				double expected = Math.max(3.0, (double) totalInflight / n);
+				double excessRatio = ((double) localInflight / expected) - 1.0;
 				if (excessRatio <= 0)
 					return finalScore;
 
-				return finalScore + 0.6 * Math.pow(excessRatio, 1.3);
+				double factor = totalInflight < 15 ? 0.25 : 1.0;
+				return finalScore + 0.35 * factor * Math.pow(excessRatio, 1.3);
 			}).tag("backend", id).register(registry);
 		}
 	}

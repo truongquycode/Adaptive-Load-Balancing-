@@ -139,12 +139,12 @@ public class DynamicWeightEngine {
         double avgQueue = totalQueue / n;
         double avgCpu   = totalCpu / n;
 
-        // Ngưỡng idle: avgQueue < 2 request VÀ avgCpu < 6%.
-        // Khi idle, các instance đều có metric gần bằng nhau → EWM sẽ trả về
-        // trọng số gần đều nhau (entropy cao = không phân biệt được), không hữu ích.
-        // Giải pháp: đóng băng trọng số tại AHP defaults khi hệ thống nhàn rỗi.
-        if (avgQueue < 2.0 && avgCpu < 0.06) {
-            log.debug("System idle — weights frozen at AHP defaults");
+        // Ngưỡng low-load/idle: queue trung bình còn thấp và CPU chưa đáng kể.
+        // Trước đây avgQueue < 2 hơi thấp, làm low test vẫn kích hoạt EWM,
+        // khiến beta(queue) tăng quá mạnh chỉ vì chênh vài request inflight.
+        // Với trạng thái này ta giữ AHP để routing ổn định hơn.
+        if (avgQueue < 4.0 && avgCpu < 0.08) {
+            log.debug("Low-load/idle — weights frozen at AHP defaults");
             this.weights = new McdmWeights(AHP_WEIGHTS[0], AHP_WEIGHTS[1], AHP_WEIGHTS[2]);
             return;
         }
@@ -352,12 +352,12 @@ public class DynamicWeightEngine {
             newBeta += e;
         }
 
-        // --- Upper bound β ≤ 0.55 ---
-        // Tránh queue chiếm quá 55% (queue có thể spike tạm thời mà không phản ánh vấn đề thật).
+        // --- Upper bound β ≤ 0.45 ---
+        // Queue/inflight có thể dao động rất nhanh ở low-load, nên không cho beta thống trị.
         // Excess từ β phân bổ toàn bộ sang α.
-        if (newBeta > 0.55) {
-            double e = newBeta - 0.55;
-            newBeta  = 0.55;
+        if (newBeta > 0.45) {
+            double e = newBeta - 0.45;
+            newBeta  = 0.45;
             newAlpha += e;
         }
 

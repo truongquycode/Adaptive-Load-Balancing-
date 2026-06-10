@@ -20,6 +20,7 @@ import reactor.core.publisher.Mono;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -41,7 +42,7 @@ import java.util.concurrent.atomic.AtomicLong;
  *   [AdaptiveLoadBalancer.choose()]  ← được gọi mỗi khi có HTTP request mới đến Gateway
  *       │  đọc score từ cache + inflight từ InflightTracker
  *       ▼
- *   Chọn instance có routingScore thấp nhất → route request đến đó
+ *   Chọn theo weighted routing: score thấp có xác suất cao hơn, nhưng không bỏ đói node khác
  *
  * Điểm quan trọng: score thấp = instance tốt (ít tải, nhanh, CPU thấp).
  * Load balancer KHÔNG tự tính score — nó chỉ ĐỌC score từ MetricsCache và
@@ -96,7 +97,7 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
      *   expected_inflight = totalInflight × share[i]  (phần công bằng theo trọng số)
      * Mục đích: phạt nặng node đang nhận quá nhiều traffic so với "phần của nó".
      */
-    private static final double OMEGA_ABS = 0.6;
+    private static final double OMEGA_ABS = 0.35;
 
     /**
      * Số mũ của hàm phạt tuyệt đối — làm cho đường cong phạt phi tuyến.
@@ -105,6 +106,18 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
      * Nếu = 1.0 (tuyến tính): phạt đều → không ngăn được tập trung tải.
      */
     private static final double PENALTY_EXPONENT = 1.3;
+
+    /**
+     * Ở tải thấp, tổng inflight nhỏ nên chỉ lệch 1-2 request cũng có thể làm penalty quá lớn.
+     * Vì vậy đặt expected tối thiểu để tránh phạt quá tay trong low-load.
+     */
+    private static final double MIN_EXPECTED_INFLIGHT = 3.0;
+
+    /** Nếu tổng inflight còn thấp hơn ngưỡng này thì giảm penalty tuyệt đối. */
+    private static final int LOW_INFLIGHT_THRESHOLD = 15;
+
+    /** Hệ số giảm penalty khi hệ thống đang low-load. */
+    private static final double LOW_INFLIGHT_PENALTY_FACTOR = 0.25;
 
     /**
      * Score sàn tối thiểu — tránh chia cho 0 trong công thức share[i] = 1/√score.
@@ -123,11 +136,25 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
     /**
      * Tỉ lệ tối đa giữa share của instance tốt nhất và instance tệ nhất.
      * Công thức: capFloor = maxShare / MAX_CAP_WEIGHT_RATIO = maxShare / 3.0
-     * Ý nghĩa: instance tệ nhất vẫn nhận ít nhất 1/3 lượng traffic của instance tốt nhất.
-     * Tác dụng: ngăn "chết đói" (starvation) — instance xấu vẫn nhận traffic để
-     * MetricsPoller tiếp tục đo được metrics thực tế của nó.
+     * Ý nghĩa: giới hạn chênh lệch share dùng trong công thức fair-share.
+     * Lưu ý: chống starvation thật sự nằm ở weighted routing phía dưới.
      */
     private static final double MAX_CAP_WEIGHT_RATIO = 3.0;
+
+    /**
+     * Tỉ lệ tối đa giữa trọng số chọn của instance tốt nhất và tệ nhất.
+     * Dùng cho weighted routing để instance xấu không bị bỏ đói hoàn toàn.
+     */
+    private static final double MAX_SELECTION_WEIGHT_RATIO = 8.0;
+
+    /** Điều chỉnh độ nhạy khi đổi routingScore thành trọng số chọn. */
+    private static final double SELECTION_SCORE_POWER = 1.6;
+
+    /**
+     * Nếu score quá cao thì xem là lỗi thật sự, không probe nữa.
+     * Trường hợp poll fail có thể đẩy score lên 2.5, 5.0, 10.0 nên cần chặn.
+     */
+    private static final double UNHEALTHY_SCORE_CUTOFF = 2.0;
 
     /**
      * Thời gian warmup cho instance mới (ms) = 5 giây.
@@ -165,6 +192,9 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
      */
     private static final ConcurrentHashMap<String, Counter> counterCache = new ConcurrentHashMap<>();
 
+    /** Ghi nhận lần cuối mỗi instance được chọn, dùng để debug/chống starvation. */
+    private static final ConcurrentHashMap<String, Long> lastSelectedMs = new ConcurrentHashMap<>();
+
 
     // ──────────────────────────────────────────────────────────────────────────
     // PUBLIC API
@@ -181,6 +211,7 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
         firstSeenMs.clear();
         rrCounter.set(0);
         counterCache.clear();
+        lastSelectedMs.clear();
     }
 
 
@@ -227,12 +258,12 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
      * ┌─ BƯỚC 3: Tính capacity weight share[i] ───────────────────────────────┐
      * │  share[i] = 1 / √(rawMcdm)   → instance tốt (score thấp) = share cao │
      * │  Áp floor: share tối thiểu = maxShare / 3.0                           │
-     * │  → Tránh instance xấu bị "chết đói", vẫn nhận 1/3 traffic tốt nhất   │
+     * │  → Làm mềm fair-share, tránh penalty nghiêng quá mạnh về node tốt nhất     │
      * └───────────────────────────────────────────────────────────────────────┘
      *
      * ┌─ BƯỚC 4: Tính routingScore và chọn instance ──────────────────────────┐
      * │  routingScore = rawMcdm + relPenalty + absPenalty                     │
-     * │  Chọn instance có routingScore thấp nhất                              │
+     * │  Weighted routing: score thấp có xác suất cao hơn, không chọn min tuyệt đối │
      * │  Bỏ qua instance có inflight ≥ INFLIGHT_HARD_CAP                      │
      * └───────────────────────────────────────────────────────────────────────┘
      */
@@ -329,68 +360,89 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
         for (int i = 0; i < n; i++) share[i] /= sumCap;
 
         // ── BƯỚC 4: Tính routingScore và chọn instance ───────────────────────
-        ServiceInstance best = null;
-        double bestScore = Double.MAX_VALUE;
+        // Không chọn min-score tuyệt đối nữa, vì cách đó dễ làm 1 instance bị bỏ đói.
+        // Ta đổi sang weighted routing: score thấp vẫn có xác suất cao hơn,
+        // nhưng các instance khỏe khác vẫn có cơ hội nhận request để cập nhật metric.
+        record Candidate(ServiceInstance inst, double routingScore, double selectionWeight, int inflight) {}
+        List<Candidate> candidates = new ArrayList<>(n);
 
-        // Fallback: nếu tất cả instance đều quá tải (≥ INFLIGHT_HARD_CAP),
-        // chọn instance có inflight thấp nhất thay vì trả về lỗi.
+        // Fallback: nếu tất cả instance đều quá tải hoặc bị loại, chọn node ít inflight nhất.
         ServiceInstance leastLoadFb = null;
         int minInflFb = Integer.MAX_VALUE;
+
+        double maxSelectionWeight = 0.0;
 
         for (int i = 0; i < n; i++) {
             NodeInfo node = nodes.get(i);
             int inf = node.inflight();
 
-            // Hard cap: bỏ qua hoàn toàn instance đang quá tải
-            if (inf >= INFLIGHT_HARD_CAP) continue;
-
-            // Cập nhật fallback (instance ít inflight nhất, dùng nếu tất cả bị hard-cap)
             if (inf < minInflFb) {
                 minInflFb = inf;
                 leastLoadFb = node.inst();
             }
 
-            // ── Penalty tương đối (relPenalty): so với node nhàn nhất hiện tại ──
-            // Ý nghĩa: "node này đang bận hơn node nhàn nhất bao nhiêu request?"
-            // Mỗi request dư thêm = +0.010 vào score → nhẹ nhàng, chỉ phân biệt khi chênh lệch lớn.
-            // Math.max(0.0, ...) đảm bảo node nhàn nhất không bị phạt (penalty ≥ 0).
+            // Hard cap: node quá tải thì không nhận thêm request mới.
+            if (inf >= INFLIGHT_HARD_CAP) continue;
+
+            // Score quá cao thường là poll fail hoặc backend gần như lỗi, không probe nữa.
+            if (node.rawMcdm() >= UNHEALTHY_SCORE_CUTOFF) continue;
+
             double relPenalty = OMEGA_REL * Math.max(0.0, inf - minCurrentInflight);
 
-            // ── Penalty tuyệt đối (absPenalty): so với "fair share" của instance ──
-            // expected: số inflight mà instance này "nên" đang xử lý theo trọng số.
-            // Ví dụ: totalInflight=30, share[i]=0.5 → expected=15
-            // Nếu inflight thực=25 → excessRatio = 25/15 - 1 = 0.67 (vượt 67% phần công bằng)
-            // absPenalty = 0.6 × 0.67^1.3 ≈ 0.35 → cộng vào score → instance ít được chọn hơn
             double absPenalty = 0.0;
             if (totalInflight > 0) {
-                double expected = totalInflight * share[i];
-                if (expected > 0) {
-                    double excessRatio = (double) inf / expected - 1.0;
-                    if (excessRatio > 0) {
-                        // Hàm mũ 1.3: chênh lệch nhỏ phạt nhẹ, chênh lệch lớn phạt nặng (phi tuyến)
-                        absPenalty = OMEGA_ABS * Math.pow(excessRatio, PENALTY_EXPONENT);
-                    }
+                // expected tối thiểu giúp low-load không bị phạt quá mạnh vì lệch 1-2 request.
+                double expected = Math.max(MIN_EXPECTED_INFLIGHT, totalInflight * share[i]);
+                double excessRatio = (double) inf / expected - 1.0;
+                if (excessRatio > 0) {
+                    double penaltyFactor = (totalInflight < LOW_INFLIGHT_THRESHOLD)
+                            ? LOW_INFLIGHT_PENALTY_FACTOR
+                            : 1.0;
+                    absPenalty = OMEGA_ABS * penaltyFactor * Math.pow(excessRatio, PENALTY_EXPONENT);
                 }
             }
 
-            // ── Tổng hợp routing score ─────────────────────────────────────────
-            // routingScore = MCDM score (chất lượng dài hạn) + 2 loại penalty inflight (tức thời)
-            // Instance có routingScore thấp nhất được chọn.
             double routingScore = node.rawMcdm() + relPenalty + absPenalty;
-            if (routingScore < bestScore) {
-                bestScore = routingScore;
-                best = node.inst();
+
+            // Đổi score thành trọng số chọn. Score càng thấp thì trọng số càng cao.
+            // Cộng SCORE_FLOOR để tránh trọng số quá lớn khi score rất nhỏ.
+            double selectionWeight = 1.0 / Math.pow(routingScore + SCORE_FLOOR, SELECTION_SCORE_POWER);
+
+            if (selectionWeight > maxSelectionWeight) maxSelectionWeight = selectionWeight;
+            candidates.add(new Candidate(node.inst(), routingScore, selectionWeight, inf));
+        }
+
+        if (candidates.isEmpty()) {
+            ServiceInstance fb = (leastLoadFb != null) ? leastLoadFb : instances.get(0);
+            log.warn("[ALB] No eligible candidate, fallback to least-inflight instance");
+            emitMetric(fb);
+            return new DefaultResponse(fb);
+        }
+
+        // Áp floor cho trọng số chọn: node còn khỏe thì không bị xác suất 0.
+        // Đây là phần chống starvation thật sự, khác với share chỉ dùng để tính penalty.
+        double selectionFloor = maxSelectionWeight / MAX_SELECTION_WEIGHT_RATIO;
+        double totalWeight = 0.0;
+        List<Candidate> floored = new ArrayList<>(candidates.size());
+        for (Candidate c : candidates) {
+            double w = Math.max(c.selectionWeight(), selectionFloor);
+            floored.add(new Candidate(c.inst(), c.routingScore(), w, c.inflight()));
+            totalWeight += w;
+        }
+
+        // Weighted random: giữ tính thích nghi nhưng không còn greedy tuyệt đối.
+        double r = ThreadLocalRandom.current().nextDouble(totalWeight);
+        ServiceInstance selected = floored.get(floored.size() - 1).inst();
+        for (Candidate c : floored) {
+            r -= c.selectionWeight();
+            if (r <= 0.0) {
+                selected = c.inst();
+                break;
             }
         }
 
-        // ── Fallback: tất cả instance đều bị hard-cap ─────────────────────────
-        if (best == null) {
-            best = (leastLoadFb != null) ? leastLoadFb : instances.get(0);
-            log.warn("[ALB] All nodes at INFLIGHT_HARD_CAP={}", INFLIGHT_HARD_CAP);
-        }
-
-        emitMetric(best);
-        return new DefaultResponse(best);
+        emitMetric(selected);
+        return new DefaultResponse(selected);
     }
 
 
@@ -408,6 +460,7 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
      * Ví dụ metric: alb.routing.selected{backend="REGISTRATION-SERVICE-ALB:8081", port="8081"}
      */
     private void emitMetric(ServiceInstance inst) {
+        lastSelectedMs.put(inst.getInstanceId(), System.currentTimeMillis());
         counterCache.computeIfAbsent(
                 inst.getInstanceId(),
                 k -> Metrics.counter(
