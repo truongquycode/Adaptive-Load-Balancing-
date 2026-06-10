@@ -10,125 +10,141 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
+import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicLong;
 
 @RestController
 @RequestMapping("/api")
 public class RegistrationController {
 
-	private final Random random = new Random();
-	private static final AtomicLong requestCount = new AtomicLong(0);
+    private static final AtomicLong requestCount = new AtomicLong(0);
+    private static volatile double cpuSink = 0.0;
 
-	public static class UserRegistrationDto {
-		public String username;
-		public String email;
-		public String fullName;
-		public String address;
-		public String deviceId;
-		public List<String> preferences;
-	}
+    private static final int REGISTER_BASELINE_MIN_MS = 10;
+    private static final int REGISTER_BASELINE_MAX_MS_EXCLUSIVE = 51;
 
-	// 2. Tạo endpoint POST
-	@PostMapping("/register-user")
-	public ResponseEntity<Map<String, Object>> registerUserPost(@RequestBody UserRegistrationDto payload,
-			HttpServletRequest request) throws InterruptedException {
+    private static final int REGISTER_HEAVY_CPU_MS = 100;
+    private static final int REGISTER_HEAVY_IO_MIN_MS = 100;
+    private static final int REGISTER_HEAVY_IO_MAX_MS_EXCLUSIVE = 301;
 
-		long count = requestCount.incrementAndGet();
-		int port = request.getServerPort();
+    private static final int REGISTER_ASYNC_IO_DELAY_MS = 800;
 
-		// 🔴 MÔ PHỎNG 1: TĂNG CPU OVERHEAD CỰC ĐẠI
-		// Trong thực tế, lúc đăng ký user hệ thống phải chạy thuật toán băm mật khẩu
-		// (BCrypt/Argon2).
-		// 8.000 vòng lặp là quá nhẹ. Ta tăng lên 80.000 để mô phỏng thuật toán mã hóa
-		// nặng.
-		double dummy = 0;
-		for (int i = 0; i < 20_000; i++) {
-			dummy += Math.sqrt(Math.random());
-		}
+    private static final int REGISTER_USER_CPU_ITERATIONS = 20_000;
+    private static final int REGISTER_USER_GC_OBJECTS = 1_000;
+    private static final int REGISTER_USER_IO_MIN_MS = 150;
+    private static final int REGISTER_USER_IO_MAX_MS_EXCLUSIVE = 351;
 
-		// 🔴 MÔ PHỎNG 2: TĂNG ÁP LỰC RAM VÀ GARBAGE COLLECTOR (GC)
-		// Tạo ra các Object rác để mô phỏng việc thư viện ORM (như Hibernate)
-		// hoặc Jackson phải cấp phát bộ nhớ khi map JSON phức tạp.
-		StringBuilder dummyMemory = new StringBuilder();
-		for (int i = 0; i < 5000; i++) {
-			dummyMemory.append(java.util.UUID.randomUUID().toString());
-		}
-		String trashData = dummyMemory.toString(); // Sinh rác để GC phải dọn
+    public static class UserRegistrationDto {
+        public String username;
+        public String email;
+        public String fullName;
+        public String address;
+        public String deviceId;
+        public List<String> preferences;
+    }
 
-		// 🔴 MÔ PHỎNG 3: TĂNG TRỄ I/O (Database Transaction + Gửi Email)
-		// Đăng ký user thường mất nhiều thời gian do phải mở Transaction ghi vào DB
-		// và gọi API bên thứ 3 (như gửi Email OTP/Welcome).
-		// Nâng delay từ 60-150ms lên thành 150-350ms.
-		int delay = 150 + random.nextInt(200);
-		Thread.sleep(delay);
+    /**
+     * Endpoint demo nghiệp vụ đăng ký người dùng.
+     * Không nên dùng endpoint này làm số liệu benchmark chính vì có allocation/GC giả lập.
+     */
+    @PostMapping("/register-user")
+    public ResponseEntity<Map<String, Object>> registerUserPost(
+            @RequestBody(required = false) UserRegistrationDto payload,
+            HttpServletRequest request
+    ) throws InterruptedException {
+        long startNs = System.nanoTime();
+        long count = requestCount.incrementAndGet();
+        int port = request.getServerPort();
+        ThreadLocalRandom random = ThreadLocalRandom.current();
 
-		return ResponseEntity.ok(Map.of("status", "success", "port", port, "requestId", count, "processedUser",
-				payload.username, "latency", delay, "trashLength", trashData.length() // Ngăn compiler tối ưu hóa biến
-																						// rác
-		));
-	}
+        burnCpu(REGISTER_USER_CPU_ITERATIONS);
 
-	@GetMapping("/register")
-	public ResponseEntity<String> register(HttpServletRequest request) throws InterruptedException {
-		long count = requestCount.incrementAndGet();
-		int port = request.getServerPort();
-		int delay;
+        StringBuilder allocatedData = new StringBuilder(REGISTER_USER_GC_OBJECTS * 36);
+        for (int i = 0; i < REGISTER_USER_GC_OBJECTS; i++) {
+            allocatedData.append(UUID.randomUUID());
+        }
+        String generatedData = allocatedData.toString();
 
-		if (ChaosController.originalChaos.get()) {
-			// Kịch bản gốc: Vừa trễ mạng, vừa đốt CPU trên chính luồng HTTP
-			delay = 100 + random.nextInt(200);
-			long endTime = System.currentTimeMillis() + delay;
-			double dummy = 0;
-			while (System.currentTimeMillis() < endTime) {
-				dummy += Math.sqrt(Math.random());
-			}
-			Thread.sleep(delay);
+        int ioDelayMs = random.nextInt(REGISTER_USER_IO_MIN_MS, REGISTER_USER_IO_MAX_MS_EXCLUSIVE);
+        Thread.sleep(ioDelayMs);
 
-		} else if (ChaosController.asyncIoEnabled.get()) {
-			// TRƯỜNG HỢP 2: Lỗi I/O phi đồng bộ (Sleep thuần túy, không tốn CPU)
-			delay = 800;
-			Thread.sleep(delay);
+        long elapsedMs = elapsedMillis(startNs);
+        return ResponseEntity.ok(Map.of(
+                "status", "success",
+                "port", port,
+                "requestId", count,
+                "processedUser", safeUsername(payload),
+                "ioDelayMs", ioDelayMs,
+                "elapsedMs", elapsedMs,
+                "allocatedDataLength", generatedData.length()
+        ));
+    }
 
-		} else if (ChaosController.cpuSpikeEnabled.get()) {
-			// TRƯỜNG HỢP 1 (CPU SPIKE - KHI CỜ ĐƯỢC BẬT TRUE):
-			// Mô phỏng việc các request đột nhiên trở nên phức tạp (như xuất báo cáo Excel,
-			// mã hóa, xử lý ảnh)
-			// Luồng HTTP phải cạnh tranh trực tiếp với nhóm luồng Chaos ngầm.
-			double httpDummy = 0;
-			for (int i = 0; i < 5000; i++) {
-				httpDummy += Math.sqrt(Math.random());
-			}
-			delay = 10 + random.nextInt(40);
-			Thread.sleep(delay);
+    /**
+     * Endpoint tương thích cũ. Benchmark khoa học nên ưu tiên /api/simulate-call.
+     */
+    @GetMapping("/register")
+    public ResponseEntity<String> register(HttpServletRequest request) throws InterruptedException {
+        long startNs = System.nanoTime();
+        long count = requestCount.incrementAndGet();
+        int port = request.getServerPort();
+        ThreadLocalRandom random = ThreadLocalRandom.current();
 
-		} else if (ChaosController.hiddenDegradationEnabled.get()) {
-			// KỊCH BẢN "HIDDEN DEGRADATION":
-			// CPU đang bị các burner thread chiếm 100% ngầm.
-			// Mỗi HTTP request chỉ làm một lượng tính toán rất nhỏ
-			// → Request hoàn thành trong 20-50ms (gần như bình thường)
-			// → Inflight count gần như không đổi so với baseline
-			// -------------------------------------------------------
-			// LC: không thể phân biệt node này với node bình thường
-			// vì inflight count tương đương → route đều 1/3
-			//
-			// Adaptive: MetricsPoller đọc process.cpu.usage = 90%+
-			// MCDM tăng score của node này → P2C tránh
-			// → Ít hơn 10% traffic đến node degraded
-			double httpDummy = 0;
-			for (int i = 0; i < 3000; i++) { // Chỉ 3000 iterations ≈ <1ms overhead
-				httpDummy += Math.sqrt(Math.random());
-			}
-			delay = 20 + random.nextInt(30); // 20–50ms, gần bằng baseline
-			Thread.sleep(delay);
+        String mode;
+        int ioDelayMs;
 
-		} else {
-			// TRẠNG THÁI BÌNH THƯỜNG:
-			// Tách biệt hoàn toàn, luồng xử lý siêu nhẹ, chỉ mô phỏng độ trễ mạng tự nhiên.
-			delay = 10 + random.nextInt(40);
-			Thread.sleep(delay);
-		}
+        if (ChaosController.heavyRequestEnabled.get()) {
+            mode = "HEAVY_REQUEST";
+            ioDelayMs = random.nextInt(REGISTER_HEAVY_IO_MIN_MS, REGISTER_HEAVY_IO_MAX_MS_EXCLUSIVE);
+            burnCpuForMillis(REGISTER_HEAVY_CPU_MS);
+            Thread.sleep(ioDelayMs);
+        } else if (ChaosController.asyncIoEnabled.get()) {
+            mode = "ASYNC_IO";
+            ioDelayMs = REGISTER_ASYNC_IO_DELAY_MS;
+            Thread.sleep(ioDelayMs);
+        } else {
+            // Hidden CPU và CPU spike chỉ chạy nền, endpoint này không tự thêm CPU nữa.
+            mode = ChaosController.hiddenDegradationEnabled.get() ? "HIDDEN_CPU_BASELINE_PATH"
+                    : ChaosController.cpuSpikeEnabled.get() ? "CPU_SPIKE_BASELINE_PATH"
+                    : "BASELINE";
+            ioDelayMs = random.nextInt(REGISTER_BASELINE_MIN_MS, REGISTER_BASELINE_MAX_MS_EXCLUSIVE);
+            Thread.sleep(ioDelayMs);
+        }
 
-		return ResponseEntity.ok(String.format("Port: %d | Request #%d | Latency: %dms", port, count, delay));
-	}
+        long elapsedMs = elapsedMillis(startNs);
+        return ResponseEntity.ok(String.format(
+                "Port: %d | Request #%d | Mode: %s | I/O wait: %dms | Elapsed: %dms",
+                port, count, mode, ioDelayMs, elapsedMs
+        ));
+    }
+
+    private static String safeUsername(UserRegistrationDto payload) {
+        if (payload == null || payload.username == null || payload.username.isBlank()) {
+            return "anonymous";
+        }
+        return payload.username;
+    }
+
+    private static long elapsedMillis(long startNs) {
+        return (System.nanoTime() - startNs) / 1_000_000L;
+    }
+
+    private static void burnCpu(int iterations) {
+        double value = cpuSink;
+        for (int i = 0; i < iterations; i++) {
+            value += Math.sqrt((i * 31.0 + 17.0) % 997.0);
+        }
+        cpuSink = value;
+    }
+
+    private static void burnCpuForMillis(int millis) {
+        long deadline = System.nanoTime() + millis * 1_000_000L;
+        double value = cpuSink;
+        int i = 0;
+        while (System.nanoTime() < deadline) {
+            value += Math.sqrt((i++ * 31.0 + 17.0) % 997.0);
+        }
+        cpuSink = value;
+    }
 }

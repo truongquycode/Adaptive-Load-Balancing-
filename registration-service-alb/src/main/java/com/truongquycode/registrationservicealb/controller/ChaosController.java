@@ -1,7 +1,11 @@
 package com.truongquycode.registrationservicealb.controller;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -13,151 +17,267 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @RequestMapping("/api/chaos")
 public class ChaosController {
 
-	public static final AtomicBoolean originalChaos = new AtomicBoolean(false);
-	public static final AtomicBoolean cpuSpikeEnabled = new AtomicBoolean(false);
-	public static final AtomicBoolean asyncIoEnabled = new AtomicBoolean(false);
-	public static final AtomicBoolean hiddenDegradationEnabled = new AtomicBoolean(false);
+    public static final AtomicBoolean heavyRequestEnabled = new AtomicBoolean(false);
+    public static final AtomicBoolean cpuSpikeEnabled = new AtomicBoolean(false);
+    public static final AtomicBoolean asyncIoEnabled = new AtomicBoolean(false);
+    public static final AtomicBoolean hiddenDegradationEnabled = new AtomicBoolean(false);
 
-	private final List<Thread> cpuSpikeThreads = new CopyOnWriteArrayList<>();
-	private final List<Thread> hiddenThreads = new CopyOnWriteArrayList<>();
+    private static volatile double cpuSink = 0.0;
 
-	// Docker container 8083 có 1.0 CPU → tối đa 2 burner threads là đủ đốt 100%
-	// Dùng hằng số thay vì availableProcessors() để kiểm soát chính xác
-	private static final int BURNER_THREAD_COUNT = 2;
+    private final Object chaosLock = new Object();
+    private final List<Thread> cpuSpikeThreads = new CopyOnWriteArrayList<>();
+    private final List<Thread> hiddenThreads = new CopyOnWriteArrayList<>();
 
-	// ── Vừa trễ vừa đốt CPU ───────────────────────────────────────────
-	@PostMapping("/enable")
-	public ResponseEntity<Map<String, Object>> enableOriginal() {
-		originalChaos.set(true);
-		return statusResponse("ORIGINAL CHAOS ENABLED");
-	}
+    @Value("${chaos.burner-threads:2}")
+    private int burnerThreadCount;
 
-	@PostMapping("/disable")
-	public ResponseEntity<Map<String, Object>> disableOriginal() {
-		originalChaos.set(false);
-		return statusResponse("ORIGINAL CHAOS DISABLED");
-	}
+    @Value("${chaos.cpu-spike.work-iterations:20000}")
+    private int cpuSpikeWorkIterations;
 
-	// ─── CPU SPIKE
-	// ────────────────────────────────────────────────────────────────────
-	@PostMapping("/cpu-spike/enable")
-	public ResponseEntity<Map<String, Object>> enableCpuSpike() {
-		if (cpuSpikeEnabled.compareAndSet(false, true)) {
-			for (int i = 0; i < BURNER_THREAD_COUNT; i++) {
-				Thread t = new Thread(() -> {
-					double dummy = 0;
-					// ── check cả isInterrupted() để interrupt() có tác dụng ──
-					while (cpuSpikeEnabled.get() && !Thread.currentThread().isInterrupted()) {
-						dummy += Math.sqrt(Math.random());
-					}
-				});
-				t.setName("cpu-spike-burner-" + i);
-				t.start();
-				cpuSpikeThreads.add(t);
-			}
-		}
-		return statusResponse("BACKGROUND CPU SPIKE ENABLED");
-	}
+    // Mặc định spike tự dừng sau 30 giây. Có thể tăng trong application.yml nếu phase dài hơn.
+    @Value("${chaos.cpu-spike.duration-ms:30000}")
+    private long cpuSpikeDurationMs;
 
-	@PostMapping("/cpu-spike/disable")
-	public ResponseEntity<Map<String, Object>> disableCpuSpike() {
-		cpuSpikeEnabled.set(false);
-		stopThreads(cpuSpikeThreads); // ← chỉ dừng cpuSpikeThreads, không đụng hiddenThreads
-		return statusResponse("BACKGROUND CPU SPIKE DISABLED");
-	}
+    @Value("${chaos.hidden.work-iterations:80000}")
+    private int hiddenWorkIterations;
 
-	// ─── ASYNC IO
-	// ─────────────────────────────────────────────────────────────────────
-	@PostMapping("/async-io/enable")
-	public ResponseEntity<Map<String, Object>> enableAsyncIo() {
-		asyncIoEnabled.set(true);
-		return statusResponse("ASYNC I/O LATENCY ENABLED");
-	}
+    @Value("${chaos.hidden.cooldown-ms:4}")
+    private long hiddenCooldownMs;
 
-	@PostMapping("/async-io/disable")
-	public ResponseEntity<Map<String, Object>> disableAsyncIo() {
-		asyncIoEnabled.set(false);
-		return statusResponse("ASYNC I/O LATENCY DISABLED");
-	}
+    /** Heavy request: request hiện tại nặng hơn baseline, không phải lỗi hạ tầng. */
+    @PostMapping({"/heavy/enable", "/enable"})
+    public ResponseEntity<Map<String, Object>> enableHeavyRequest() {
+        synchronized (chaosLock) {
+            resetInternalNoLock();
+            heavyRequestEnabled.set(true);
+            return statusResponse("HEAVY REQUEST ENABLED");
+        }
+    }
 
-	// ─── HIDDEN DEGRADATION
-	// ──────────────────────────────────────────────────────────
-	@PostMapping("/hidden/enable")
-	public ResponseEntity<Map<String, Object>> enableHidden() {
-		if (hiddenDegradationEnabled.compareAndSet(false, true)) {
-			for (int i = 0; i < BURNER_THREAD_COUNT; i++) {
-				Thread t = new Thread(() -> {
-					double dummy = 0;
-					// ── check cả isInterrupted() ──
-					while (hiddenDegradationEnabled.get() && !Thread.currentThread().isInterrupted()) {
+    @PostMapping({"/heavy/disable", "/disable"})
+    public ResponseEntity<Map<String, Object>> disableHeavyRequest() {
+        synchronized (chaosLock) {
+            heavyRequestEnabled.set(false);
+            return statusResponse("HEAVY REQUEST DISABLED");
+        }
+    }
 
-						for (int j = 0; j < 80000; j++) {
-							dummy += Math.sqrt(Math.random());
-						}
+    /** CPU spike: tranh chấp CPU nền, có thời lượng hữu hạn để đúng nghĩa spike. */
+    @PostMapping("/cpu-spike/enable")
+    public ResponseEntity<Map<String, Object>> enableCpuSpike() {
+        synchronized (chaosLock) {
+            resetInternalNoLock();
+            cpuSpikeEnabled.set(true);
 
-						try {
-							Thread.sleep(4);
-						} catch (InterruptedException e) {
-							Thread.currentThread().interrupt();
-							break;
-						}
-					}
-				});
-				t.setDaemon(true); // daemon: JVM shutdown không bị block
-				t.setName("hidden-burner-" + i);
-				t.start();
-				hiddenThreads.add(t); // ← vào list riêng, không bị resetAll() xóa nhầm
-			}
-		}
-		return statusResponse("HIDDEN DEGRADATION ENABLED");
-	}
+            for (int i = 0; i < burnerThreadCount; i++) {
+                Thread thread = new Thread(() -> runCpuSpikeBurner(cpuSpikeEnabled), "cpu-spike-burner-" + i);
+                thread.setDaemon(true);
+                thread.start();
+                cpuSpikeThreads.add(thread);
+            }
 
-	@PostMapping("/hidden/disable")
-	public ResponseEntity<Map<String, Object>> disableHidden() {
-		hiddenDegradationEnabled.set(false);
-		stopThreads(hiddenThreads); // ← chỉ dừng hiddenThreads
-		return statusResponse("HIDDEN DEGRADATION DISABLED");
-	}
+            startCpuSpikeAutoStopper();
+            return statusResponse("CPU SPIKE ENABLED");
+        }
+    }
 
-	// ─── RESET TẤT CẢ
-	// ────────────────────────────────────────────────────────────────
-	@PostMapping("/reset")
-	public ResponseEntity<Map<String, Object>> resetAll() {
-		originalChaos.set(false);
-		asyncIoEnabled.set(false);
-		hiddenDegradationEnabled.set(false);
-		cpuSpikeEnabled.set(false);
-		// Dừng threads của từng list riêng biệt
-		stopThreads(hiddenThreads);
-		stopThreads(cpuSpikeThreads);
-		return statusResponse("ALL CHAOS RESET");
-	}
+    @PostMapping("/cpu-spike/disable")
+    public ResponseEntity<Map<String, Object>> disableCpuSpike() {
+        synchronized (chaosLock) {
+            stopCpuSpikeNoLock();
+            return statusResponse("CPU SPIKE DISABLED");
+        }
+    }
 
-	// ─── HELPER: Dừng và clear một list threads
-	// ──────────────────────────────────────
-	private void stopThreads(List<Thread> threads) {
-		// Snapshot để tránh concurrent modification
-		List<Thread> snapshot = new ArrayList<>(threads);
-		threads.clear(); // Xóa references ngay
+    /** I/O degradation: chỉ kéo dài thời gian chờ I/O, không tạo thêm CPU nền. */
+    @PostMapping("/async-io/enable")
+    public ResponseEntity<Map<String, Object>> enableAsyncIo() {
+        synchronized (chaosLock) {
+            resetInternalNoLock();
+            asyncIoEnabled.set(true);
+            return statusResponse("ASYNC I/O ENABLED");
+        }
+    }
 
-		// Interrupt trước để báo hiệu
-		snapshot.forEach(Thread::interrupt);
+    @PostMapping("/async-io/disable")
+    public ResponseEntity<Map<String, Object>> disableAsyncIo() {
+        synchronized (chaosLock) {
+            asyncIoEnabled.set(false);
+            return statusResponse("ASYNC I/O DISABLED");
+        }
+    }
 
-		// Join với timeout ngắn (threads thoát rất nhanh vì flag đã false)
-		// Chạy song song để tránh blocking HTTP response quá lâu
-		snapshot.forEach(t -> {
-			try {
-				t.join(500);
-			} catch (InterruptedException e) {
+    /** Hidden CPU: CPU bị tiêu thụ ở nền, request path không tự thêm CPU. */
+    @PostMapping("/hidden/enable")
+    public ResponseEntity<Map<String, Object>> enableHidden() {
+        synchronized (chaosLock) {
+            resetInternalNoLock();
+            hiddenDegradationEnabled.set(true);
 
-			}
-		});
-	}
+            for (int i = 0; i < burnerThreadCount; i++) {
+                Thread thread = new Thread(() -> runHiddenBurner(hiddenDegradationEnabled), "hidden-burner-" + i);
+                thread.setDaemon(true);
+                thread.start();
+                hiddenThreads.add(thread);
+            }
 
-	private ResponseEntity<Map<String, Object>> statusResponse(String statusMsg) {
-		return ResponseEntity.ok(
-				Map.of("status", statusMsg, "port", System.getenv("PORT") != null ? System.getenv("PORT") : "unknown",
-						"states", Map.of("original", originalChaos.get(), "cpuSpike", cpuSpikeEnabled.get(), "asyncIo",
-								asyncIoEnabled.get(), "hiddenDegradation", hiddenDegradationEnabled.get())));
-	}
+            return statusResponse("HIDDEN CPU ENABLED");
+        }
+    }
+
+    @PostMapping("/hidden/disable")
+    public ResponseEntity<Map<String, Object>> disableHidden() {
+        synchronized (chaosLock) {
+            stopHiddenNoLock();
+            return statusResponse("HIDDEN CPU DISABLED");
+        }
+    }
+
+    @PostMapping("/reset")
+    public ResponseEntity<Map<String, Object>> resetAll() {
+        synchronized (chaosLock) {
+            resetInternalNoLock();
+            return statusResponse("ALL CHAOS RESET");
+        }
+    }
+
+    @GetMapping("/status")
+    public ResponseEntity<Map<String, Object>> status() {
+        synchronized (chaosLock) {
+            return statusResponse("CHAOS STATUS");
+        }
+    }
+
+    private void resetInternalNoLock() {
+        heavyRequestEnabled.set(false);
+        asyncIoEnabled.set(false);
+        stopHiddenNoLock();
+        stopCpuSpikeNoLock();
+    }
+
+    private void stopCpuSpikeNoLock() {
+        cpuSpikeEnabled.set(false);
+        stopThreads(cpuSpikeThreads);
+    }
+
+    private void stopHiddenNoLock() {
+        hiddenDegradationEnabled.set(false);
+        stopThreads(hiddenThreads);
+    }
+
+    private void runCpuSpikeBurner(AtomicBoolean enabledFlag) {
+        double value = cpuSink;
+        while (enabledFlag.get() && !Thread.currentThread().isInterrupted()) {
+            for (int i = 0; i < cpuSpikeWorkIterations; i++) {
+                value += Math.sqrt((i * 31.0 + 17.0) % 997.0);
+            }
+            cpuSink = value;
+        }
+    }
+
+    private void runHiddenBurner(AtomicBoolean enabledFlag) {
+        double value = cpuSink;
+        while (enabledFlag.get() && !Thread.currentThread().isInterrupted()) {
+            for (int i = 0; i < hiddenWorkIterations; i++) {
+                value += Math.sqrt((i * 31.0 + 17.0) % 997.0);
+            }
+            cpuSink = value;
+
+            try {
+                Thread.sleep(hiddenCooldownMs);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+    }
+
+    private void startCpuSpikeAutoStopper() {
+        if (cpuSpikeDurationMs <= 0) {
+            return;
+        }
+
+        Thread stopper = new Thread(() -> {
+            try {
+                Thread.sleep(cpuSpikeDurationMs);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+
+            synchronized (chaosLock) {
+                if (cpuSpikeEnabled.get()) {
+                    stopCpuSpikeNoLock();
+                }
+            }
+        }, "cpu-spike-auto-stop");
+
+        stopper.setDaemon(true);
+        stopper.start();
+    }
+
+    private void stopThreads(List<Thread> threads) {
+        List<Thread> snapshot = new ArrayList<>(threads);
+        threads.clear();
+
+        snapshot.forEach(Thread::interrupt);
+
+        for (Thread thread : snapshot) {
+            try {
+                thread.join(500);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+    }
+
+    private ResponseEntity<Map<String, Object>> statusResponse(String statusMsg) {
+        Map<String, Object> states = Map.of(
+                "activeMode", activeMode(),
+                "heavyRequest", heavyRequestEnabled.get(),
+                "cpuSpike", cpuSpikeEnabled.get(),
+                "asyncIo", asyncIoEnabled.get(),
+                "hiddenCpu", hiddenDegradationEnabled.get()
+        );
+
+        Map<String, Object> config = Map.of(
+                "burnerThreads", burnerThreadCount,
+                "cpuSpikeWorkIterations", cpuSpikeWorkIterations,
+                "cpuSpikeDurationMs", cpuSpikeDurationMs,
+                "hiddenWorkIterations", hiddenWorkIterations,
+                "hiddenCooldownMs", hiddenCooldownMs
+        );
+
+        return ResponseEntity.ok(Map.of(
+                "status", statusMsg,
+                "port", System.getenv().getOrDefault("PORT", "unknown"),
+                "states", states,
+                "config", config
+        ));
+    }
+
+    private String activeMode() {
+        int activeCount = 0;
+        String mode = "NONE";
+
+        if (heavyRequestEnabled.get()) {
+            activeCount++;
+            mode = "HEAVY_REQUEST";
+        }
+        if (cpuSpikeEnabled.get()) {
+            activeCount++;
+            mode = "CPU_SPIKE";
+        }
+        if (asyncIoEnabled.get()) {
+            activeCount++;
+            mode = "ASYNC_IO";
+        }
+        if (hiddenDegradationEnabled.get()) {
+            activeCount++;
+            mode = "HIDDEN_CPU";
+        }
+
+        return activeCount > 1 ? "MULTIPLE" : mode;
+    }
 }

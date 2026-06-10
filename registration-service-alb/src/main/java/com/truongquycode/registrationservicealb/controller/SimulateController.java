@@ -5,86 +5,87 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.Random;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicLong;
 
 @RestController
 @RequestMapping("/api")
 public class SimulateController {
 
-    private final Random random = new Random();
     private static final AtomicLong requestCount = new AtomicLong(0);
 
-	@GetMapping("/simulate-call")
-    public ResponseEntity<String> simulateInterServiceCommunication()
-            throws InterruptedException {
+    // Biến này giúp JVM không tối ưu bỏ vòng lặp CPU giả lập.
+    private static volatile double cpuSink = 0.0;
+
+    // Baseline: CPU nhẹ -> I/O ngắn -> CPU nhẹ.
+    private static final int NORMAL_CPU_PHASE_1_ITERATIONS = 4_000;
+    private static final int NORMAL_CPU_PHASE_2_ITERATIONS = 6_000;
+    private static final int NORMAL_IO_MIN_MS = 30;
+    private static final int NORMAL_IO_MAX_MS_EXCLUSIVE = 81;
+
+    // I/O degradation: giữ nguyên CPU phase, chỉ kéo dài phần chờ I/O.
+    private static final int ASYNC_IO_MIN_MS = 600;
+    private static final int ASYNC_IO_MAX_MS_EXCLUSIVE = 1001;
+
+    // Heavy request: mô phỏng request nghiệp vụ nặng hơn bình thường.
+    private static final int HEAVY_CPU_PHASE_1_ITERATIONS = 21_000;
+    private static final int HEAVY_CPU_PHASE_2_ITERATIONS = 27_000;
+    private static final int HEAVY_IO_MIN_MS = 80;
+    private static final int HEAVY_IO_MAX_MS_EXCLUSIVE = 201;
+
+    /**
+     * Endpoint benchmark chính.
+     * Cấu trúc request được giữ ổn định để dễ so sánh các thuật toán cân bằng tải.
+     */
+    @GetMapping("/simulate-call")
+    public ResponseEntity<String> simulateInterServiceCommunication() throws InterruptedException {
+        long startNs = System.nanoTime();
         long count = requestCount.incrementAndGet();
+        ThreadLocalRandom random = ThreadLocalRandom.current();
 
-        // ── CHAOS BRANCH 1: I/O Bottleneck (async-io) ─────────────────────────
-        // Kịch bản: database connection pool cạn kiệt, mỗi request phải chờ
-        // lock hoặc connection → latency tăng vọt, CPU KHÔNG tăng.
-        // → Test xem Adaptive có phát hiện latency spike mà không có CPU signal?
-        // Đáp án: CÓ — EWMA latency + PID penalty phát hiện trong 200–400ms.
-        // LeastConn: phát hiện qua inflight tăng, nhưng chậm hơn 0.8–1.5s.
-        if (ChaosController.asyncIoEnabled.get()) {
-            int ioDelay = 600 + random.nextInt(400); // 600–1000ms per request
-            Thread.sleep(ioDelay);
-            return ResponseEntity.ok(String.format(
-                "I/O Bottleneck simulated | Request #%d | I/O wait: %dms",
-                count, ioDelay
-            ));
+        String mode;
+        int ioDelayMs;
+
+        if (ChaosController.heavyRequestEnabled.get()) {
+            mode = "HEAVY_REQUEST";
+            ioDelayMs = random.nextInt(HEAVY_IO_MIN_MS, HEAVY_IO_MAX_MS_EXCLUSIVE);
+            burnCpu(HEAVY_CPU_PHASE_1_ITERATIONS);
+            Thread.sleep(ioDelayMs);
+            burnCpu(HEAVY_CPU_PHASE_2_ITERATIONS);
+        } else if (ChaosController.asyncIoEnabled.get()) {
+            mode = "ASYNC_IO";
+            ioDelayMs = random.nextInt(ASYNC_IO_MIN_MS, ASYNC_IO_MAX_MS_EXCLUSIVE);
+            burnCpu(NORMAL_CPU_PHASE_1_ITERATIONS);
+            Thread.sleep(ioDelayMs);
+            burnCpu(NORMAL_CPU_PHASE_2_ITERATIONS);
+        } else {
+            // Hidden CPU và CPU spike chạy nền trong ChaosController.
+            // Request path vẫn là baseline để không trộn thêm nguyên nhân gây nhiễu.
+            mode = ChaosController.hiddenDegradationEnabled.get() ? "HIDDEN_CPU_BASELINE_PATH"
+                    : ChaosController.cpuSpikeEnabled.get() ? "CPU_SPIKE_BASELINE_PATH"
+                    : "BASELINE";
+            ioDelayMs = random.nextInt(NORMAL_IO_MIN_MS, NORMAL_IO_MAX_MS_EXCLUSIVE);
+            burnCpu(NORMAL_CPU_PHASE_1_ITERATIONS);
+            Thread.sleep(ioDelayMs);
+            burnCpu(NORMAL_CPU_PHASE_2_ITERATIONS);
         }
 
-        // ── CHAOS BRANCH 2: CPU Overload (cpu-spike + normal burnCpu) ─────────
-        // Kịch bản: background jobs (cron, GC, cache rebuild) đốt hết CPU.
-        // Burner threads từ ChaosController + burnCpu trong HTTP thread tranh CPU.
-        // → process.cpu.usage tăng lên 90–100% dù per-request logic không đổi.
-        // → Adaptive phát hiện qua MCDM gamma (CPU weight ~44%) trong 200ms.
-        // → LeastConn: không thấy CPU, chỉ thấy inflight khi latency tăng (chậm hơn).
-        //
-        // Không cần thêm code: burnCpu bên dưới sẽ tranh với burner threads.
-        // Hiệu ứng tự nhiên: mỗi iteration của sqrt(random()) mất lâu hơn do CPU contention.
-
-        // ── CHAOS BRANCH 3: Heavy Request (originalChaos) ─────────────────────
-        // Kịch bản: một số loại request đột ngột trở nên "nặng" hơn bình thường
-        // (VD: N+1 query, report generation, large payload processing).
-        // Mỗi request tốn nhiều CPU VÀ có thêm delay → double penalty.
-        if (ChaosController.originalChaos.get()) {
-            // 3x CPU burn bình thường + thêm network delay
-            burnCpu(21000);  // 7000 × 3
-            int heavyDelay = 80 + random.nextInt(120); // 80–200ms
-            Thread.sleep(heavyDelay);
-            burnCpu(27000);  // 9000 × 3
-            return ResponseEntity.ok(String.format(
-                "Heavy request completed | Request #%d | Extra delay: %dms",
-                count, heavyDelay
-            ));
-        }
-
-        // ── NORMAL PATH ────────────────────────────────────────────────────────
-        // hiddenDegradationEnabled: burner threads chạy ngầm, không cần xử lý riêng.
-        // burnCpu bên dưới sẽ tự chậm lại khi tranh CPU với burner threads.
-
-        // Pha 1: CPU parse / serialize
-        burnCpu(4_000);
-
-        // Pha 2: Network I/O (không tốn CPU)
-        int networkDelay = 50 + random.nextInt(100); // 50-150ms
-        Thread.sleep(networkDelay);
-
-        // Pha 3: CPU deserialize / business logic
-        burnCpu(6_000);
-
+        long elapsedMs = elapsedMillis(startNs);
         return ResponseEntity.ok(String.format(
-            "Inter-service call completed | Request #%d | Network I/O: %dms",
-            count, networkDelay
+                "Mode: %s | Request #%d | I/O wait: %dms | Elapsed: %dms",
+                mode, count, ioDelayMs, elapsedMs
         ));
     }
 
-    private void burnCpu(int iterations) {
-        double dummy = 0;
+    private static long elapsedMillis(long startNs) {
+        return (System.nanoTime() - startNs) / 1_000_000L;
+    }
+
+    private static void burnCpu(int iterations) {
+        double value = cpuSink;
         for (int i = 0; i < iterations; i++) {
-            dummy += Math.sqrt(Math.random());
+            value += Math.sqrt((i * 31.0 + 17.0) % 997.0);
         }
+        cpuSink = value;
     }
 }
