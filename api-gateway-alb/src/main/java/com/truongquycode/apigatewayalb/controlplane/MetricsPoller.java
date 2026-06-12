@@ -144,7 +144,7 @@ public class MetricsPoller {
 		// Xem AlbMetricsController.java trong registration-service-alb
 		String url = instance.getUri().toString() + "/api/alb-metrics";
 
-		return webClient.get().uri(url).retrieve().bodyToMono(JsonNode.class).timeout(Duration.ofMillis(150))
+		return webClient.get().uri(url).retrieve().bodyToMono(JsonNode.class).timeout(Duration.ofMillis(400))
 				// ── Happy path: nhận được metrics ────────────────────────────
 				.doOnNext(node -> {
 					consecutiveFailures.put(instanceId, 0); // Reset failure counter vì poll thành công

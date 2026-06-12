@@ -21,6 +21,12 @@ public class PIDController {
 	// Tính trước ln(0.97) để dùng trong công thức decay integral: e^(ln(0.97) * dt)
 	// = 0.97^dt → mỗi giây integral giảm ~3% khi error gần 0 (tránh windup ở vùng ổn định).
 	private static final double LN_0_97 = Math.log(0.97);
+	
+	/**
+	 * Vùng chết cho sai số PID trên thang normalized latency [0,1].
+	 * Dùng để bỏ qua dao động rất nhỏ trong kịch bản normal/low-load.
+	 */
+	private static final double ERROR_DEADBAND = 0.08;
 
 	/**
 	 * Tính penalty cho một instance dựa trên PID controller.
@@ -68,6 +74,14 @@ public class PIDController {
 			// error > 0: instance chậm hơn setpoint (P75 hệ thống) → cần phạt
 			// error < 0: instance nhanh hơn P75 → penalty âm (sẽ bị clamp ở bước cuối: max(0, u))
 			double error = rawLat - setpoint;
+			
+			if (Math.abs(error) <= ERROR_DEADBAND) {
+			    error = 0.0;
+			} else if (error > 0.0) {
+			    error -= ERROR_DEADBAND;
+			} else {
+			    error += ERROR_DEADBAND;
+			}
 
 			// ----- P -----
 			// P: phản ứng tức thì.
