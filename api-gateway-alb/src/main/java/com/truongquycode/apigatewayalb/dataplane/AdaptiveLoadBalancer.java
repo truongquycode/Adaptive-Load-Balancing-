@@ -156,17 +156,6 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
 	 */
 	private static final long WARMUP_MS = 5_000;
 
-	/**
-	 * Ở tải thấp, các backend gần như giống nhau thì Round-Robin ổn định hơn: ít
-	 * jitter, không tạo burst ngẫu nhiên, không phóng đại nhiễu metrics. Nếu hệ
-	 * thống low-load và các node đồng nhất, Adaptive tạm dùng RR. Khi
-	 * CPU/latency/score lệch rõ, thuật toán tự quay lại MCDM + inflight.
-	 */
-	private static final int LOW_LOAD_RR_TOTAL_INFLIGHT = 20;
-	private static final double LOW_LOAD_MAX_LATENCY_SPREAD_MS = 15.0;
-	private static final double LOW_LOAD_MAX_SCORE_SPREAD = 0.30;
-	private static final double LOW_LOAD_MAX_CPU_NORM = 0.20;
-
 	// ══════════════════════════════════════════════════════════════════════════
 	// STATIC STATE — Shared giữa tất cả request (tồn tại suốt vòng đời ứng dụng)
 	// ══════════════════════════════════════════════════════════════════════════
@@ -344,43 +333,7 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
 			return new DefaultResponse(sel);
 		}
 
-		// ── BƯỚC 2.5: Low-load stability guard ───────────────────────────────
-		// Nếu đang tải thấp và các node gần như đồng nhất, không dùng weighted random.
-		// Vì ở low-load, nhiễu vài ms có thể bị MCDM/PID phóng đại thành lệch score
-		// giả.
-		// Trường hợp này RR cho tail latency ổn định hơn.
-		boolean allMetricsReady = true;
-		double minScore = Double.POSITIVE_INFINITY;
-		double maxScore = Double.NEGATIVE_INFINITY;
-		double minLatency = Double.POSITIVE_INFINITY;
-		double maxLatency = Double.NEGATIVE_INFINITY;
-		double maxCpu = 0.0;
-
-		for (NodeInfo node : nodes) {
-			if (!node.hasMetrics() || Double.isNaN(node.ewmaLatency())) {
-				allMetricsReady = false;
-				break;
-			}
-
-			minScore = Math.min(minScore, node.rawMcdm());
-			maxScore = Math.max(maxScore, node.rawMcdm());
-
-			minLatency = Math.min(minLatency, node.ewmaLatency());
-			maxLatency = Math.max(maxLatency, node.ewmaLatency());
-
-			maxCpu = Math.max(maxCpu, node.normCpu());
-		}
-
-		boolean lowLoadHomogeneous = allMetricsReady && totalInflight <= LOW_LOAD_RR_TOTAL_INFLIGHT
-				&& (maxLatency - minLatency) <= LOW_LOAD_MAX_LATENCY_SPREAD_MS
-				&& (maxScore - minScore) <= LOW_LOAD_MAX_SCORE_SPREAD && maxCpu <= LOW_LOAD_MAX_CPU_NORM;
-
-		if (lowLoadHomogeneous) {
-			int idx = (int) (rrCounter.getAndIncrement() % n);
-			ServiceInstance sel = nodes.get(idx).inst();
-			emitMetric(sel);
-			return new DefaultResponse(sel);
-		}
+		
 
 		// ── BƯỚC 3: Tính capacity weight share[i] ────────────────────────────
 		// share[i] đại diện cho "phần traffic công bằng" mà instance i xứng đáng nhận.
