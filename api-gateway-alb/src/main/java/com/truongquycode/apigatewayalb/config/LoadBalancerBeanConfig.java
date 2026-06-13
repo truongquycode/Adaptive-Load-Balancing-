@@ -2,9 +2,9 @@ package com.truongquycode.apigatewayalb.config;
 
 import com.truongquycode.apigatewayalb.dataplane.AdaptiveLoadBalancer;
 import com.truongquycode.apigatewayalb.dataplane.InflightTracker;
+import com.truongquycode.apigatewayalb.dataplane.RoutingCostCalculator;
 import com.truongquycode.apigatewayalb.dataplane.LeastConnectionsLoadBalancer;
 import com.truongquycode.apigatewayalb.dataplane.MetricAwareLoadBalancer;
-import com.truongquycode.apigatewayalb.util.MetricsCache;
 
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -40,14 +40,14 @@ public class LoadBalancerBeanConfig {
     public ReactorServiceInstanceLoadBalancer adaptiveLoadBalancer(
             Environment environment,
             LoadBalancerClientFactory loadBalancerClientFactory,
-            MetricsCache metricsCache,
-            InflightTracker inflightTracker) {
+            RoutingCostCalculator routingCostCalculator,
+            AlbProperties albProperties) {
 
         String name = environment.getProperty(LoadBalancerClientFactory.PROPERTY_NAME);
         ObjectProvider<ServiceInstanceListSupplier> lazyProvider = loadBalancerClientFactory.getLazyProvider(name,
                 ServiceInstanceListSupplier.class);
 
-        return new AdaptiveLoadBalancer(lazyProvider, metricsCache, inflightTracker);
+        return new AdaptiveLoadBalancer(lazyProvider, routingCostCalculator, albProperties);
     }
 
     // 2. Kích hoạt thuật toán ROUND ROBIN

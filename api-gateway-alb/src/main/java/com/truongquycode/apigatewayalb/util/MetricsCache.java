@@ -35,6 +35,10 @@ public class MetricsCache {
 		return scoreMap.get(id);
 	}
 
+	public List<ScoreBreakdown> getAllScores() {
+		return List.copyOf(scoreMap.values());
+	}
+
 	// Tham số Set<String>
 	// - retainAll gọi activeIds.contains() cho từng key → Set đảm bảo O(1)
 	public void removeStaleInstances(Set<String> activeIds) {

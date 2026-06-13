@@ -3,8 +3,10 @@ package com.truongquycode.apigatewayalb.controlplane;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.truongquycode.apigatewayalb.dataplane.InflightTracker;
 import com.truongquycode.apigatewayalb.dataplane.ScoreCalculator;
+import com.truongquycode.apigatewayalb.dataplane.RoutingCostCalculator;
 import com.truongquycode.apigatewayalb.model.InstanceMetrics;
 import com.truongquycode.apigatewayalb.model.ScoreBreakdown;
+import com.truongquycode.apigatewayalb.model.RoutingCost;
 import com.truongquycode.apigatewayalb.util.MetricsCache;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -41,6 +43,7 @@ public class MetricsPoller {
 	private final SlidingWindowManager windowManager; // HDR Histogram cho percentile (p5, p50, p95, p99)
 	private final WebClient.Builder webClientBuilder; // HTTP client để poll /api/alb-metrics
 	private final InflightTracker inflightTracker; // Theo dõi số request đang bay của mỗi instance
+	private final RoutingCostCalculator routingCostCalculator; // Tính routing cost thật của Adaptive v3
 	private WebClient webClient; // Instance WebClient, được init sau khi bean ready
 	private Set<String> lastActiveIds = Set.of(); // Snapshot topology lần poll trước — dùng để phát hiện instance
 													// mới/down
@@ -381,6 +384,7 @@ public class MetricsPoller {
 		latencyValues.clear();
 		queueValues.clear();
 		scoreValues.clear();
+		routingCostCalculator.reset();
 	}
 
 	// Đăng ký Prometheus Gauges
@@ -403,34 +407,32 @@ public class MetricsPoller {
 			Gauge.builder("alb.final.score", scoreValues, map -> map.getOrDefault(id, 0.0)).tag("backend", id)
 					.register(registry);
 
-			// alb.routing.score{backend=...}: score có điều chỉnh theo inflight
-			// = finalScore + hệ số phạt nếu instance đang nhận quá nhiều traffic
-			// so với phần chia công bằng (share[i] × totalInflight)
-			// Công thức: excessRatio = (localInflight × n / totalInflight) - 1.0
-			// score += 0.6 × excessRatio^1.3 nếu excessRatio > 0
-			// Mục đích: Prometheus hiển thị "routing score thực tế" bao gồm cả áp lực
-			// inflight,
-			// hữu ích khi debug tại sao một instance ít được chọn hơn dù score thấp.
-			Gauge.builder("alb.routing.score", this, self -> {
-				double finalScore = self.scoreValues.getOrDefault(id, 0.5);
-				int localInflight = self.inflightTracker.getInflight(id);
-				int totalInflight = self.inflightTracker.getTotalInflight();
+				// Adaptive v3: routing.score là final routing cost thật đang được LoadBalancer dùng.
+				// Giữ tên metric cũ để dashboard không bị vỡ, nhưng công thức đã đồng bộ với RoutingCostCalculator.
+				Gauge.builder("alb.routing.score", this, self -> {
+					RoutingCost cost = self.routingCostCalculator.getLastCost(id);
+					return cost != null ? cost.finalCost() : self.scoreValues.getOrDefault(id, 0.5);
+				}).tag("backend", id).register(registry);
 
-				if (totalInflight <= 0)
-					return finalScore;
+				Gauge.builder("alb.routing.health.cost", this, self -> {
+					RoutingCost cost = self.routingCostCalculator.getLastCost(id);
+					return cost != null ? cost.healthCost() : 0.0;
+				}).tag("backend", id).register(registry);
 
-				int n = self.discoveryClient.getInstances(REGISTRATION_SERVICE_ID).size();
-				if (n <= 0)
-					return finalScore;
+				Gauge.builder("alb.routing.load.cost", this, self -> {
+					RoutingCost cost = self.routingCostCalculator.getLastCost(id);
+					return cost != null ? cost.loadCost() : 0.0;
+				}).tag("backend", id).register(registry);
 
-				double expected = Math.max(3.0, (double) totalInflight / n);
-				double excessRatio = ((double) localInflight / expected) - 1.0;
-				if (excessRatio <= 0)
-					return finalScore;
+				Gauge.builder("alb.routing.load.raw", this, self -> {
+					RoutingCost cost = self.routingCostCalculator.getLastCost(id);
+					return cost != null ? cost.loadCostRaw() : 0.0;
+				}).tag("backend", id).register(registry);
 
-				double factor = totalInflight < 15 ? 0.25 : 1.0;
-				return finalScore + 0.35 * factor * Math.pow(excessRatio, 1.3);
-			}).tag("backend", id).register(registry);
+				Gauge.builder("alb.routing.capacity.weight", this, self -> {
+					RoutingCost cost = self.routingCostCalculator.getLastCost(id);
+					return cost != null ? cost.capacityWeight() : 1.0;
+				}).tag("backend", id).register(registry);
 		}
 	}
 }

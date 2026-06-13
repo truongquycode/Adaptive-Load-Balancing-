@@ -49,6 +49,22 @@ alb:
     weights:
         update-interval: 5000
 
+    routing:
+        warmup-ms: 5000
+        min-expected-inflight: 3.0
+        low-load-inflight: 20
+        low-load-health-spread: 0.12
+        low-load-load-spread: 0.25
+        min-health-weight: 0.35
+        max-health-weight: 0.80
+        stale-penalty-weight: 0.30
+        stale-soft-ms: 800
+        stale-hard-ms: 2000
+        unhealthy-score-cutoff: 2.0
+        hard-inflight-cap: 180
+        probe-interval-ms: 2000
+        probe-probability: 0.02
+
 management:
   endpoints:
     web:
