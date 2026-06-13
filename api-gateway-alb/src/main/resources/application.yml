@@ -25,18 +25,18 @@ alb:
         interval: 200
 
     ewma:
-        # tau-min nhá» hÆ¡n: pháº£n á»©ng nhanh khi spike (chaos event hoáº·c overload)
-        # tau-max nhá» hÆ¡n: á»•n Ä‘á»‹nh hÆ¡n nhÆ°ng khÃ´ng quÃ¡ trÆ¡
-        # k=4.0: ráº¥t nháº¡y vá»›i deviation (deviation 25% Ä‘Ã£ Ä‘á»§ Ä‘á»ƒ giáº£m Ï„ vá» Ï„_min)
+        # tau-min nhỏ hơn: phản ứng nhanh khi spike (chaos event hoặc overload)
+        # tau-max nhỏ hơn: ổn định hơn nhưng không quá trơ
+        # k=4.0: rất nhạy với deviation (deviation 25% đã đủ để giảm τ về τ_min)
         tau-min: 200.0 
-        tau-max: 2000.0 # 3000 â†’ 2000ms (á»•n Ä‘á»‹nh hÆ¡n, pháº£n á»©ng nhanh hÆ¡n)
+        tau-max: 2000.0 # 3000 → 2000ms (ổn định hơn, phản ứng nhanh hơn)
         k: 3.0 
 
     pid:
-        # kp cao hÆ¡n: pháº£n á»©ng P máº¡nh hÆ¡n khi má»™t node cháº­m hÆ¡n system P75
-        # ki tháº¥p hÆ¡n: trÃ¡nh integral windup khi node nhanh trá»Ÿ láº¡i sau overload
-        # lambda nhá» hÆ¡n: PID penalty khÃ´ng láº¥n Ã¡t MCDM baseScore quÃ¡ nhiá»u
-        #   (baseScore Ä‘Ã£ cáº£i thiá»‡n nhá» system-wide normalization)
+        # kp cao hơn: phản ứng P mạnh hơn khi một node chậm hơn system P75
+        # ki thấp hơn: tránh integral windup khi node nhanh trở lại sau overload
+        # lambda nhỏ hơn: PID penalty không lấn át MCDM baseScore quá nhiều
+        #   (baseScore đã cải thiện nhờ system-wide normalization)
         kp: 1.0 
         ki: 0.08 
         kd: 0.04 
