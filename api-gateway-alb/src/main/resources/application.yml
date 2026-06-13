@@ -1,4 +1,4 @@
-﻿server:
+server:
     port: 8080
 
 spring:
@@ -20,7 +20,7 @@ spring:
 
 alb:
     # adaptive, round-robin, random, least-connections
-    strategy: adaptive
+    strategy: round-robin
     polling:
         interval: 200
 
