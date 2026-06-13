@@ -6,7 +6,7 @@ on:
 
 concurrency:
   group: deploy-production
-  cancel-in-progress: true   # Tự hủy job cũ khi có job mới
+  cancel-in-progress: true
 
 jobs:
   deploy:
@@ -15,8 +15,103 @@ jobs:
     steps:
       - name: Checkout source code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Build and deploy
+      - name: Detect changed services
+        id: detect
+        shell: bash
         run: |
+          set -e
+
+          BEFORE="${{ github.event.before }}"
+          AFTER="${{ github.sha }}"
+
+          echo "BEFORE=$BEFORE"
+          echo "AFTER=$AFTER"
+
+          # Lần push đầu tiên hoặc không lấy được commit trước đó thì deploy toàn bộ.
+          if [[ -z "$BEFORE" || "$BEFORE" =~ ^0+$ ]]; then
+            echo "First push or unknown previous commit -> deploy all services"
+            CHANGED_FILES="$(git ls-files)"
+          else
+            CHANGED_FILES="$(git diff --name-only "$BEFORE" "$AFTER")"
+          fi
+
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+
+          deploy_all=false
+          deploy_eureka=false
+          deploy_gateway=false
+          deploy_registration=false
+
+          # Các file ảnh hưởng toàn hệ thống thì build/deploy toàn bộ.
+          if echo "$CHANGED_FILES" | grep -Eq '^(docker-compose\.ya?ml|pom\.xml|\.github/workflows/|mvnw|\.mvn/)'; then
+            deploy_all=true
+          fi
+
+          # Parent pom hoặc cấu hình build có thể ảnh hưởng nhiều module.
+          if echo "$CHANGED_FILES" | grep -Eq '(^|/)pom\.xml$'; then
+            deploy_all=true
+          fi
+
+          # Eureka Server.
+          if echo "$CHANGED_FILES" | grep -Eq '^eureka-server/'; then
+            deploy_eureka=true
+          fi
+
+          # API Gateway ALB. Đổi alb.strategy trong application.yml sẽ chỉ vào nhánh này.
+          if echo "$CHANGED_FILES" | grep -Eq '^api-gateway-alb/'; then
+            deploy_gateway=true
+          fi
+
+          # Registration Service ALB: cả 3 container 8081/8082/8083 dùng cùng source.
+          if echo "$CHANGED_FILES" | grep -Eq '^registration-service-alb/'; then
+            deploy_registration=true
+          fi
+
+          if [[ "$deploy_all" == "true" ]]; then
+            SERVICES="all"
+          else
+            SERVICES=""
+            [[ "$deploy_eureka" == "true" ]] && SERVICES="$SERVICES eureka-server"
+            [[ "$deploy_gateway" == "true" ]] && SERVICES="$SERVICES api-gateway-alb"
+            if [[ "$deploy_registration" == "true" ]]; then
+              SERVICES="$SERVICES registration-8081 registration-8082 registration-8083"
+            fi
+            SERVICES="$(echo "$SERVICES" | xargs)"
+          fi
+
+          if [[ -z "$SERVICES" ]]; then
+            echo "No Docker service needs redeploy."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Services to deploy: $SERVICES"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "services=$SERVICES" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and deploy all services
+        if: steps.detect.outputs.skip == 'false' && steps.detect.outputs.services == 'all'
+        shell: bash
+        run: |
+          set -e
           docker compose build
           docker compose up -d
+
+      - name: Build and deploy changed services only
+        if: steps.detect.outputs.skip == 'false' && steps.detect.outputs.services != 'all'
+        shell: bash
+        run: |
+          set -e
+          SERVICES="${{ steps.detect.outputs.services }}"
+          echo "Deploy changed services only: $SERVICES"
+          docker compose build $SERVICES
+          docker compose up -d --no-deps $SERVICES
+
+      - name: Show running containers
+        if: steps.detect.outputs.skip == 'false'
+        shell: bash
+        run: |
+          docker compose ps
