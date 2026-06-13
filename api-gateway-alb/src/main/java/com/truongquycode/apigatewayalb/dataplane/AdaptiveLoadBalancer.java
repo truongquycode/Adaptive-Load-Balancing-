@@ -349,17 +349,9 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
         return instances.get(idx);
     }
 
-    /**
-     * Capacity weight theo cấu hình docker-compose hiện tại:
-     * 8081: 2 CPU, 8082: 1.5 CPU, 8083: 1 CPU.
-     * Nếu triển khai môi trường khác, nên đưa phần này vào application.yml.
-     */
     private double capacityWeightOf(ServiceInstance inst) {
-        int port = inst.getPort();
-        if (port == 8081) return 2.0;
-        if (port == 8082) return 1.5;
-        if (port == 8083) return 1.0;
-        return 1.0;
+        double weight = cache.getCapacityWeight(inst.getInstanceId());
+        return Math.max(0.1, weight);
     }
 
     private void emitMetric(ServiceInstance inst) {

@@ -207,6 +207,9 @@ public class MetricsPoller {
 			double reportedQueue = node.path("queue").asDouble(-1.0);
 			// queue: số request đang xử lý (http.server.requests.inflight gauge).
 			// -1.0 là sentinel value khi instance chưa có gauge này.
+			
+			double capacityWeight = node.path("capacityWeight").asDouble(1.0);
+			metricsCache.putCapacityWeight(instanceId, capacityWeight);
 
 			// Tính latency trung bình trong window vừa qua (delta/delta logic)
 			double latency = calculateDeltaLatency(instanceId, currentCount, currentTotalTime);

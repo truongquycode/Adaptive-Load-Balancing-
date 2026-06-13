@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import com.truongquycode.registrationservicealb.metrics.ContainerResourceDetector;
 
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -18,12 +19,14 @@ import java.util.function.Supplier;
 public class AlbMetricsController {
 
 	private final MeterRegistry registry;
+	private final ContainerResourceDetector resourceDetector;
 
 	@GetMapping("/alb-metrics")
 	public Map<String, Double> getMetrics() {
 		
 		double cpu = getMetricSafely(() -> registry.get("process.cpu.usage").gauge().value());
 		double queue = getMetricSafely(() -> registry.get("http.server.requests.inflight").gauge().value());
+		double capacityWeight = resourceDetector.getCpuCapacityCores();
 
 		double count = 0.0;
 		double totalTime = 0.0;
@@ -52,7 +55,13 @@ public class AlbMetricsController {
 		} catch (Exception ignored) {
 		}
 
-		return Map.of("cpu", cpu, "count", count, "totalTime", totalTime, "queue", queue);
+		return Map.of(
+		        "cpu", cpu,
+		        "count", count,
+		        "totalTime", totalTime,
+		        "queue", queue,
+		        "capacityWeight", capacityWeight
+		);
 	}
 	
 	private boolean isControlEndpoint(String uri) {
