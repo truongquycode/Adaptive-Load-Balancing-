@@ -12,7 +12,6 @@ import org.springframework.cloud.client.loadbalancer.DefaultResponse;
 import org.springframework.cloud.client.loadbalancer.EmptyResponse;
 import org.springframework.cloud.client.loadbalancer.Request;
 import org.springframework.cloud.client.loadbalancer.Response;
-import org.springframework.cloud.loadbalancer.core.ReactorLoadBalancer;
 import org.springframework.cloud.loadbalancer.core.ReactorServiceInstanceLoadBalancer;
 import org.springframework.cloud.loadbalancer.core.ServiceInstanceListSupplier;
 import reactor.core.publisher.Mono;
@@ -24,461 +23,351 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * ╔══════════════════════════════════════════════════════════════════════╗ ║
- * ADAPTIVE LOAD BALANCER — Bộ cân bằng tải thích nghi ║
- * ╚══════════════════════════════════════════════════════════════════════╝
+ * AdaptiveLoadBalancer v2 — Hybrid Adaptive Health + Capacity-aware Least-Load + Bounded Probe.
  *
- * LUỒNG HOẠT ĐỘNG TỔNG QUAN:
+ * Mục tiêu thiết kế:
+ * 1) Khi hệ thống bình thường: không tự tạo nhiễu, phân phối mềm theo năng lực instance.
+ * 2) Khi một backend chậm do I/O: phản ứng nhanh bằng inflight guard, không phải chờ latency hoàn thành.
+ * 3) Khi hidden CPU/latency degradation: vẫn dùng MCDM + PID + EWMA để tránh node xấu dù inflight chưa tăng.
+ * 4) Khi node phục hồi: không bỏ đói hoàn toàn, nhưng chỉ probe có kiểm soát thay vì luôn giữ floor lớn.
  *
- * [MetricsPoller] poll /alb-metrics mỗi 200ms │ latency, cpu, queue ▼
- * [ScoreCalculator] EWMA → normalize → MCDM + PID → finalScore │
- * ScoreBreakdown(finalScore) ▼ [MetricsCache] lưu score theo instanceId │ ▼
- * [AdaptiveLoadBalancer.choose()] ← được gọi mỗi khi có HTTP request mới đến
- * Gateway │ đọc score từ cache + inflight từ InflightTracker ▼ Chọn theo
- * weighted routing: score thấp có xác suất cao hơn, nhưng không bỏ đói node
- * khác
- *
- * Điểm quan trọng: score thấp = instance tốt (ít tải, nhanh, CPU thấp). Load
- * balancer KHÔNG tự tính score — nó chỉ ĐỌC score từ MetricsCache và điều chỉnh
- * thêm dựa trên số request đang bay (inflight) tại thời điểm hiện tại.
+ * Điểm khác bản cũ:
+ * - Không dùng weighted-random floor 1/8 cho mọi node nữa vì làm node xấu vẫn nhận quá nhiều traffic.
+ * - Thêm fast inflight guard để chống async I/O bottleneck, nơi Least-Connections thường rất mạnh.
+ * - Chọn cuối bằng Power-of-Two Choices trong nhóm node khỏe; nếu score gần nhau thì chọn node ít tải hơn.
  */
 @Slf4j
 @RequiredArgsConstructor
 public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer {
 
-	// ──────────────────────────────────────────────────────────────────────────
-	// DEPENDENCY INJECTION
-	// ──────────────────────────────────────────────────────────────────────────
+    private final ObjectProvider<ServiceInstanceListSupplier> supplierProvider;
+    private final MetricsCache cache;
+    private final InflightTracker inflightTracker;
 
-	/** Cung cấp danh sách ServiceInstance đang UP từ Eureka. */
-	private final ObjectProvider<ServiceInstanceListSupplier> supplierProvider;
+    // ===== Core safety / defaults =====
+    private static final double SCORE_FLOOR = 0.05;
+    private static final double DEFAULT_SCORE = 0.35;
+    private static final double UNHEALTHY_SCORE_CUTOFF = 2.0;
+    private static final long WARMUP_MS = 5_000;
 
-	/** Cache chứa ScoreBreakdown (do MetricsPoller cập nhật mỗi 200ms). */
-	private final MetricsCache cache;
+    // ===== Inflight fast path =====
+    // Hard cap tuyệt đối vẫn giữ làm safety net, nhưng quyết định chính dùng relative guard bên dưới.
+    private static final int INFLIGHT_HARD_CAP = 180;
+    private static final double MIN_EXPECTED_INFLIGHT = 3.0;
 
-	/**
-	 * Tracker số request đang được xử lý (inflight) của từng instance. Được
-	 * tăng/giảm bởi InflightLifecycle khi request bắt đầu/kết thúc.
-	 */
-	private final InflightTracker inflightTracker;
+    // Phạt realtime theo inflight. Cao hơn bản cũ để async-I/O bottleneck bị tránh sớm hơn.
+    private static final double OMEGA_REL = 0.018;
+    private static final double OMEGA_ABS = 0.60;
+    private static final double PENALTY_EXPONENT = 1.5;
+    private static final int LOW_INFLIGHT_THRESHOLD = 15;
+    private static final double LOW_INFLIGHT_PENALTY_FACTOR = 0.25;
 
-	// ══════════════════════════════════════════════════════════════════════════
-	// HẰNG SỐ TUNING — Điều chỉnh hành vi của thuật toán chọn instance
-	// ══════════════════════════════════════════════════════════════════════════
+    // Relative overload gate: nếu node vượt xa node nhàn nhất và vượt expected share thì tạm loại.
+    private static final int RELATIVE_INFLIGHT_GAP_CUTOFF = 25;
+    private static final double EXPECTED_INFLIGHT_CUTOFF_RATIO = 1.60;
 
-	/**
-	 * Ngưỡng hard-cap cho số request đang xử lý (inflight) của một instance.
-	 * Instance có inflight ≥ 200 bị loại khỏi danh sách ứng viên hoàn toàn. Tác
-	 * dụng: tránh "đổ" thêm request vào instance đã quá tải, dù score có tốt.
-	 */
-	private static final int INFLIGHT_HARD_CAP = 200;
+    // ===== Degradation gate =====
+    // Ngưỡng tương đối + tuyệt đối để tránh overfit theo một kịch bản.
+    private static final double SEVERE_SCORE_GAP = 0.45;
+    private static final double SEVERE_SCORE_RATIO = 2.20;
+    private static final double SEVERE_LATENCY_RATIO = 2.50;
+    private static final double SEVERE_LATENCY_GAP_MS = 180.0;
 
-	/**
-	 * Hệ số phạt TƯƠNG ĐỐI theo inflight. Công thức: relPenalty = OMEGA_REL ×
-	 * (inflight_node - inflight_min) Ví dụ: node A có 10 inflight, node B có 5
-	 * inflight (min): relPenalty của A = 0.010 × (10 - 5) = 0.05 Mục đích: tránh
-	 * gửi thêm request vào node đang bận hơn các node khác, ngay cả khi MCDM score
-	 * của nó vẫn thấp nhất.
-	 */
-	private static final double OMEGA_REL = 0.010;
+    // ===== Selection =====
+    private static final double SCORE_CLOSE_EPS = 0.08;
 
-	/**
-	 * Hệ số phạt TUYỆT ĐỐI theo mức vượt quá fair share. Công thức: absPenalty =
-	 * OMEGA_ABS × (excessRatio ^ PENALTY_EXPONENT) Trong đó: excessRatio =
-	 * (inflight_node / expected_inflight) - 1.0 expected_inflight = totalInflight ×
-	 * share[i] (phần công bằng theo trọng số) Mục đích: phạt nặng node đang nhận
-	 * quá nhiều traffic so với "phần của nó".
-	 */
-	private static final double OMEGA_ABS = 0.35;
+    // Bounded probing: node bị loại vẫn được kiểm tra định kỳ để phát hiện recovery.
+    private static final long DEGRADED_PROBE_INTERVAL_MS = 2_000;
+    private static final double PROBE_PROBABILITY_PER_REQUEST = 0.02;
 
-	/**
-	 * Số mũ của hàm phạt tuyệt đối — làm cho đường cong phạt phi tuyến. exponent =
-	 * 1.3 > 1.0 → node vượt 50% fair share bị phạt nặng hơn tỉ lệ thuận, node vượt
-	 * 100% bị phạt nặng hơn nữa. Nếu = 1.0 (tuyến tính): phạt đều → không ngăn được
-	 * tập trung tải.
-	 */
-	private static final double PENALTY_EXPONENT = 1.3;
+    // Low-load guard để tránh adaptive tự khuếch đại nhiễu nhỏ.
+    private static final int LOW_LOAD_STABILITY_INFLIGHT = 20;
+    private static final double LOW_LOAD_LATENCY_SPREAD_MS = 80.0;
+    private static final double LOW_LOAD_SCORE_SPREAD = 0.12;
+    private static final double LOW_LOAD_CPU_MAX = 0.20;
 
-	/**
-	 * Ở tải thấp, tổng inflight nhỏ nên chỉ lệch 1-2 request cũng có thể làm
-	 * penalty quá lớn. Vì vậy đặt expected tối thiểu để tránh phạt quá tay trong
-	 * low-load.
-	 */
-	private static final double MIN_EXPECTED_INFLIGHT = 3.0;
+    private static final ConcurrentHashMap<String, Long> firstSeenMs = new ConcurrentHashMap<>();
+    private static final AtomicLong rrCounter = new AtomicLong(0);
+    private static final ConcurrentHashMap<String, Counter> counterCache = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, Long> lastSelectedMs = new ConcurrentHashMap<>();
 
-	/** Nếu tổng inflight còn thấp hơn ngưỡng này thì giảm penalty tuyệt đối. */
-	private static final int LOW_INFLIGHT_THRESHOLD = 15;
+    /** Snapshot đã tính cho mỗi node trong một lần choose(). */
+    private record NodeInfo(
+            ServiceInstance inst,
+            double rawScore,
+            double ewmaLatency,
+            double normCpu,
+            int inflight,
+            boolean inWarmup,
+            boolean hasMetrics,
+            double capacityWeight,
+            double capacityShare,
+            double expectedInflight,
+            double routingScore,
+            boolean relativeOverloaded,
+            boolean degraded
+    ) {}
 
-	/** Hệ số giảm penalty khi hệ thống đang low-load. */
-	private static final double LOW_INFLIGHT_PENALTY_FACTOR = 0.25;
+    public static void resetStaticState() {
+        firstSeenMs.clear();
+        rrCounter.set(0);
+        counterCache.clear();
+        lastSelectedMs.clear();
+    }
 
-	/**
-	 * Score sàn tối thiểu — tránh chia cho 0 trong công thức share[i] = 1/√score.
-	 * Nếu finalScore từ MCDM = 0.01 (rất nhỏ), sqrt(0.01) = 0.1, không có vấn đề.
-	 * Nhưng nếu = 0 → chia cho 0 → dùng SCORE_FLOOR = 0.05 làm giới hạn dưới.
-	 */
-	private static final double SCORE_FLOOR = 0.05;
+    @Override
+    public Mono<Response<ServiceInstance>> choose(Request request) {
+        ServiceInstanceListSupplier supplier = supplierProvider.getIfAvailable();
+        if (supplier == null) {
+            return Mono.just(new EmptyResponse());
+        }
+        return supplier.get(request).next().map(this::selectBestInstance);
+    }
 
-	/**
-	 * Score mặc định dùng khi instance chưa có dữ liệu trong MetricsCache. Xảy ra
-	 * lúc instance vừa đăng ký lên Eureka nhưng MetricsPoller chưa kịp poll. 0.35 =
-	 * mức trung bình — không ưu tiên cũng không tránh instance mới này.
-	 */
-	private static final double DEFAULT_SCORE = 0.35;
+    private Response<ServiceInstance> selectBestInstance(List<ServiceInstance> instances) {
+        if (instances == null || instances.isEmpty()) {
+            return new EmptyResponse();
+        }
+        if (instances.size() == 1) {
+            emitMetric(instances.get(0));
+            return new DefaultResponse(instances.get(0));
+        }
 
-	/**
-	 * Tỉ lệ tối đa giữa share của instance tốt nhất và instance tệ nhất. Công thức:
-	 * capFloor = maxShare / MAX_CAP_WEIGHT_RATIO = maxShare / 3.0 Ý nghĩa: giới hạn
-	 * chênh lệch share dùng trong công thức fair-share. Lưu ý: chống starvation
-	 * thật sự nằm ở weighted routing phía dưới.
-	 */
-	private static final double MAX_CAP_WEIGHT_RATIO = 3.0;
+        long now = System.currentTimeMillis();
+        int n = instances.size();
+        int totalInflight = inflightTracker.getTotalInflight();
 
-	/**
-	 * Tỉ lệ tối đa giữa trọng số chọn của instance tốt nhất và tệ nhất. Dùng cho
-	 * weighted routing để instance xấu không bị bỏ đói hoàn toàn.
-	 */
-	private static final double MAX_SELECTION_WEIGHT_RATIO = 8.0;
+        // Pass 1: đọc metric/cache/inflight và capacity weight.
+        List<NodeInfo> initial = new ArrayList<>(n);
+        double sumCapacity = 0.0;
+        int minInflight = Integer.MAX_VALUE;
+        boolean allWarmup = true;
 
-	/** Điều chỉnh độ nhạy khi đổi routingScore thành trọng số chọn. */
-	private static final double SELECTION_SCORE_POWER = 1.6;
+        for (ServiceInstance inst : instances) {
+            String id = inst.getInstanceId();
+            long firstSeen = firstSeenMs.computeIfAbsent(id, k -> now);
+            boolean inWarmup = (now - firstSeen) < WARMUP_MS;
+            if (!inWarmup) {
+                allWarmup = false;
+            }
 
-	/**
-	 * Nếu score quá cao thì xem là lỗi thật sự, không probe nữa. Trường hợp poll
-	 * fail có thể đẩy score lên 2.5, 5.0, 10.0 nên cần chặn.
-	 */
-	private static final double UNHEALTHY_SCORE_CUTOFF = 2.0;
+            ScoreBreakdown bd = cache.getScore(id);
+            double rawScore = (bd != null) ? Math.max(SCORE_FLOOR, bd.finalScore()) : DEFAULT_SCORE;
+            double ewmaLatency = (bd != null) ? bd.ewmaLatency() : Double.NaN;
+            double normCpu = (bd != null) ? bd.normCpu() : 0.0;
+            int inflight = inflightTracker.getInflight(id);
+            minInflight = Math.min(minInflight, inflight);
 
-	/**
-	 * Thời gian warmup cho instance mới (ms) = 5 giây. Trong 5 giây đầu, instance
-	 * dùng Round-Robin thay vì MCDM. Lý do: instance mới chưa có đủ data trong
-	 * MetricsCache để MCDM hoạt động chính xác.
-	 */
-	private static final long WARMUP_MS = 5_000;
+            double cap = capacityWeightOf(inst);
+            sumCapacity += cap;
 
-	// ══════════════════════════════════════════════════════════════════════════
-	// STATIC STATE — Shared giữa tất cả request (tồn tại suốt vòng đời ứng dụng)
-	// ══════════════════════════════════════════════════════════════════════════
+            initial.add(new NodeInfo(inst, rawScore, ewmaLatency, normCpu, inflight,
+                    inWarmup, bd != null, cap, 0.0, 0.0, rawScore, false, false));
+        }
 
-	/**
-	 * Thời điểm (epoch ms) mỗi instance được "nhìn thấy lần đầu" bởi load balancer.
-	 * Key = instanceId, Value = timestamp ms khi lần đầu xuất hiện trong danh sách
-	 * Eureka. Dùng để tính: (now - firstSeenMs) < WARMUP_MS → instance đang trong
-	 * giai đoạn warmup. Static vì nhiều request song song cùng chia sẻ thông tin
-	 * warmup này.
-	 */
-	private static final ConcurrentHashMap<String, Long> firstSeenMs = new ConcurrentHashMap<>();
+        if (allWarmup) {
+            ServiceInstance selected = roundRobin(instances);
+            emitMetric(selected);
+            return new DefaultResponse(selected);
+        }
 
-	/**
-	 * Bộ đếm Round-Robin dùng trong giai đoạn warmup. Mỗi request tăng lên 1, lấy
-	 * modulo số instance → chọn lần lượt. AtomicLong đảm bảo thread-safe khi nhiều
-	 * request đọc/ghi đồng thời. Static để counter tiếp tục đếm liên tục qua các
-	 * request, không reset.
-	 */
-	private static final AtomicLong rrCounter = new AtomicLong(0);
+        // Pass 2: tính routingScore có capacity-aware inflight penalty.
+        List<NodeInfo> scored = new ArrayList<>(n);
+        double bestRoutingScore = Double.POSITIVE_INFINITY;
+        double bestLatency = Double.POSITIVE_INFINITY;
+        double minFiniteLatency = Double.POSITIVE_INFINITY;
+        double maxFiniteLatency = 0.0;
+        double minScore = Double.POSITIVE_INFINITY;
+        double maxScore = 0.0;
+        double maxCpu = 0.0;
 
-	/**
-	 * Cache Prometheus Counter theo instanceId. Mục đích thuần về hiệu năng: tránh
-	 * gọi Metrics.counter() (lookup tốn kém) mỗi request. Thay vào đó, lần đầu tạo
-	 * Counter, lưu vào đây, lần sau dùng lại. Key = instanceId, Value = Counter
-	 * object đã được đăng ký với Prometheus.
-	 */
-	private static final ConcurrentHashMap<String, Counter> counterCache = new ConcurrentHashMap<>();
+        for (NodeInfo node : initial) {
+            double capShare = node.capacityWeight() / Math.max(sumCapacity, 1.0);
+            double expected = Math.max(MIN_EXPECTED_INFLIGHT, totalInflight * capShare);
 
-	/** Ghi nhận lần cuối mỗi instance được chọn, dùng để debug/chống starvation. */
-	private static final ConcurrentHashMap<String, Long> lastSelectedMs = new ConcurrentHashMap<>();
+            double relPenalty = OMEGA_REL * Math.max(0.0, node.inflight() - minInflight);
+            double excessRatio = (expected > 0.0) ? ((double) node.inflight() / expected) - 1.0 : 0.0;
+            double absPenalty = 0.0;
+            if (excessRatio > 0.0) {
+                double factor = (totalInflight < LOW_INFLIGHT_THRESHOLD) ? LOW_INFLIGHT_PENALTY_FACTOR : 1.0;
+                absPenalty = OMEGA_ABS * factor * Math.pow(excessRatio, PENALTY_EXPONENT);
+            }
 
-	// ──────────────────────────────────────────────────────────────────────────
-	// PUBLIC API
-	// ──────────────────────────────────────────────────────────────────────────
+            boolean relativeOverloaded = node.inflight() > minInflight + RELATIVE_INFLIGHT_GAP_CUTOFF
+                    && node.inflight() > expected * EXPECTED_INFLIGHT_CUTOFF_RATIO;
 
-	/**
-	 * Reset toàn bộ static state — được gọi bởi AdminController (POST
-	 * /actuator/alb/reset) trước mỗi benchmark để đảm bảo kết quả sạch, không bị
-	 * ảnh hưởng bởi dữ liệu cũ. - firstSeenMs bị xóa → tất cả instance vào lại
-	 * warmup 5 giây - rrCounter về 0 → round-robin bắt đầu lại từ đầu -
-	 * counterCache bị xóa → Prometheus Counter được tạo lại (không ảnh hưởng đến
-	 * data)
-	 */
-	public static void resetStaticState() {
-		firstSeenMs.clear();
-		rrCounter.set(0);
-		counterCache.clear();
-		lastSelectedMs.clear();
-	}
+            double routingScore = node.rawScore() + relPenalty + absPenalty;
+            NodeInfo s = new NodeInfo(node.inst(), node.rawScore(), node.ewmaLatency(), node.normCpu(), node.inflight(),
+                    node.inWarmup(), node.hasMetrics(), node.capacityWeight(), capShare, expected,
+                    routingScore, relativeOverloaded, false);
+            scored.add(s);
 
-	// ══════════════════════════════════════════════════════════════════════════
-	// ENTRY POINT — Được Spring Cloud Gateway gọi khi có request cần routing
-	// ══════════════════════════════════════════════════════════════════════════
+            bestRoutingScore = Math.min(bestRoutingScore, routingScore);
+            if (Double.isFinite(node.ewmaLatency()) && node.ewmaLatency() > 1.0) {
+                bestLatency = Math.min(bestLatency, node.ewmaLatency());
+                minFiniteLatency = Math.min(minFiniteLatency, node.ewmaLatency());
+                maxFiniteLatency = Math.max(maxFiniteLatency, node.ewmaLatency());
+            }
+            minScore = Math.min(minScore, routingScore);
+            maxScore = Math.max(maxScore, routingScore);
+            maxCpu = Math.max(maxCpu, node.normCpu());
+        }
 
-	/**
-	 * Điểm vào chính của load balancer — trả về Mono để phù hợp với reactive
-	 * pipeline.
-	 *
-	 * Luồng: 1. Lấy ServiceInstanceListSupplier từ Spring (cung cấp danh sách
-	 * instance từ Eureka) 2. Lấy danh sách instance → gọi selectBestInstance() để
-	 * chọn 1 instance 3. Bọc instance đã chọn trong DefaultResponse và trả về
-	 *
-	 * Nếu supplier null (Spring chưa init xong) → trả về EmptyResponse để gateway
-	 * xử lý lỗi.
-	 */
-	@Override
-	public Mono<Response<ServiceInstance>> choose(Request request) {
-		ServiceInstanceListSupplier supplier = supplierProvider.getIfAvailable();
-		if (supplier == null)
-			return Mono.just(new EmptyResponse());
-		return supplier.get(request).next().map(this::selectBestInstance);
-	}
+        // Low-load stable guard: khi mọi node gần như ngang nhau thì không nên adaptive quá mức.
+        if (isLowLoadStable(totalInflight, minFiniteLatency, maxFiniteLatency, minScore, maxScore, maxCpu)) {
+            ServiceInstance selected = roundRobin(instances);
+            emitMetric(selected);
+            return new DefaultResponse(selected);
+        }
 
-	// ══════════════════════════════════════════════════════════════════════════
-	// CORE ALGORITHM — Thuật toán chọn instance tối ưu
-	// ══════════════════════════════════════════════════════════════════════════
+        // Pass 3: phân loại normal/degraded.
+        List<NodeInfo> normal = new ArrayList<>(n);
+        List<NodeInfo> degraded = new ArrayList<>(n);
+        ServiceInstance fallbackLeastInflight = null;
+        int fallbackMinInflight = Integer.MAX_VALUE;
 
-	/**
-	 * Chọn instance tốt nhất từ danh sách, dựa trên MCDM score + inflight penalty.
-	 *
-	 * ┌─ BƯỚC 1: Thu thập thông tin mỗi instance ─────────────────────────────┐ │ -
-	 * firstSeenMs: phát hiện instance mới vào warmup │ │ - rawMcdm: score từ
-	 * MetricsCache (thấp = tốt), fallback 0.35 nếu chưa│ │ - inflight: số request
-	 * đang xử lý tại thời điểm này │
-	 * └───────────────────────────────────────────────────────────────────────┘
-	 *
-	 * ┌─ BƯỚC 2: Kiểm tra warmup ──────────────────────────────────────────────┐ │
-	 * Nếu TẤT CẢ instance đang trong warmup → Round-Robin đơn giản │ │ (xảy ra lúc
-	 * hệ thống mới khởi động, chưa instance nào có data) │
-	 * └───────────────────────────────────────────────────────────────────────┘
-	 *
-	 * ┌─ BƯỚC 3: Tính capacity weight share[i] ───────────────────────────────┐ │
-	 * share[i] = 1 / √(rawMcdm) → instance tốt (score thấp) = share cao │ │ Áp
-	 * floor: share tối thiểu = maxShare / 3.0 │ │ → Làm mềm fair-share, tránh
-	 * penalty nghiêng quá mạnh về node tốt nhất │
-	 * └───────────────────────────────────────────────────────────────────────┘
-	 *
-	 * ┌─ BƯỚC 4: Tính routingScore và chọn instance ──────────────────────────┐ │
-	 * routingScore = rawMcdm + relPenalty + absPenalty │ │ Weighted routing: score
-	 * thấp có xác suất cao hơn, không chọn min tuyệt đối │ │ Bỏ qua instance có
-	 * inflight ≥ INFLIGHT_HARD_CAP │
-	 * └───────────────────────────────────────────────────────────────────────┘
-	 */
-	private Response<ServiceInstance> selectBestInstance(List<ServiceInstance> instances) {
-		// Guard: không có instance nào UP
-		if (instances == null || instances.isEmpty())
-			return new EmptyResponse();
-		// Chỉ có 1 instance → chọn ngay, không cần tính toán
-		if (instances.size() == 1)
-			return new DefaultResponse(instances.get(0));
+        for (NodeInfo node : scored) {
+            if (node.inflight() < fallbackMinInflight) {
+                fallbackMinInflight = node.inflight();
+                fallbackLeastInflight = node.inst();
+            }
 
-		int n = instances.size();
+            if (node.inflight() >= INFLIGHT_HARD_CAP || node.rawScore() >= UNHEALTHY_SCORE_CUTOFF) {
+                degraded.add(markDegraded(node));
+                continue;
+            }
 
-		// Snapshot toàn bộ inflight tại thời điểm này.
-		// Dùng để tính "fair share" — mỗi instance nên nhận bao nhiêu % traffic.
-		int totalInflight = inflightTracker.getTotalInflight();
+            boolean severeScore = node.routingScore() > bestRoutingScore + SEVERE_SCORE_GAP
+                    && node.routingScore() > bestRoutingScore * SEVERE_SCORE_RATIO;
 
-		long now = System.currentTimeMillis();
+            boolean severeLatency = Double.isFinite(node.ewmaLatency()) && Double.isFinite(bestLatency)
+                    && node.ewmaLatency() > bestLatency * SEVERE_LATENCY_RATIO
+                    && (node.ewmaLatency() - bestLatency) > SEVERE_LATENCY_GAP_MS;
 
-		// NodeInfo: record tạm lưu thông tin đã tính toán của mỗi instance trong vòng
-		// lặp này.
-		// Tránh tính lại nhiều lần: rawMcdm và inflight được đọc 1 lần, dùng lại ở bước
-		// 3 và 4.
-		record NodeInfo(ServiceInstance inst, double rawMcdm, double ewmaLatency, double normCpu, int inflight,
-				boolean inWarmup, boolean hasMetrics) {
-		}
-		List<NodeInfo> nodes = new ArrayList<>(n);
+            if (node.relativeOverloaded() || severeScore || severeLatency) {
+                degraded.add(markDegraded(node));
+            } else {
+                normal.add(node);
+            }
+        }
 
-		// inflight nhỏ nhất hiện tại — dùng trong relPenalty (phạt tương đối so với
-		// node nhàn nhất)
-		int minCurrentInflight = Integer.MAX_VALUE;
+        // Nếu tất cả bị đánh dấu degraded, không được fail cứng; quay về least-inflight để giữ availability.
+        if (normal.isEmpty()) {
+            // Probe/availability fallback: chọn node ít inflight nhất thay vì random.
+            ServiceInstance selected = (fallbackLeastInflight != null) ? fallbackLeastInflight : instances.get(0);
+            emitMetric(selected);
+            return new DefaultResponse(selected);
+        }
 
-		// ── BƯỚC 1: Thu thập thông tin mỗi instance ──────────────────────────
-		for (ServiceInstance inst : instances) {
-			String id = inst.getInstanceId();
+        // Probe node degraded định kỳ để phát hiện recovery. Không dùng floor xác suất lớn như bản cũ.
+        NodeInfo probe = maybeProbe(degraded, now);
+        if (probe != null) {
+            emitMetric(probe.inst());
+            return new DefaultResponse(probe.inst());
+        }
 
-			// Ghi nhận thời điểm "lần đầu thấy" instance này.
-			// computeIfAbsent: chỉ ghi nếu chưa có — thread-safe, không override.
-			long firstSeen = firstSeenMs.computeIfAbsent(id, k -> now);
+        // Chọn cuối bằng Power-of-Two Choices trong nhóm node khỏe.
+        NodeInfo selected = chooseByP2C(normal, totalInflight);
+        emitMetric(selected.inst());
+        return new DefaultResponse(selected.inst());
+    }
 
-			// Instance đang trong warmup nếu chưa đủ 5 giây kể từ lần đầu xuất hiện.
-			boolean inWarmup = (now - firstSeen) < WARMUP_MS;
+    private boolean isLowLoadStable(int totalInflight, double minLat, double maxLat,
+                                    double minScore, double maxScore, double maxCpu) {
+        if (totalInflight > LOW_LOAD_STABILITY_INFLIGHT) {
+            return false;
+        }
+        double latencySpread = (Double.isFinite(minLat) && Double.isFinite(maxLat)) ? (maxLat - minLat) : 0.0;
+        double scoreSpread = maxScore - minScore;
+        return latencySpread < LOW_LOAD_LATENCY_SPREAD_MS
+                && scoreSpread < LOW_LOAD_SCORE_SPREAD
+                && maxCpu < LOW_LOAD_CPU_MAX;
+    }
 
-			// Đọc ScoreBreakdown từ cache (do MetricsPoller cập nhật mỗi 200ms).
-			// Nếu cache chưa có data (instance mới) → dùng DEFAULT_SCORE = 0.35.
-			// Math.max(SCORE_FLOOR, ...) đảm bảo score không bao giờ = 0 (tránh chia cho
-			// 0).
-			ScoreBreakdown bd = cache.getScore(id);
-			double rawMcdm = (bd != null) ? Math.max(SCORE_FLOOR, bd.finalScore()) : DEFAULT_SCORE;
-			double ewmaLatency = (bd != null) ? bd.ewmaLatency() : Double.NaN;
-			double normCpu = (bd != null) ? bd.normCpu() : 0.0;
+    private NodeInfo markDegraded(NodeInfo n) {
+        return new NodeInfo(n.inst(), n.rawScore(), n.ewmaLatency(), n.normCpu(), n.inflight(), n.inWarmup(),
+                n.hasMetrics(), n.capacityWeight(), n.capacityShare(), n.expectedInflight(), n.routingScore(),
+                n.relativeOverloaded(), true);
+    }
 
-			int inflight = inflightTracker.getInflight(id);
-			if (inflight < minCurrentInflight)
-				minCurrentInflight = inflight;
+    private NodeInfo maybeProbe(List<NodeInfo> degraded, long now) {
+        if (degraded.isEmpty()) {
+            return null;
+        }
+        for (NodeInfo node : degraded) {
+            if (node.inflight() >= INFLIGHT_HARD_CAP) {
+                continue;
+            }
+            long last = lastSelectedMs.getOrDefault(node.inst().getInstanceId(), 0L);
+            if ((now - last) >= DEGRADED_PROBE_INTERVAL_MS
+                    && ThreadLocalRandom.current().nextDouble() < PROBE_PROBABILITY_PER_REQUEST) {
+                return node;
+            }
+        }
+        return null;
+    }
 
-			nodes.add(new NodeInfo(inst, rawMcdm, ewmaLatency, normCpu, inflight, inWarmup, bd != null));
-		}
+    private NodeInfo chooseByP2C(List<NodeInfo> candidates, int totalInflight) {
+        if (candidates.size() == 1) {
+            return candidates.get(0);
+        }
 
-		// ── BƯỚC 2: Kiểm tra warmup toàn hệ thống ────────────────────────────
-		// Nếu TẤT CẢ instance đang trong warmup (mới khởi động) → Round-Robin.
-		boolean allWarmup = true;
-		for (NodeInfo node : nodes) {
-			if (!node.inWarmup()) {
-				allWarmup = false;
-				break;
-			}
-		}
-		if (allWarmup) {
-			// rrCounter tăng dần, lấy modulo n → chọn lần lượt 0, 1, 2, 0, 1, 2, ...
-			int idx = (int) (rrCounter.getAndIncrement() % n);
-			ServiceInstance sel = nodes.get(idx).inst();
-			emitMetric(sel);
-			return new DefaultResponse(sel);
-		}
+        ThreadLocalRandom rnd = ThreadLocalRandom.current();
+        NodeInfo a = candidates.get(rnd.nextInt(candidates.size()));
+        NodeInfo b = candidates.get(rnd.nextInt(candidates.size()));
+        if (candidates.size() > 1) {
+            // Tránh chọn cùng một node hai lần nếu có thể.
+            int guard = 0;
+            while (a.inst().getInstanceId().equals(b.inst().getInstanceId()) && guard++ < 3) {
+                b = candidates.get(rnd.nextInt(candidates.size()));
+            }
+        }
+        return better(a, b, totalInflight);
+    }
 
-		
+    private NodeInfo better(NodeInfo a, NodeInfo b, int totalInflight) {
+        double scoreDiff = Math.abs(a.routingScore() - b.routingScore());
+        if (scoreDiff <= SCORE_CLOSE_EPS) {
+            double loadA = normalizedLoad(a, totalInflight);
+            double loadB = normalizedLoad(b, totalInflight);
+            if (Math.abs(loadA - loadB) > 0.05) {
+                return loadA <= loadB ? a : b;
+            }
+            // Nếu score và load đều gần nhau, ưu tiên capacity lớn hơn để tận dụng tài nguyên.
+            return a.capacityWeight() >= b.capacityWeight() ? a : b;
+        }
+        return a.routingScore() <= b.routingScore() ? a : b;
+    }
 
-		// ── BƯỚC 3: Tính capacity weight share[i] ────────────────────────────
-		// share[i] đại diện cho "phần traffic công bằng" mà instance i xứng đáng nhận.
-		// Instance tốt (score thấp) → share cao → được routing nhiều hơn.
-		//
-		// Công thức share[i] = 1/√(rawMcdm):
-		// - rawMcdm = 0.10 (rất tốt) → share = 1/√0.10 = 3.16
-		// - rawMcdm = 0.50 (trung bình) → share = 1/√0.50 = 1.41
-		// - rawMcdm = 1.00 (kém) → share = 1/√1.00 = 1.00
-		// Dùng √ thay vì 1/x để "làm mềm" sự chênh lệch — không để instance tốt
-		// chiếm quá nhiều traffic khi score chênh lệch lớn.
-		//
-		// Instance đang warmup được gán share = 1.0 (trung bình) — chưa đủ data để tin.
-		double[] share = new double[n];
-		double maxCapW = 0;
-		for (int i = 0; i < n; i++) {
-			share[i] = nodes.get(i).inWarmup() ? 1.0 : 1.0 / Math.sqrt(Math.max(SCORE_FLOOR, nodes.get(i).rawMcdm()));
-			if (share[i] > maxCapW)
-				maxCapW = share[i];
-		}
+    private double normalizedLoad(NodeInfo node, int totalInflight) {
+        double expected = Math.max(MIN_EXPECTED_INFLIGHT, totalInflight * node.capacityShare());
+        return node.inflight() / expected;
+    }
 
-		// Áp share floor: share tối thiểu = maxShare / 3.0
-		// Ví dụ: instance tốt nhất share=3.0 → instance tệ nhất share ≥ 1.0 (không phải
-		// 0.3)
-		// Mục đích: instance kém không bị "chết đói" → MetricsPoller vẫn đo được data
-		// thực.
-		double sumCap = 0;
-		double capFloor = maxCapW / MAX_CAP_WEIGHT_RATIO;
-		for (int i = 0; i < n; i++) {
-			if (share[i] < capFloor)
-				share[i] = capFloor;
-			sumCap += share[i];
-		}
-		// Normalize share về [0,1] để tổng = 1.0 (dùng làm xác suất phân bổ traffic)
-		for (int i = 0; i < n; i++)
-			share[i] /= sumCap;
+    private ServiceInstance roundRobin(List<ServiceInstance> instances) {
+        int idx = (int) (Math.floorMod(rrCounter.getAndIncrement(), instances.size()));
+        return instances.get(idx);
+    }
 
-		// ── BƯỚC 4: Tính routingScore và chọn instance ───────────────────────
-		// Không chọn min-score tuyệt đối nữa, vì cách đó dễ làm 1 instance bị bỏ đói.
-		// Ta đổi sang weighted routing: score thấp vẫn có xác suất cao hơn,
-		// nhưng các instance khỏe khác vẫn có cơ hội nhận request để cập nhật metric.
-		record Candidate(ServiceInstance inst, double routingScore, double selectionWeight, int inflight) {
-		}
-		List<Candidate> candidates = new ArrayList<>(n);
+    /**
+     * Capacity weight theo cấu hình docker-compose hiện tại:
+     * 8081: 2 CPU, 8082: 1.5 CPU, 8083: 1 CPU.
+     * Nếu triển khai môi trường khác, nên đưa phần này vào application.yml.
+     */
+    private double capacityWeightOf(ServiceInstance inst) {
+        int port = inst.getPort();
+        if (port == 8081) return 2.0;
+        if (port == 8082) return 1.5;
+        if (port == 8083) return 1.0;
+        return 1.0;
+    }
 
-		// Fallback: nếu tất cả instance đều quá tải hoặc bị loại, chọn node ít inflight
-		// nhất.
-		ServiceInstance leastLoadFb = null;
-		int minInflFb = Integer.MAX_VALUE;
-
-		double maxSelectionWeight = 0.0;
-
-		for (int i = 0; i < n; i++) {
-			NodeInfo node = nodes.get(i);
-			int inf = node.inflight();
-
-			if (inf < minInflFb) {
-				minInflFb = inf;
-				leastLoadFb = node.inst();
-			}
-
-			// Hard cap: node quá tải thì không nhận thêm request mới.
-			if (inf >= INFLIGHT_HARD_CAP)
-				continue;
-
-			// Score quá cao thường là poll fail hoặc backend gần như lỗi, không probe nữa.
-			if (node.rawMcdm() >= UNHEALTHY_SCORE_CUTOFF)
-				continue;
-
-			double relPenalty = OMEGA_REL * Math.max(0.0, inf - minCurrentInflight);
-
-			double absPenalty = 0.0;
-			if (totalInflight > 0) {
-				// expected tối thiểu giúp low-load không bị phạt quá mạnh vì lệch 1-2 request.
-				double expected = Math.max(MIN_EXPECTED_INFLIGHT, totalInflight * share[i]);
-				double excessRatio = (double) inf / expected - 1.0;
-				if (excessRatio > 0) {
-					double penaltyFactor = (totalInflight < LOW_INFLIGHT_THRESHOLD) ? LOW_INFLIGHT_PENALTY_FACTOR : 1.0;
-					absPenalty = OMEGA_ABS * penaltyFactor * Math.pow(excessRatio, PENALTY_EXPONENT);
-				}
-			}
-
-			double routingScore = node.rawMcdm() + relPenalty + absPenalty;
-
-			// Đổi score thành trọng số chọn. Score càng thấp thì trọng số càng cao.
-			// Cộng SCORE_FLOOR để tránh trọng số quá lớn khi score rất nhỏ.
-			double selectionWeight = 1.0 / Math.pow(routingScore + SCORE_FLOOR, SELECTION_SCORE_POWER);
-
-			if (selectionWeight > maxSelectionWeight)
-				maxSelectionWeight = selectionWeight;
-			candidates.add(new Candidate(node.inst(), routingScore, selectionWeight, inf));
-		}
-
-		if (candidates.isEmpty()) {
-			ServiceInstance fb = (leastLoadFb != null) ? leastLoadFb : instances.get(0);
-			log.warn("[ALB] No eligible candidate, fallback to least-inflight instance");
-			emitMetric(fb);
-			return new DefaultResponse(fb);
-		}
-
-		// Áp floor cho trọng số chọn: node còn khỏe thì không bị xác suất 0.
-		// Đây là phần chống starvation thật sự, khác với share chỉ dùng để tính
-		// penalty.
-		double selectionFloor = maxSelectionWeight / MAX_SELECTION_WEIGHT_RATIO;
-		double totalWeight = 0.0;
-		List<Candidate> floored = new ArrayList<>(candidates.size());
-		for (Candidate c : candidates) {
-			double w = Math.max(c.selectionWeight(), selectionFloor);
-			floored.add(new Candidate(c.inst(), c.routingScore(), w, c.inflight()));
-			totalWeight += w;
-		}
-
-		// Weighted random: giữ tính thích nghi nhưng không còn greedy tuyệt đối.
-		double r = ThreadLocalRandom.current().nextDouble(totalWeight);
-		ServiceInstance selected = floored.get(floored.size() - 1).inst();
-		for (Candidate c : floored) {
-			r -= c.selectionWeight();
-			if (r <= 0.0) {
-				selected = c.inst();
-				break;
-			}
-		}
-
-		emitMetric(selected);
-		return new DefaultResponse(selected);
-	}
-
-	// ──────────────────────────────────────────────────────────────────────────
-	// HELPER
-	// ──────────────────────────────────────────────────────────────────────────
-
-	/**
-	 * Ghi nhận việc instance được chọn lên Prometheus counter
-	 * "alb.routing.selected".
-	 *
-	 * Dùng counterCache để tránh gọi Metrics.counter() (tra cứu trong registry) mỗi
-	 * lần request — thay vào đó tạo Counter 1 lần, tái sử dụng mãi. Tag "backend"
-	 * và "port" cho phép Grafana phân tách traffic theo từng instance.
-	 *
-	 * Ví dụ metric: alb.routing.selected{backend="REGISTRATION-SERVICE-ALB:8081",
-	 * port="8081"}
-	 */
-	private void emitMetric(ServiceInstance inst) {
-		lastSelectedMs.put(inst.getInstanceId(), System.currentTimeMillis());
-		counterCache.computeIfAbsent(inst.getInstanceId(), k -> Metrics.counter("alb.routing.selected", "backend",
-				inst.getInstanceId(), "port", String.valueOf(inst.getPort()))).increment();
-	}
+    private void emitMetric(ServiceInstance inst) {
+        lastSelectedMs.put(inst.getInstanceId(), System.currentTimeMillis());
+        counterCache.computeIfAbsent(inst.getInstanceId(), k -> Metrics.counter(
+                "alb.routing.selected",
+                "backend", inst.getInstanceId(),
+                "port", String.valueOf(inst.getPort())
+        )).increment();
+    }
 }
