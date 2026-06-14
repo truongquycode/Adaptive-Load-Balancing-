@@ -37,6 +37,15 @@ public class RoutingCostCalculator {
     private static final double EPS = 1e-9;
     private static final double DEFAULT_HEALTH_SCORE = 0.50;
 
+    // Giảm dao động routing khi chỉ có 3 backend: min-max quá nhạy với chênh lệch nhỏ.
+    private static final double MIN_ROUTING_NORM_RANGE = 0.12;
+
+    // Làm mượt health/load weight để tránh chuyển mode HEALTH/LOAD liên tục.
+    private static final double ROUTING_WEIGHT_EMA_ALPHA = 0.20;
+
+    // Chỉ xem là dominant khi tín hiệu thật sự rõ, tránh flapping quanh 60%.
+    private static final double DOMINANT_THRESHOLD = 0.70;
+
     private final MetricsCache cache;
     private final InflightTracker inflightTracker;
     private final AlbProperties props;
@@ -68,6 +77,7 @@ public class RoutingCostCalculator {
             sumCapacity += capacityWeightOf(inst);
         }
         sumCapacity = Math.max(sumCapacity, EPS);
+        double avgCapacity = sumCapacity / Math.max(1, instances.size());
 
         List<RawNode> rawNodes = new ArrayList<>(instances.size());
         for (ServiceInstance inst : instances) {
@@ -82,6 +92,7 @@ public class RoutingCostCalculator {
             double expected = Math.max(cfg.getMinExpectedInflight(), totalInflight * capShare);
             int inflight = inflightTracker.getInflight(id);
             double loadRaw = inflight / Math.max(expected, EPS);
+            int hardInflightCap = capacityAwareHardInflightCap(cap, avgCapacity, cfg);
 
             boolean hardExcluded = false;
             String reason = "NORMAL";
@@ -94,7 +105,7 @@ public class RoutingCostCalculator {
             } else if (healthRaw >= cfg.getUnhealthyScoreCutoff()) {
                 hardExcluded = true;
                 reason = "UNHEALTHY_SCORE";
-            } else if (inflight >= cfg.getHardInflightCap()) {
+            } else if (inflight >= hardInflightCap) {
                 hardExcluded = true;
                 reason = "HARD_INFLIGHT_CAP";
             }
@@ -112,8 +123,11 @@ public class RoutingCostCalculator {
         double healthSpread = relativeSpread(rawNodes.stream().mapToDouble(RawNode::healthRaw).toArray());
         double loadSpread = relativeSpread(rawNodes.stream().mapToDouble(RawNode::loadRaw).toArray());
 
-        double healthWeight = healthSpread / (healthSpread + loadSpread + EPS);
-        healthWeight = clamp(healthWeight, cfg.getMinHealthWeight(), cfg.getMaxHealthWeight());
+        double targetHealthWeight = healthSpread / (healthSpread + loadSpread + EPS);
+        targetHealthWeight = clamp(targetHealthWeight, cfg.getMinHealthWeight(), cfg.getMaxHealthWeight());
+
+        // Smooth weight để tránh health/load mode đổi liên tục giữa các poll window.
+        double healthWeight = smoothRoutingWeight(lastHealthWeight, targetHealthWeight);
         double loadWeight = 1.0 - healthWeight;
 
         String mode = "NORMAL_P2C";
@@ -121,9 +135,9 @@ public class RoutingCostCalculator {
             mode = "LOW_LOAD_RR";
         } else if (!rawNodes.stream().filter(n -> !n.hardExcluded()).findAny().isPresent()) {
             mode = "ALL_HARD_EXCLUDED_FALLBACK";
-        } else if (healthWeight >= 0.60) {
+        } else if (healthWeight >= DOMINANT_THRESHOLD) {
             mode = "HEALTH_DOMINANT";
-        } else if (loadWeight >= 0.60) {
+        } else if (loadWeight >= DOMINANT_THRESHOLD) {
             mode = "LOAD_DOMINANT";
         }
 
@@ -203,8 +217,25 @@ public class RoutingCostCalculator {
 
     private double normalize(double value, double min, double max) {
         double range = max - min;
-        if (range <= EPS) return 0.0;
+
+        // Với cụm chỉ 3 node, nếu range quá nhỏ thì min-max sẽ biến nhiễu nhỏ thành 0/1.
+        // Trả về 0.5 nghĩa là tín hiệu này chưa đủ phân biệt, để P2C tie-break bằng raw load/capacity.
+        if (range <= MIN_ROUTING_NORM_RANGE) return 0.5;
+
         return clamp((value - min) / range, 0.0, 1.0);
+    }
+
+    private double smoothRoutingWeight(double previous, double target) {
+        return clamp(previous + ROUTING_WEIGHT_EMA_ALPHA * (target - previous),
+                props.getRouting().getMinHealthWeight(), props.getRouting().getMaxHealthWeight());
+    }
+
+    private int capacityAwareHardInflightCap(double capacityWeight, double avgCapacity, AlbProperties.Routing cfg) {
+        // cfg.hardInflightCap được hiểu là ngưỡng cho node năng lực trung bình.
+        // 8081 mạnh hơn trung bình được phép gánh nhiều hơn; 8083 yếu hơn trung bình bị giới hạn sớm hơn.
+        double factor = capacityWeight / Math.max(avgCapacity, EPS);
+        factor = clamp(factor, 0.70, 1.40);
+        return Math.max(30, (int) Math.round(cfg.getHardInflightCap() * factor));
     }
 
     private double relativeSpread(double[] values) {
