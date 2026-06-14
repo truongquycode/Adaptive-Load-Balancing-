@@ -20,7 +20,7 @@ spring:
 
 alb:
     # adaptive, round-robin, random, least-connections
-    strategy: random
+    strategy: least-connections
     polling:
         interval: 200
 
