@@ -20,7 +20,7 @@ spring:
 
 alb:
     # adaptive, round-robin, random, least-connections
-    strategy: round-robin
+    strategy: adaptive
     polling:
         interval: 200
 
@@ -55,15 +55,15 @@ alb:
         low-load-inflight: 20
         low-load-health-spread: 0.12
         low-load-load-spread: 0.25
-        min-health-weight: 0.35
-        max-health-weight: 0.80
-        stale-penalty-weight: 0.30
-        stale-soft-ms: 800
-        stale-hard-ms: 2000
+        min-health-weight: 0.25
+        max-health-weight: 0.75
+        stale-penalty-weight: 0.15
+        stale-soft-ms: 1500
+        stale-hard-ms: 5000
         unhealthy-score-cutoff: 2.0
-        hard-inflight-cap: 180
-        probe-interval-ms: 2000
-        probe-probability: 0.02
+        hard-inflight-cap: 220
+        probe-interval-ms: 3000
+        probe-probability: 0.005
 
 management:
   endpoints:

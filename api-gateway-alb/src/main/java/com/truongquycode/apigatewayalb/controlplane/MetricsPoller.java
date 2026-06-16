@@ -57,6 +57,7 @@ public class MetricsPoller {
 	private static final double EMA_SPIKE_THRESHOLD = 0.30; // Ngưỡng delta để phân loại "spike" vs "tăng nhẹ"
 	private static final double IDLE_LATENCY_BASELINE_MS = 65.0;
 	private static final double IDLE_DECAY_ALPHA = 0.20;
+	private static final long METRICS_POLL_TIMEOUT_MS = 800;
 
 	// ── Backing maps cho Prometheus Gauges ──────────────────────────────────
 	// Các map này là nguồn dữ liệu trực tiếp cho Gauge.builder().
@@ -147,7 +148,7 @@ public class MetricsPoller {
 		// Xem AlbMetricsController.java trong registration-service-alb
 		String url = instance.getUri().toString() + "/api/alb-metrics";
 
-		return webClient.get().uri(url).retrieve().bodyToMono(JsonNode.class).timeout(Duration.ofMillis(400))
+		return webClient.get().uri(url).retrieve().bodyToMono(JsonNode.class).timeout(Duration.ofMillis(METRICS_POLL_TIMEOUT_MS))
 				// ── Happy path: nhận được metrics ────────────────────────────
 				.doOnNext(node -> {
 					consecutiveFailures.put(instanceId, 0); // Reset failure counter vì poll thành công

@@ -19,16 +19,13 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * RoutingCostCalculator — điểm hợp nhất của Adaptive v3.
+ * RoutingCostCalculator — Adaptive v4.
  *
- * Vai trò:
- * - Health cost đến từ control-plane: EWMA + normalize + MCDM + PID + score EMA.
- * - Load cost đến từ data-plane: inflight realtime, chuẩn hóa theo capacity container.
- * - Trọng số health/load tự đổi theo độ phân tán hiện tại của từng tín hiệu.
- *
- * Nhờ đó Adaptive không còn phụ thuộc vào nhiều hard-rule trong LoadBalancer:
- * khi load là tín hiệu rõ nhất, thuật toán nghiêng về least-load;
- * khi health là tín hiệu rõ nhất, thuật toán nghiêng về MCDM/PID/EWMA.
+ * Bản này giữ pipeline cũ nhưng sửa lỗi quan trọng khi stress toàn cụm:
+ * - Min-max normalization không còn là tín hiệu duy nhất, vì khi cả 3 backend đều quá tải
+ *   thì min-max có thể trả về 0.5 và làm mất dấu hiệu overload tuyệt đối.
+ * - Bổ sung absolute overload penalty dựa trên loadRaw và mức tiệm cận hard-cap.
+ * - Hard cap vẫn theo capacity để 8081 được phép gánh nhiều hơn 8083.
  */
 @Component
 @RequiredArgsConstructor
@@ -37,14 +34,14 @@ public class RoutingCostCalculator {
     private static final double EPS = 1e-9;
     private static final double DEFAULT_HEALTH_SCORE = 0.50;
 
-    // Giảm dao động routing khi chỉ có 3 backend: min-max quá nhạy với chênh lệch nhỏ.
     private static final double MIN_ROUTING_NORM_RANGE = 0.12;
-
-    // Làm mượt health/load weight để tránh chuyển mode HEALTH/LOAD liên tục.
-    private static final double ROUTING_WEIGHT_EMA_ALPHA = 0.20;
-
-    // Chỉ xem là dominant khi tín hiệu thật sự rõ, tránh flapping quanh 60%.
+    private static final double ROUTING_WEIGHT_EMA_ALPHA = 0.18;
     private static final double DOMINANT_THRESHOLD = 0.70;
+
+    // Penalty tuyệt đối để Adaptive không mất tín hiệu khi tất cả backend đều gần quá tải.
+    private static final double OVERLOAD_PENALTY_WEIGHT = 0.30;
+    private static final double CAP_PRESSURE_PENALTY_WEIGHT = 0.20;
+    private static final double ABSOLUTE_HEALTH_PENALTY_WEIGHT = 0.12;
 
     private final MetricsCache cache;
     private final InflightTracker inflightTracker;
@@ -112,7 +109,7 @@ public class RoutingCostCalculator {
 
             double stalePenalty = stalePenalty(ageMs, cfg);
             rawNodes.add(new RawNode(id, healthRaw, loadRaw, stalePenalty, cap, capShare,
-                    expected, inflight, hardExcluded, reason, now));
+                    expected, inflight, hardInflightCap, hardExcluded, reason, now));
         }
 
         double minHealth = rawNodes.stream().mapToDouble(RawNode::healthRaw).min().orElse(0.0);
@@ -126,14 +123,13 @@ public class RoutingCostCalculator {
         double targetHealthWeight = healthSpread / (healthSpread + loadSpread + EPS);
         targetHealthWeight = clamp(targetHealthWeight, cfg.getMinHealthWeight(), cfg.getMaxHealthWeight());
 
-        // Smooth weight để tránh health/load mode đổi liên tục giữa các poll window.
         double healthWeight = smoothRoutingWeight(lastHealthWeight, targetHealthWeight);
         double loadWeight = 1.0 - healthWeight;
 
         String mode = "NORMAL_P2C";
         if (isLowLoadStable(totalInflight, maxHealth - minHealth, maxLoad - minLoad, cfg)) {
             mode = "LOW_LOAD_RR";
-        } else if (!rawNodes.stream().filter(n -> !n.hardExcluded()).findAny().isPresent()) {
+        } else if (rawNodes.stream().noneMatch(n -> !n.hardExcluded())) {
             mode = "ALL_HARD_EXCLUDED_FALLBACK";
         } else if (healthWeight >= DOMINANT_THRESHOLD) {
             mode = "HEALTH_DOMINANT";
@@ -146,7 +142,17 @@ public class RoutingCostCalculator {
         for (RawNode node : rawNodes) {
             double healthCost = normalize(node.healthRaw(), minHealth, maxHealth);
             double loadCost = normalize(node.loadRaw(), minLoad, maxLoad);
-            double finalCost = healthWeight * healthCost + loadWeight * loadCost + node.stalePenalty();
+
+            double overloadPenalty = OVERLOAD_PENALTY_WEIGHT * overloadPenalty(node.loadRaw());
+            double capPressurePenalty = CAP_PRESSURE_PENALTY_WEIGHT * capPressurePenalty(node.inflight(), node.hardInflightCap());
+            double absoluteHealthPenalty = ABSOLUTE_HEALTH_PENALTY_WEIGHT * absoluteHealthPenalty(node.healthRaw());
+
+            double finalCost = healthWeight * healthCost
+                    + loadWeight * loadCost
+                    + overloadPenalty
+                    + capPressurePenalty
+                    + absoluteHealthPenalty
+                    + node.stalePenalty();
 
             RoutingCost cost = new RoutingCost(
                     node.instanceId(), node.healthRaw(), node.loadRaw(), healthCost, loadCost,
@@ -169,11 +175,9 @@ public class RoutingCostCalculator {
         if (a.finalCost() < b.finalCost()) return a;
         if (b.finalCost() < a.finalCost()) return b;
 
-        // Tie-break 1: node ít quá tải hơn so với phần tải kỳ vọng.
         if (a.loadCostRaw() < b.loadCostRaw()) return a;
         if (b.loadCostRaw() < a.loadCostRaw()) return b;
 
-        // Tie-break 2: nếu mọi thứ gần như bằng nhau, node capacity lớn hơn được phép gánh nhiều hơn.
         return a.capacityWeight() >= b.capacityWeight() ? a : b;
     }
 
@@ -217,11 +221,7 @@ public class RoutingCostCalculator {
 
     private double normalize(double value, double min, double max) {
         double range = max - min;
-
-        // Với cụm chỉ 3 node, nếu range quá nhỏ thì min-max sẽ biến nhiễu nhỏ thành 0/1.
-        // Trả về 0.5 nghĩa là tín hiệu này chưa đủ phân biệt, để P2C tie-break bằng raw load/capacity.
         if (range <= MIN_ROUTING_NORM_RANGE) return 0.5;
-
         return clamp((value - min) / range, 0.0, 1.0);
     }
 
@@ -231,11 +231,25 @@ public class RoutingCostCalculator {
     }
 
     private int capacityAwareHardInflightCap(double capacityWeight, double avgCapacity, AlbProperties.Routing cfg) {
-        // cfg.hardInflightCap được hiểu là ngưỡng cho node năng lực trung bình.
-        // 8081 mạnh hơn trung bình được phép gánh nhiều hơn; 8083 yếu hơn trung bình bị giới hạn sớm hơn.
         double factor = capacityWeight / Math.max(avgCapacity, EPS);
-        factor = clamp(factor, 0.70, 1.40);
-        return Math.max(30, (int) Math.round(cfg.getHardInflightCap() * factor));
+        factor = clamp(factor, 0.70, 1.50);
+        return Math.max(40, (int) Math.round(cfg.getHardInflightCap() * factor));
+    }
+
+    private double overloadPenalty(double loadRaw) {
+        // loadRaw=1 nghĩa là backend nhận đúng phần tải theo capacity.
+        // Trên 0.95 bắt đầu penalty mềm để tránh đợi tới hard-cap mới né.
+        return clamp((loadRaw - 0.95) / 0.45, 0.0, 1.0);
+    }
+
+    private double capPressurePenalty(int inflight, int hardCap) {
+        double ratio = inflight / Math.max(1.0, hardCap);
+        return clamp((ratio - 0.70) / 0.30, 0.0, 1.0);
+    }
+
+    private double absoluteHealthPenalty(double healthRaw) {
+        // finalScore thực tế thường khoảng 0..1.8. Trên 0.75 đã là node tương đối xấu.
+        return clamp((healthRaw - 0.75) / 0.75, 0.0, 1.0);
     }
 
     private double relativeSpread(double[] values) {
@@ -265,6 +279,7 @@ public class RoutingCostCalculator {
             double capacityShare,
             double expectedInflight,
             int inflight,
+            int hardInflightCap,
             boolean hardExcluded,
             String reason,
             long updatedAtMs

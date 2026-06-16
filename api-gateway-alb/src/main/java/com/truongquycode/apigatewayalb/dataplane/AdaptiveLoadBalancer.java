@@ -91,7 +91,9 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
             return new DefaultResponse(selected);
         }
 
-        // Probe nhẹ node đang bị ít chọn hoặc bị hard-excluded để kiểm tra recovery.
+        // Probe recovery chỉ nên chạy khi hệ thống còn tương đối ổn.
+        // Trong stress/load-dominant hoặc all-hard-excluded fallback, probe sẽ làm tail latency xấu hơn
+        // vì gửi thêm request vào node đang quá tải.
         RoutingCost probe = maybeProbe(ctx, now);
         if (probe != null) {
             ServiceInstance selected = ctx.instancesById().get(probe.instanceId());
@@ -131,10 +133,24 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
 
     private RoutingCost maybeProbe(RoutingContext ctx, long now) {
         AlbProperties.Routing cfg = props.getRouting();
+
+        // Không probe trong vùng stress. Lúc này mục tiêu là giảm tail, không phải khám phá.
+        if ("LOAD_DOMINANT".equals(ctx.mode()) || "ALL_HARD_EXCLUDED_FALLBACK".equals(ctx.mode())) {
+            return null;
+        }
+
         List<RoutingCost> ordered = new ArrayList<>(ctx.all());
         ordered.sort(Comparator.comparingDouble(RoutingCost::finalCost).reversed());
 
         for (RoutingCost cost : ordered) {
+            // Chỉ probe node đang bị loại vì health/stale/no-metrics.
+            // Không probe node bị hard inflight cap vì nó đang quá tải tức thời.
+            if (!cost.hardExcluded()) {
+                continue;
+            }
+            if ("HARD_INFLIGHT_CAP".equals(cost.reason())) {
+                continue;
+            }
             if (cost.inflight() >= cfg.getHardInflightCap()) {
                 continue;
             }
