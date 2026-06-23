@@ -1,4 +1,4 @@
-strategy=round-robin
-reason=startup
+strategy=random
+reason=strategy-change
 timestamp=
-2026-06-24 00:24:09
+2026-06-24 01:26:39
