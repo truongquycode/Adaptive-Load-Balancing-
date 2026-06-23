@@ -1,4 +1,4 @@
-strategy=random
+strategy=least-connections
 reason=strategy-change
 timestamp=
-2026-06-23 17:40:55
+2026-06-23 18:29:42
