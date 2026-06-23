@@ -1,4 +1,4 @@
-strategy=least-connections
+strategy=adaptive
 reason=strategy-change
 timestamp=
-2026-06-23 18:29:42
+2026-06-23 19:18:40
