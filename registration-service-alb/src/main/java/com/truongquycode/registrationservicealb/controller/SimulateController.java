@@ -46,18 +46,18 @@ public class SimulateController {
      * Lưu ý: DB_POOL là theo từng instance, vì mỗi instance chạy một JVM riêng.
      * Nếu chạy 3 instance thì tổng số DB slot xấp xỉ 3 * DB_POOL_SIZE_PER_INSTANCE.
      *
-     * Bản R_sat relaxed:
-     * - DB_POOL_SIZE_PER_INSTANCE = 24 để nới vùng bão hòa so với bản 16 slot.
-     * - Cơ sở tính: với workload 60/25/12/3, thời gian giữ DB trung bình có trọng số
-     *   khoảng 40.8ms/request. Nếu mục tiêu khảo sát quanh 800 RPS toàn hệ thống,
-     *   mỗi instance nhận xấp xỉ 800/3 RPS, L_db ≈ (800/3) * 0.0408 ≈ 10.9.
-     *   Nhân hệ số dự phòng khoảng 2 lần cho burst và mất cân bằng tải → khoảng 22,
-     *   làm tròn thành 24 slot/instance.
-     * - DB_ACQUIRE_TIMEOUT_MS = 3000 để biểu hiện quá tải bằng tăng latency trước,
-     *   không tạo lỗi quá sớm như bản 1500ms.
+     * Bản R_sat 1000+:
+     * - Mục tiêu: đẩy vùng bão hòa lên trên 1000 RPS nhưng vẫn giữ workload hỗn hợp.
+     * - DB_POOL_SIZE_PER_INSTANCE = 40 được tính theo Little's Law cho vùng khảo sát
+     *   khoảng 1200 RPS toàn hệ thống. Với mix 60/25/12/3 và thời gian giữ DB trung bình
+     *   có trọng số khoảng 30.75ms/request, mỗi instance nhận 1200/3 = 400 RPS:
+     *   L_db ≈ 400 * 0.03075 ≈ 12.3 connection. Nhân hệ số dự phòng khoảng 3 lần
+     *   cho burst, lệch tải và queue ngắn hạn → khoảng 37, làm tròn thành 40.
+     * - DB_ACQUIRE_TIMEOUT_MS = 12000 để hạn chế trả 503 quá sớm. Khi quá tải,
+     *   hệ thống nên thể hiện bằng latency tăng trước; lỗi chỉ xuất hiện khi thật sự vượt xa ngưỡng.
      */
-    private static final int DB_POOL_SIZE_PER_INSTANCE = 24;
-    private static final int DB_ACQUIRE_TIMEOUT_MS = 3_000;
+    private static final int DB_POOL_SIZE_PER_INSTANCE = 40;
+    private static final int DB_ACQUIRE_TIMEOUT_MS = 12_000;
     private static final Semaphore DB_POOL = new Semaphore(DB_POOL_SIZE_PER_INSTANCE, true);
     private static final AtomicInteger activeMixedRequests = new AtomicInteger(0);
 
@@ -209,32 +209,32 @@ public class SimulateController {
     }
 
     private enum WorkProfile {
-        // Bản relaxed giữ cùng tỷ lệ workload 60/25/12/3 nhưng giảm CPU/RAM của nhóm nặng
-        // để vùng R_sat không sập quá sớm, thuận lợi cho việc chia Low/Medium/High/Stress.
+        // Bản 1000+ giữ tỷ lệ 60/25/12/3 nhưng giảm CPU/RAM/DB hold so với bản quá tải sớm.
+        // Mục tiêu là tạo R_sat > 1000 RPS và hạn chế nhiều lỗi 500/504 trong vùng khảo sát.
         // cpu1, cpu2, ioMin, ioMaxExclusive, memoryKb, usesDb, dbMin, dbMaxExclusive
         LIGHT(
-                10_000, 15_000,
+                5_000, 8_000,
                 20, 61,
-                64,
+                32,
                 false, 0, 1
         ),
         MEDIUM(
-                45_000, 65_000,
+                25_000, 35_000,
                 120, 281,
-                384,
-                true, 40, 81
+                128,
+                true, 30, 61
         ),
         SLOW(
-                140_000, 220_000,
+                80_000, 120_000,
                 700, 1201,
-                1_024,
-                true, 100, 181
+                512,
+                true, 80, 141
         ),
         VERY_SLOW(
-                250_000, 380_000,
+                160_000, 240_000,
                 1_800, 2801,
-                2_048,
-                true, 220, 381
+                1_024,
+                true, 160, 261
         );
 
         private final int cpuPhase1Iterations;
