@@ -111,6 +111,7 @@ public class SimulateController {
      *
      * Khi dùng JMeter đã chia tỷ lệ bằng 4 sampler thì nên gọi profile cụ thể.
      * Khi test nhanh bằng curl thì có thể gọi profile=mixed.
+     * Các chaos chính thức dependency-slowdown và latency-degradation tác động lên endpoint này.
      */
     @GetMapping("/simulate-mixed-call")
     public ResponseEntity<String> simulateMixedWorkload(
@@ -125,15 +126,17 @@ public class SimulateController {
 
         long elapsedMs = elapsedMillis(startNs);
         String body = String.format(
-                "MixedProfile: %s | Request #%d | CPU iters: %d+%d | RAM: %dKB | I/O: %dms | DB wait: %dms | DB hold: %dms | Active mixed: %d | DB timeout: %s | Elapsed: %dms",
+                "MixedProfile: %s | Request #%d | CPU iters: %d+%d | RAM: %dKB | I/O: %dms | Chaos latency: %dms | DB wait: %dms | DB hold: %dms | Dependency extra: %dms | Active mixed: %d | DB timeout: %s | Elapsed: %dms",
                 selected.name(),
                 count,
                 selected.cpuPhase1Iterations(),
                 selected.cpuPhase2Iterations(),
                 selected.memoryKb(),
                 result.ioDelayMs(),
+                result.chaosLatencyMs(),
                 result.dbWaitMs(),
                 result.dbHoldMs(),
+                result.dependencyExtraMs(),
                 result.activeAtStart(),
                 result.dbTimedOut(),
                 elapsedMs
@@ -182,6 +185,13 @@ public class SimulateController {
             ioDelayMs = random.nextInt(profile.ioMinMs(), profile.ioMaxExclusiveMs());
             Thread.sleep(ioDelayMs);
 
+            // Localized latency degradation: mô phỏng backend bị chậm trên request path.
+            int chaosLatencyMs = ChaosController.sampledLatencyDegradationMs(random);
+            if (chaosLatencyMs > 0) {
+                Thread.sleep(chaosLatencyMs);
+            }
+
+            int dependencyExtraMs = 0;
             if (profile.usesDbPool()) {
                 long waitStartNs = System.nanoTime();
                 dbAcquired = DB_POOL.tryAcquire(DB_ACQUIRE_TIMEOUT_MS, TimeUnit.MILLISECONDS);
@@ -189,17 +199,19 @@ public class SimulateController {
 
                 if (!dbAcquired) {
                     // Không lấy được DB connection trong timeout: đây là dấu hiệu quá tải hợp lý.
-                    return WorkResult.dbTimeout(ioDelayMs, (int) dbWaitMs, active, profile.memoryKb());
+                    return WorkResult.dbTimeout(ioDelayMs, (int) dbWaitMs, active, profile.memoryKb(), chaosLatencyMs);
                 }
 
-                dbHoldMs = random.nextInt(profile.dbMinMs(), profile.dbMaxExclusiveMs());
+                int baseDbHoldMs = random.nextInt(profile.dbMinMs(), profile.dbMaxExclusiveMs());
+                dependencyExtraMs = ChaosController.sampledDependencyExtraHoldMs(random);
+                dbHoldMs = baseDbHoldMs + dependencyExtraMs;
                 Thread.sleep(dbHoldMs);
             }
 
             burnCpu(profile.cpuPhase2Iterations());
             consumeMemory(memoryBlock);
 
-            return WorkResult.ok(ioDelayMs, dbHoldMs, (int) dbWaitMs, active, profile.memoryKb());
+            return WorkResult.ok(ioDelayMs, dbHoldMs, (int) dbWaitMs, active, profile.memoryKb(), chaosLatencyMs, dependencyExtraMs);
         } finally {
             if (dbAcquired) {
                 DB_POOL.release();
@@ -282,23 +294,44 @@ public class SimulateController {
         private final int dbWaitMs;
         private final int activeAtStart;
         private final int memoryKb;
+        private final int chaosLatencyMs;
+        private final int dependencyExtraMs;
         private final boolean dbTimedOut;
 
-        private WorkResult(int ioDelayMs, int dbHoldMs, int dbWaitMs, int activeAtStart, int memoryKb, boolean dbTimedOut) {
+        private WorkResult(
+                int ioDelayMs,
+                int dbHoldMs,
+                int dbWaitMs,
+                int activeAtStart,
+                int memoryKb,
+                int chaosLatencyMs,
+                int dependencyExtraMs,
+                boolean dbTimedOut
+        ) {
             this.ioDelayMs = ioDelayMs;
             this.dbHoldMs = dbHoldMs;
             this.dbWaitMs = dbWaitMs;
             this.activeAtStart = activeAtStart;
             this.memoryKb = memoryKb;
+            this.chaosLatencyMs = chaosLatencyMs;
+            this.dependencyExtraMs = dependencyExtraMs;
             this.dbTimedOut = dbTimedOut;
         }
 
-        static WorkResult ok(int ioDelayMs, int dbHoldMs, int dbWaitMs, int activeAtStart, int memoryKb) {
-            return new WorkResult(ioDelayMs, dbHoldMs, dbWaitMs, activeAtStart, memoryKb, false);
+        static WorkResult ok(
+                int ioDelayMs,
+                int dbHoldMs,
+                int dbWaitMs,
+                int activeAtStart,
+                int memoryKb,
+                int chaosLatencyMs,
+                int dependencyExtraMs
+        ) {
+            return new WorkResult(ioDelayMs, dbHoldMs, dbWaitMs, activeAtStart, memoryKb, chaosLatencyMs, dependencyExtraMs, false);
         }
 
-        static WorkResult dbTimeout(int ioDelayMs, int dbWaitMs, int activeAtStart, int memoryKb) {
-            return new WorkResult(ioDelayMs, 0, dbWaitMs, activeAtStart, memoryKb, true);
+        static WorkResult dbTimeout(int ioDelayMs, int dbWaitMs, int activeAtStart, int memoryKb, int chaosLatencyMs) {
+            return new WorkResult(ioDelayMs, 0, dbWaitMs, activeAtStart, memoryKb, chaosLatencyMs, 0, true);
         }
 
         int ioDelayMs() { return ioDelayMs; }
@@ -306,6 +339,8 @@ public class SimulateController {
         int dbWaitMs() { return dbWaitMs; }
         int activeAtStart() { return activeAtStart; }
         int memoryKb() { return memoryKb; }
+        int chaosLatencyMs() { return chaosLatencyMs; }
+        int dependencyExtraMs() { return dependencyExtraMs; }
         boolean dbTimedOut() { return dbTimedOut; }
     }
 
