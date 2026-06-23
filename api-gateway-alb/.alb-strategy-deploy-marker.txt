@@ -1,4 +1,4 @@
-strategy=adaptive
-reason=strategy-change
+strategy=round-robin
+reason=startup
 timestamp=
-2026-06-23 23:27:24
+2026-06-24 00:24:09
