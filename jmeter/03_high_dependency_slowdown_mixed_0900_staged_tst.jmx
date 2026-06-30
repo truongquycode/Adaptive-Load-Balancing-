@@ -1,0 +1,473 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jmeterTestPlan version="1.2" properties="5.0" jmeter="5.6.3">
+  <hashTree>
+    <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="[HIGH DEGRADATION - STAGED RAMP] Mixed 900 RPS - Dependency Slowdown on one backend" enabled="true">
+      <stringProp name="TestPlan.comments">High load at 900 RPS with staged ramp 0->300->600->900. Chaos target defaults to 8083. Degradation phase uses /api/chaos/dependency-slowdown/high from t=180s to t=360s. Analyze MEASURE_HIGH labels only.</stringProp>
+      <boolProp name="TestPlan.tearDown_on_shutdown">true</boolProp>
+      <elementProp name="TestPlan.user_defined_variables" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments" testname="User Defined Variables">
+        <collectionProp name="Arguments.arguments">
+          <elementProp name="GATEWAY_HOST" elementType="Argument"><stringProp name="Argument.name">GATEWAY_HOST</stringProp><stringProp name="Argument.value">172.30.35.37</stringProp><stringProp name="Argument.metadata">=</stringProp></elementProp>
+          <elementProp name="GATEWAY_PORT" elementType="Argument"><stringProp name="Argument.name">GATEWAY_PORT</stringProp><stringProp name="Argument.value">8080</stringProp><stringProp name="Argument.metadata">=</stringProp></elementProp>
+          <elementProp name="TARGET_PATH" elementType="Argument"><stringProp name="Argument.name">TARGET_PATH</stringProp><stringProp name="Argument.value">/api/simulate-mixed-call</stringProp><stringProp name="Argument.metadata">=</stringProp></elementProp>
+          <elementProp name="CHAOS_TARGET_PORT" elementType="Argument"><stringProp name="Argument.name">CHAOS_TARGET_PORT</stringProp><stringProp name="Argument.value">8083</stringProp><stringProp name="Argument.metadata">=</stringProp></elementProp>
+        </collectionProp>
+      </elementProp>
+      <boolProp name="TestPlan.functional_mode">false</boolProp>
+      <boolProp name="TestPlan.serialize_threadgroups">false</boolProp>
+    </TestPlan>
+    <hashTree>
+      <ResultCollector guiclass="StatVisualizer" testclass="ResultCollector" testname="Aggregate Report" enabled="true">
+        <boolProp name="ResultCollector.error_logging">false</boolProp>
+        <objProp>
+          <name>saveConfig</name>
+          <value class="SampleSaveConfiguration">
+            <time>true</time><latency>true</latency><timestamp>true</timestamp><success>true</success><label>true</label><code>true</code><message>true</message><threadName>true</threadName><dataType>true</dataType><encoding>false</encoding><assertions>true</assertions><subresults>true</subresults><responseData>false</responseData><samplerData>false</samplerData><xml>false</xml><fieldNames>true</fieldNames><responseHeaders>false</responseHeaders><requestHeaders>false</requestHeaders><responseDataOnError>false</responseDataOnError><saveAssertionResultsFailureMessage>true</saveAssertionResultsFailureMessage><assertionsResultsToSave>0</assertionsResultsToSave><bytes>true</bytes><sentBytes>true</sentBytes><url>true</url><threadCounts>true</threadCounts><idleTime>true</idleTime><connectTime>true</connectTime>
+          </value>
+        </objProp>
+        <stringProp name="filename"></stringProp>
+      </ResultCollector><hashTree/>
+      <ResultCollector guiclass="SummaryReport" testclass="ResultCollector" testname="Summary Report" enabled="true">
+        <boolProp name="ResultCollector.error_logging">false</boolProp>
+        <objProp>
+          <name>saveConfig</name>
+          <value class="SampleSaveConfiguration">
+            <time>true</time><latency>true</latency><timestamp>true</timestamp><success>true</success><label>true</label><code>true</code><message>true</message><threadName>true</threadName><dataType>true</dataType><encoding>false</encoding><assertions>true</assertions><subresults>true</subresults><responseData>false</responseData><samplerData>false</samplerData><xml>false</xml><fieldNames>true</fieldNames><responseHeaders>false</responseHeaders><requestHeaders>false</requestHeaders><responseDataOnError>false</responseDataOnError><saveAssertionResultsFailureMessage>true</saveAssertionResultsFailureMessage><assertionsResultsToSave>0</assertionsResultsToSave><bytes>true</bytes><sentBytes>true</sentBytes><url>true</url><threadCounts>true</threadCounts><idleTime>true</idleTime><connectTime>true</connectTime>
+          </value>
+        </objProp>
+        <stringProp name="filename"></stringProp>
+      </ResultCollector><hashTree/>
+      <SetupThreadGroup guiclass="SetupThreadGroupGui" testclass="SetupThreadGroup" testname="[Setup] Reset system state" enabled="true">
+  <intProp name="ThreadGroup.num_threads">1</intProp><intProp name="ThreadGroup.ramp_time">1</intProp><boolProp name="ThreadGroup.scheduler">false</boolProp><stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
+  <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController"><stringProp name="LoopController.loops">1</stringProp><boolProp name="LoopController.continue_forever">false</boolProp></elementProp>
+</SetupThreadGroup><hashTree>
+  <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="[Setup] Clear runtime label properties" enabled="true"><stringProp name="cacheKey">true</stringProp><stringProp name="filename"></stringProp><stringProp name="parameters"></stringProp><stringProp name="script"><![CDATA[props.remove('official.benchmark.start.ms')
+props.remove('official.benchmark.current.label')]]></stringProp><stringProp name="scriptLanguage">groovy</stringProp></JSR223Sampler><hashTree/>
+<HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="[Setup] Reset chaos on backend 8081" enabled="true">
+  <stringProp name="HTTPSampler.domain">${GATEWAY_HOST}</stringProp>
+  <stringProp name="HTTPSampler.port">8081</stringProp>
+  <stringProp name="HTTPSampler.protocol">http</stringProp>
+  <stringProp name="HTTPSampler.path">/api/chaos/reset</stringProp>
+  <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+  <stringProp name="HTTPSampler.method">POST</stringProp>
+  <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+  <boolProp name="HTTPSampler.postBodyRaw">false</boolProp>
+  <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables"><collectionProp name="Arguments.arguments"/></elementProp>
+</HTTPSamplerProxy>
+<hashTree>
+  <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="Assert 2xx" enabled="true">
+  <collectionProp name="Asserion.test_strings"><stringProp name="95039075">2\d\d</stringProp></collectionProp>
+  <intProp name="Assertion.test_type">1</intProp>
+  <stringProp name="Assertion.test_field">Assertion.response_code</stringProp>
+  <boolProp name="Assertion.assume_success">false</boolProp>
+  <stringProp name="Assertion.custom_message"></stringProp>
+</ResponseAssertion>
+  <hashTree/>
+</hashTree>
+<HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="[Setup] Reset chaos on backend 8082" enabled="true">
+  <stringProp name="HTTPSampler.domain">${GATEWAY_HOST}</stringProp>
+  <stringProp name="HTTPSampler.port">8082</stringProp>
+  <stringProp name="HTTPSampler.protocol">http</stringProp>
+  <stringProp name="HTTPSampler.path">/api/chaos/reset</stringProp>
+  <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+  <stringProp name="HTTPSampler.method">POST</stringProp>
+  <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+  <boolProp name="HTTPSampler.postBodyRaw">false</boolProp>
+  <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables"><collectionProp name="Arguments.arguments"/></elementProp>
+</HTTPSamplerProxy>
+<hashTree>
+  <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="Assert 2xx" enabled="true">
+  <collectionProp name="Asserion.test_strings"><stringProp name="95039075">2\d\d</stringProp></collectionProp>
+  <intProp name="Assertion.test_type">1</intProp>
+  <stringProp name="Assertion.test_field">Assertion.response_code</stringProp>
+  <boolProp name="Assertion.assume_success">false</boolProp>
+  <stringProp name="Assertion.custom_message"></stringProp>
+</ResponseAssertion>
+  <hashTree/>
+</hashTree>
+<HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="[Setup] Reset chaos on backend 8083" enabled="true">
+  <stringProp name="HTTPSampler.domain">${GATEWAY_HOST}</stringProp>
+  <stringProp name="HTTPSampler.port">8083</stringProp>
+  <stringProp name="HTTPSampler.protocol">http</stringProp>
+  <stringProp name="HTTPSampler.path">/api/chaos/reset</stringProp>
+  <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+  <stringProp name="HTTPSampler.method">POST</stringProp>
+  <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+  <boolProp name="HTTPSampler.postBodyRaw">false</boolProp>
+  <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables"><collectionProp name="Arguments.arguments"/></elementProp>
+</HTTPSamplerProxy>
+<hashTree>
+  <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="Assert 2xx" enabled="true">
+  <collectionProp name="Asserion.test_strings"><stringProp name="95039075">2\d\d</stringProp></collectionProp>
+  <intProp name="Assertion.test_type">1</intProp>
+  <stringProp name="Assertion.test_field">Assertion.response_code</stringProp>
+  <boolProp name="Assertion.assume_success">false</boolProp>
+  <stringProp name="Assertion.custom_message"></stringProp>
+</ResponseAssertion>
+  <hashTree/>
+</hashTree>
+<HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="[Setup] Reset ALB Gateway state" enabled="true">
+  <stringProp name="HTTPSampler.domain">${GATEWAY_HOST}</stringProp>
+  <stringProp name="HTTPSampler.port">${GATEWAY_PORT}</stringProp>
+  <stringProp name="HTTPSampler.protocol">http</stringProp>
+  <stringProp name="HTTPSampler.path">/actuator/alb/reset</stringProp>
+  <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+  <stringProp name="HTTPSampler.method">POST</stringProp>
+  <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+  <boolProp name="HTTPSampler.postBodyRaw">false</boolProp>
+  <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables"><collectionProp name="Arguments.arguments"/></elementProp>
+</HTTPSamplerProxy>
+<hashTree>
+  <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="Assert 2xx" enabled="true">
+  <collectionProp name="Asserion.test_strings"><stringProp name="95039075">2\d\d</stringProp></collectionProp>
+  <intProp name="Assertion.test_type">1</intProp>
+  <stringProp name="Assertion.test_field">Assertion.response_code</stringProp>
+  <boolProp name="Assertion.assume_success">false</boolProp>
+  <stringProp name="Assertion.custom_message"></stringProp>
+</ResponseAssertion>
+  <hashTree/>
+</hashTree>
+<TestAction guiclass="TestActionGui" testclass="TestAction" testname="[Setup] Wait 15000ms for Eureka/ALB/metrics to stabilize" enabled="true">
+  <intProp name="ActionProcessor.action">1</intProp>
+  <intProp name="ActionProcessor.target">0</intProp>
+  <stringProp name="ActionProcessor.duration">15000</stringProp>
+</TestAction><hashTree/>
+</hashTree>
+      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="[Main] High Degradation STAGED - Mixed 900 RPS" enabled="true">
+  <intProp name="ThreadGroup.num_threads">2200</intProp>
+  <intProp name="ThreadGroup.ramp_time">30</intProp>
+  <longProp name="ThreadGroup.duration">540</longProp>
+  <longProp name="ThreadGroup.delay">0</longProp>
+  <boolProp name="ThreadGroup.same_user_on_next_iteration">true</boolProp>
+  <boolProp name="ThreadGroup.scheduler">true</boolProp>
+  <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
+  <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController"><intProp name="LoopController.loops">-1</intProp><boolProp name="LoopController.continue_forever">false</boolProp></elementProp>
+</ThreadGroup><hashTree>
+  <ConfigTestElement guiclass="HttpDefaultsGui" testclass="ConfigTestElement" testname="HTTP Request Defaults" enabled="true">
+    <intProp name="HTTPSampler.connect_timeout">5000</intProp><intProp name="HTTPSampler.response_timeout">30000</intProp>
+    <stringProp name="HTTPSampler.domain">${GATEWAY_HOST}</stringProp><stringProp name="HTTPSampler.port">${GATEWAY_PORT}</stringProp><stringProp name="HTTPSampler.protocol">http</stringProp>
+    <stringProp name="HTTPSampler.implementation">HttpClient4</stringProp>
+    <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables"><collectionProp name="Arguments.arguments"/></elementProp>
+  </ConfigTestElement><hashTree/>
+  <JSR223PreProcessor guiclass="TestBeanGUI" testclass="JSR223PreProcessor" testname="[Label] Set benchmark phase label by elapsed time" enabled="true">
+  <stringProp name="cacheKey">true</stringProp><stringProp name="filename"></stringProp><stringProp name="parameters"></stringProp>
+  <stringProp name="script"><![CDATA[long now = System.currentTimeMillis()
+String startKey = 'official.benchmark.start.ms'
+if (props.get(startKey) == null) {
+    props.put(startKey, String.valueOf(now))
+}
+long startMs = Long.parseLong(String.valueOf(props.get(startKey)))
+long elapsedSec = (long) ((now - startMs) / 1000L)
+def windows = [
+  [0L, 30L, 'DISCARD_RAMP_0000_TO_0300_RPS'],
+  [30L, 60L, 'DISCARD_RAMP_0300_TO_0600_RPS'],
+  [60L, 90L, 'DISCARD_RAMP_0600_TO_0900_RPS'],
+  [90L, 120L, 'DISCARD_HIGH_0900_RPS_STABILIZE_30S'],
+  [120L, 180L, 'MEASURE_HIGH_0900_RPS_BASELINE_60S'],
+  [180L, 360L, 'MEASURE_HIGH_0900_RPS_DEPENDENCY_SLOWDOWN_180S'],
+  [360L, 450L, 'MEASURE_HIGH_0900_RPS_RECOVERY_90S'],
+  [450L, 480L, 'DISCARD_HIGH_0900_RPS_END_GUARD_30S'],
+  [480L, 510L, 'DISCARD_RAMPDOWN_0900_TO_0000_RPS'],
+]
+String label = 'DISCARD_OUTSIDE_DEFINED_WINDOWS'
+for (def w : windows) {
+    if (elapsedSec >= (long) w[0] && elapsedSec < (long) w[1]) {
+        label = (String) w[2]
+        break
+    }
+}
+vars.put('BENCHMARK_LABEL', label)
+props.put('official.benchmark.current.label', label)
+vars.put('ELAPSED_SECONDS', String.valueOf(elapsedSec))]]></stringProp>
+  <stringProp name="scriptLanguage">groovy</stringProp>
+</JSR223PreProcessor><hashTree/>
+  <SwitchController guiclass="SwitchControllerGui" testclass="SwitchController" testname="Weighted mixed API profile switch | light 60%, medium 25%, slow 12%, very-slow 3%" enabled="true">
+    <stringProp name="SwitchController.value">${__groovy(int r = java.util.concurrent.ThreadLocalRandom.current().nextInt(100); r &lt; 60 ? '0' : r &lt; 85 ? '1' : r &lt; 97 ? '2' : '3')}</stringProp>
+  </SwitchController><hashTree>
+<HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="GET ${TARGET_PATH}?profile=light" enabled="true">
+  <stringProp name="HTTPSampler.domain">${GATEWAY_HOST}</stringProp>
+  <stringProp name="HTTPSampler.port">${GATEWAY_PORT}</stringProp>
+  <stringProp name="HTTPSampler.protocol">http</stringProp>
+  <stringProp name="HTTPSampler.path">${TARGET_PATH}?profile=light</stringProp>
+  <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+  <stringProp name="HTTPSampler.method">GET</stringProp>
+  <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+  <boolProp name="HTTPSampler.postBodyRaw">false</boolProp>
+  <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables"><collectionProp name="Arguments.arguments"/></elementProp>
+</HTTPSamplerProxy><hashTree>
+  <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="Assert 2xx response from mixed endpoint" enabled="true">
+  <collectionProp name="Asserion.test_strings"><stringProp name="95039075">2\d\d</stringProp></collectionProp>
+  <intProp name="Assertion.test_type">1</intProp>
+  <stringProp name="Assertion.test_field">Assertion.response_code</stringProp>
+  <boolProp name="Assertion.assume_success">false</boolProp>
+  <stringProp name="Assertion.custom_message"></stringProp>
+</ResponseAssertion>
+  <hashTree/>
+  <JSR223PostProcessor guiclass="TestBeanGUI" testclass="JSR223PostProcessor" testname="[Label] Rewrite sample label to benchmark phase" enabled="true">
+  <stringProp name="cacheKey">true</stringProp><stringProp name="filename"></stringProp><stringProp name="parameters"></stringProp>
+  <stringProp name="script"><![CDATA[def label = vars.get('BENCHMARK_LABEL') ?: 'DISCARD_UNKNOWN'
+def path = vars.get('TARGET_PATH') ?: '/api/simulate-mixed-call'
+prev.setSampleLabel(label + '__GET_' + path)]]></stringProp>
+  <stringProp name="scriptLanguage">groovy</stringProp>
+</JSR223PostProcessor><hashTree/>
+</hashTree>
+<HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="GET ${TARGET_PATH}?profile=medium" enabled="true">
+  <stringProp name="HTTPSampler.domain">${GATEWAY_HOST}</stringProp>
+  <stringProp name="HTTPSampler.port">${GATEWAY_PORT}</stringProp>
+  <stringProp name="HTTPSampler.protocol">http</stringProp>
+  <stringProp name="HTTPSampler.path">${TARGET_PATH}?profile=medium</stringProp>
+  <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+  <stringProp name="HTTPSampler.method">GET</stringProp>
+  <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+  <boolProp name="HTTPSampler.postBodyRaw">false</boolProp>
+  <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables"><collectionProp name="Arguments.arguments"/></elementProp>
+</HTTPSamplerProxy><hashTree>
+  <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="Assert 2xx response from mixed endpoint" enabled="true">
+  <collectionProp name="Asserion.test_strings"><stringProp name="95039075">2\d\d</stringProp></collectionProp>
+  <intProp name="Assertion.test_type">1</intProp>
+  <stringProp name="Assertion.test_field">Assertion.response_code</stringProp>
+  <boolProp name="Assertion.assume_success">false</boolProp>
+  <stringProp name="Assertion.custom_message"></stringProp>
+</ResponseAssertion>
+  <hashTree/>
+  <JSR223PostProcessor guiclass="TestBeanGUI" testclass="JSR223PostProcessor" testname="[Label] Rewrite sample label to benchmark phase" enabled="true">
+  <stringProp name="cacheKey">true</stringProp><stringProp name="filename"></stringProp><stringProp name="parameters"></stringProp>
+  <stringProp name="script"><![CDATA[def label = vars.get('BENCHMARK_LABEL') ?: 'DISCARD_UNKNOWN'
+def path = vars.get('TARGET_PATH') ?: '/api/simulate-mixed-call'
+prev.setSampleLabel(label + '__GET_' + path)]]></stringProp>
+  <stringProp name="scriptLanguage">groovy</stringProp>
+</JSR223PostProcessor><hashTree/>
+</hashTree>
+<HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="GET ${TARGET_PATH}?profile=slow" enabled="true">
+  <stringProp name="HTTPSampler.domain">${GATEWAY_HOST}</stringProp>
+  <stringProp name="HTTPSampler.port">${GATEWAY_PORT}</stringProp>
+  <stringProp name="HTTPSampler.protocol">http</stringProp>
+  <stringProp name="HTTPSampler.path">${TARGET_PATH}?profile=slow</stringProp>
+  <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+  <stringProp name="HTTPSampler.method">GET</stringProp>
+  <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+  <boolProp name="HTTPSampler.postBodyRaw">false</boolProp>
+  <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables"><collectionProp name="Arguments.arguments"/></elementProp>
+</HTTPSamplerProxy><hashTree>
+  <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="Assert 2xx response from mixed endpoint" enabled="true">
+  <collectionProp name="Asserion.test_strings"><stringProp name="95039075">2\d\d</stringProp></collectionProp>
+  <intProp name="Assertion.test_type">1</intProp>
+  <stringProp name="Assertion.test_field">Assertion.response_code</stringProp>
+  <boolProp name="Assertion.assume_success">false</boolProp>
+  <stringProp name="Assertion.custom_message"></stringProp>
+</ResponseAssertion>
+  <hashTree/>
+  <JSR223PostProcessor guiclass="TestBeanGUI" testclass="JSR223PostProcessor" testname="[Label] Rewrite sample label to benchmark phase" enabled="true">
+  <stringProp name="cacheKey">true</stringProp><stringProp name="filename"></stringProp><stringProp name="parameters"></stringProp>
+  <stringProp name="script"><![CDATA[def label = vars.get('BENCHMARK_LABEL') ?: 'DISCARD_UNKNOWN'
+def path = vars.get('TARGET_PATH') ?: '/api/simulate-mixed-call'
+prev.setSampleLabel(label + '__GET_' + path)]]></stringProp>
+  <stringProp name="scriptLanguage">groovy</stringProp>
+</JSR223PostProcessor><hashTree/>
+</hashTree>
+<HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="GET ${TARGET_PATH}?profile=very-slow" enabled="true">
+  <stringProp name="HTTPSampler.domain">${GATEWAY_HOST}</stringProp>
+  <stringProp name="HTTPSampler.port">${GATEWAY_PORT}</stringProp>
+  <stringProp name="HTTPSampler.protocol">http</stringProp>
+  <stringProp name="HTTPSampler.path">${TARGET_PATH}?profile=very-slow</stringProp>
+  <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+  <stringProp name="HTTPSampler.method">GET</stringProp>
+  <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+  <boolProp name="HTTPSampler.postBodyRaw">false</boolProp>
+  <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables"><collectionProp name="Arguments.arguments"/></elementProp>
+</HTTPSamplerProxy><hashTree>
+  <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="Assert 2xx response from mixed endpoint" enabled="true">
+  <collectionProp name="Asserion.test_strings"><stringProp name="95039075">2\d\d</stringProp></collectionProp>
+  <intProp name="Assertion.test_type">1</intProp>
+  <stringProp name="Assertion.test_field">Assertion.response_code</stringProp>
+  <boolProp name="Assertion.assume_success">false</boolProp>
+  <stringProp name="Assertion.custom_message"></stringProp>
+</ResponseAssertion>
+  <hashTree/>
+  <JSR223PostProcessor guiclass="TestBeanGUI" testclass="JSR223PostProcessor" testname="[Label] Rewrite sample label to benchmark phase" enabled="true">
+  <stringProp name="cacheKey">true</stringProp><stringProp name="filename"></stringProp><stringProp name="parameters"></stringProp>
+  <stringProp name="script"><![CDATA[def label = vars.get('BENCHMARK_LABEL') ?: 'DISCARD_UNKNOWN'
+def path = vars.get('TARGET_PATH') ?: '/api/simulate-mixed-call'
+prev.setSampleLabel(label + '__GET_' + path)]]></stringProp>
+  <stringProp name="scriptLanguage">groovy</stringProp>
+</JSR223PostProcessor><hashTree/>
+</hashTree>
+  </hashTree>
+  <kg.apc.jmeter.timers.VariableThroughputTimer guiclass="kg.apc.jmeter.timers.VariableThroughputTimerGui" testclass="kg.apc.jmeter.timers.VariableThroughputTimer" testname="jp@gc - Throughput Shaping Timer | High degradation staged 900 RPS" enabled="true">
+  <collectionProp name="load_profile">
+          <collectionProp name="step_0">
+            <stringProp name="start_rps_0">0</stringProp>
+            <stringProp name="end_rps_0">300</stringProp>
+            <stringProp name="duration_sec_0">30</stringProp>
+          </collectionProp>
+          <collectionProp name="step_1">
+            <stringProp name="start_rps_1">300</stringProp>
+            <stringProp name="end_rps_1">600</stringProp>
+            <stringProp name="duration_sec_1">30</stringProp>
+          </collectionProp>
+          <collectionProp name="step_2">
+            <stringProp name="start_rps_2">600</stringProp>
+            <stringProp name="end_rps_2">900</stringProp>
+            <stringProp name="duration_sec_2">30</stringProp>
+          </collectionProp>
+          <collectionProp name="step_3">
+            <stringProp name="start_rps_3">900</stringProp>
+            <stringProp name="end_rps_3">900</stringProp>
+            <stringProp name="duration_sec_3">390</stringProp>
+          </collectionProp>
+          <collectionProp name="step_4">
+            <stringProp name="start_rps_4">900</stringProp>
+            <stringProp name="end_rps_4">0</stringProp>
+            <stringProp name="duration_sec_4">30</stringProp>
+          </collectionProp>
+  </collectionProp>
+</kg.apc.jmeter.timers.VariableThroughputTimer><hashTree/>
+</hashTree>
+      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="[Chaos] Enable dependency slowdown HIGH on backend ${CHAOS_TARGET_PORT}" enabled="true">
+  <intProp name="ThreadGroup.num_threads">1</intProp><intProp name="ThreadGroup.ramp_time">1</intProp><boolProp name="ThreadGroup.scheduler">false</boolProp><stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
+  <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController"><stringProp name="LoopController.loops">1</stringProp><boolProp name="LoopController.continue_forever">false</boolProp></elementProp>
+</ThreadGroup><hashTree>
+  <TestAction guiclass="TestActionGui" testclass="TestAction" testname="[Chaos] Wait until degradation phase starts" enabled="true">
+  <intProp name="ActionProcessor.action">1</intProp>
+  <intProp name="ActionProcessor.target">0</intProp>
+  <stringProp name="ActionProcessor.duration">180000</stringProp>
+</TestAction><hashTree/>
+  <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="[Chaos] Enable localized dependency slowdown on target backend" enabled="true">
+  <stringProp name="HTTPSampler.domain">${GATEWAY_HOST}</stringProp>
+  <stringProp name="HTTPSampler.port">${CHAOS_TARGET_PORT}</stringProp>
+  <stringProp name="HTTPSampler.protocol">http</stringProp>
+  <stringProp name="HTTPSampler.path">/api/chaos/dependency-slowdown/high</stringProp>
+  <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+  <stringProp name="HTTPSampler.method">POST</stringProp>
+  <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+  <boolProp name="HTTPSampler.postBodyRaw">false</boolProp>
+  <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables"><collectionProp name="Arguments.arguments"/></elementProp>
+</HTTPSamplerProxy>
+<hashTree>
+  <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="Assert 2xx" enabled="true">
+  <collectionProp name="Asserion.test_strings"><stringProp name="95039075">2\d\d</stringProp></collectionProp>
+  <intProp name="Assertion.test_type">1</intProp>
+  <stringProp name="Assertion.test_field">Assertion.response_code</stringProp>
+  <boolProp name="Assertion.assume_success">false</boolProp>
+  <stringProp name="Assertion.custom_message"></stringProp>
+</ResponseAssertion>
+  <hashTree/>
+</hashTree>
+  <TestAction guiclass="TestActionGui" testclass="TestAction" testname="[Chaos] Keep degradation active" enabled="true">
+  <intProp name="ActionProcessor.action">1</intProp>
+  <intProp name="ActionProcessor.target">0</intProp>
+  <stringProp name="ActionProcessor.duration">180000</stringProp>
+</TestAction><hashTree/>
+  <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="[Chaos] Disable localized degradation by reset target backend" enabled="true">
+  <stringProp name="HTTPSampler.domain">${GATEWAY_HOST}</stringProp>
+  <stringProp name="HTTPSampler.port">${CHAOS_TARGET_PORT}</stringProp>
+  <stringProp name="HTTPSampler.protocol">http</stringProp>
+  <stringProp name="HTTPSampler.path">/api/chaos/reset</stringProp>
+  <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+  <stringProp name="HTTPSampler.method">POST</stringProp>
+  <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+  <boolProp name="HTTPSampler.postBodyRaw">false</boolProp>
+  <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables"><collectionProp name="Arguments.arguments"/></elementProp>
+</HTTPSamplerProxy>
+<hashTree>
+  <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="Assert 2xx" enabled="true">
+  <collectionProp name="Asserion.test_strings"><stringProp name="95039075">2\d\d</stringProp></collectionProp>
+  <intProp name="Assertion.test_type">1</intProp>
+  <stringProp name="Assertion.test_field">Assertion.response_code</stringProp>
+  <boolProp name="Assertion.assume_success">false</boolProp>
+  <stringProp name="Assertion.custom_message"></stringProp>
+</ResponseAssertion>
+  <hashTree/>
+</hashTree>
+</hashTree>
+      <PostThreadGroup guiclass="PostThreadGroupGui" testclass="PostThreadGroup" testname="[Teardown] Reset all chaos and ALB state" enabled="true">
+  <intProp name="ThreadGroup.num_threads">1</intProp><intProp name="ThreadGroup.ramp_time">1</intProp><boolProp name="ThreadGroup.scheduler">false</boolProp><stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
+  <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController"><stringProp name="LoopController.loops">1</stringProp><boolProp name="LoopController.continue_forever">false</boolProp></elementProp>
+</PostThreadGroup><hashTree>
+<HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="[Teardown] Reset chaos on backend 8081" enabled="true">
+  <stringProp name="HTTPSampler.domain">${GATEWAY_HOST}</stringProp>
+  <stringProp name="HTTPSampler.port">8081</stringProp>
+  <stringProp name="HTTPSampler.protocol">http</stringProp>
+  <stringProp name="HTTPSampler.path">/api/chaos/reset</stringProp>
+  <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+  <stringProp name="HTTPSampler.method">POST</stringProp>
+  <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+  <boolProp name="HTTPSampler.postBodyRaw">false</boolProp>
+  <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables"><collectionProp name="Arguments.arguments"/></elementProp>
+</HTTPSamplerProxy>
+<hashTree>
+  <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="Assert 2xx" enabled="true">
+  <collectionProp name="Asserion.test_strings"><stringProp name="95039075">2\d\d</stringProp></collectionProp>
+  <intProp name="Assertion.test_type">1</intProp>
+  <stringProp name="Assertion.test_field">Assertion.response_code</stringProp>
+  <boolProp name="Assertion.assume_success">false</boolProp>
+  <stringProp name="Assertion.custom_message"></stringProp>
+</ResponseAssertion>
+  <hashTree/>
+</hashTree>
+<HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="[Teardown] Reset chaos on backend 8082" enabled="true">
+  <stringProp name="HTTPSampler.domain">${GATEWAY_HOST}</stringProp>
+  <stringProp name="HTTPSampler.port">8082</stringProp>
+  <stringProp name="HTTPSampler.protocol">http</stringProp>
+  <stringProp name="HTTPSampler.path">/api/chaos/reset</stringProp>
+  <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+  <stringProp name="HTTPSampler.method">POST</stringProp>
+  <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+  <boolProp name="HTTPSampler.postBodyRaw">false</boolProp>
+  <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables"><collectionProp name="Arguments.arguments"/></elementProp>
+</HTTPSamplerProxy>
+<hashTree>
+  <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="Assert 2xx" enabled="true">
+  <collectionProp name="Asserion.test_strings"><stringProp name="95039075">2\d\d</stringProp></collectionProp>
+  <intProp name="Assertion.test_type">1</intProp>
+  <stringProp name="Assertion.test_field">Assertion.response_code</stringProp>
+  <boolProp name="Assertion.assume_success">false</boolProp>
+  <stringProp name="Assertion.custom_message"></stringProp>
+</ResponseAssertion>
+  <hashTree/>
+</hashTree>
+<HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="[Teardown] Reset chaos on backend 8083" enabled="true">
+  <stringProp name="HTTPSampler.domain">${GATEWAY_HOST}</stringProp>
+  <stringProp name="HTTPSampler.port">8083</stringProp>
+  <stringProp name="HTTPSampler.protocol">http</stringProp>
+  <stringProp name="HTTPSampler.path">/api/chaos/reset</stringProp>
+  <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+  <stringProp name="HTTPSampler.method">POST</stringProp>
+  <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+  <boolProp name="HTTPSampler.postBodyRaw">false</boolProp>
+  <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables"><collectionProp name="Arguments.arguments"/></elementProp>
+</HTTPSamplerProxy>
+<hashTree>
+  <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="Assert 2xx" enabled="true">
+  <collectionProp name="Asserion.test_strings"><stringProp name="95039075">2\d\d</stringProp></collectionProp>
+  <intProp name="Assertion.test_type">1</intProp>
+  <stringProp name="Assertion.test_field">Assertion.response_code</stringProp>
+  <boolProp name="Assertion.assume_success">false</boolProp>
+  <stringProp name="Assertion.custom_message"></stringProp>
+</ResponseAssertion>
+  <hashTree/>
+</hashTree>
+<HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="[Teardown] Reset ALB Gateway state" enabled="true">
+  <stringProp name="HTTPSampler.domain">${GATEWAY_HOST}</stringProp>
+  <stringProp name="HTTPSampler.port">${GATEWAY_PORT}</stringProp>
+  <stringProp name="HTTPSampler.protocol">http</stringProp>
+  <stringProp name="HTTPSampler.path">/actuator/alb/reset</stringProp>
+  <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+  <stringProp name="HTTPSampler.method">POST</stringProp>
+  <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+  <boolProp name="HTTPSampler.postBodyRaw">false</boolProp>
+  <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables"><collectionProp name="Arguments.arguments"/></elementProp>
+</HTTPSamplerProxy>
+<hashTree>
+  <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="Assert 2xx" enabled="true">
+  <collectionProp name="Asserion.test_strings"><stringProp name="95039075">2\d\d</stringProp></collectionProp>
+  <intProp name="Assertion.test_type">1</intProp>
+  <stringProp name="Assertion.test_field">Assertion.response_code</stringProp>
+  <boolProp name="Assertion.assume_success">false</boolProp>
+  <stringProp name="Assertion.custom_message"></stringProp>
+</ResponseAssertion>
+  <hashTree/>
+</hashTree>
+</hashTree>
+    </hashTree>
+  </hashTree>
+</jmeterTestPlan>

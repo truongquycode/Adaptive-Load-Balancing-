@@ -16,6 +16,7 @@ set "RESULT_BASE=D:\Downloads\apache-jmeter-5.6.3\bin\ALB_Test\results\01_low_ba
 
 set "PROJECT_DIR=D:\eclipse-workspace\adaptive-load-balancer-parent"
 set "APP_YML=%PROJECT_DIR%\api-gateway-alb\src\main\resources\application.yml"
+set "DEPLOY_MARKER=%PROJECT_DIR%\api-gateway-alb\.alb-strategy-deploy-marker.txt"
 set "GIT_BRANCH=main"
 
 REM Optional server strategy endpoint. Works only if you added GET /actuator/alb/strategy.
@@ -157,10 +158,20 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo [INFO] Pull latest code from GitHub...
-git pull --rebase origin %GIT_BRANCH%
+echo [INFO] Abort any unfinished merge/rebase state if present...
+git rebase --abort >nul 2>nul
+git merge --abort >nul 2>nul
+
+echo [INFO] Pull latest code from GitHub using --autostash...
+git pull --rebase --autostash origin %GIT_BRANCH%
 if errorlevel 1 (
-    echo [ERROR] git pull failed. Please resolve Git conflicts or local changes first.
+    echo [ERROR] git pull failed even with --autostash.
+    echo [ERROR] Run these commands manually, then rerun the benchmark:
+    echo        cd /d "%PROJECT_DIR%"
+    echo        git status
+    echo        git rebase --abort
+    echo        git merge --abort
+    echo        git pull --rebase --autostash origin %GIT_BRANCH%
     exit /b 1
 )
 
@@ -171,22 +182,31 @@ if errorlevel 1 (
     exit /b 1
 )
 
-git add "%APP_YML%"
-git diff --cached --quiet
+
+REM Update a real marker under api-gateway-alb so GitHub Actions always redeploys the gateway.
+REM Empty commits may be skipped by deploy.yml because there are no changed files.
+%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$p='%DEPLOY_MARKER%'; $enc=New-Object System.Text.UTF8Encoding($false); $content=@('strategy=%STRATEGY%','reason=%REASON%','timestamp='+(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')); [System.IO.File]::WriteAllLines($p,$content,$enc)"
 if errorlevel 1 (
-    echo [INFO] Commit real strategy change...
-    git commit -m "Change ALB strategy to %STRATEGY% for medium chaos benchmark"
-) else (
-    echo [INFO] No local config diff, creating empty commit to force CI/CD redeploy...
-    git commit --allow-empty -m "Redeploy ALB strategy to %STRATEGY% for medium chaos benchmark"
+    echo [ERROR] Failed to update deploy marker
+    exit /b 1
 )
+
+git add "%APP_YML%" "%DEPLOY_MARKER%"
+git diff --cached --quiet
+if not errorlevel 1 (
+    echo [ERROR] No staged changes were created. This should not happen because deploy marker changes every deploy.
+    exit /b 1
+)
+
+echo [INFO] Commit strategy change and deploy marker...
+git commit -m "Benchmark deploy ALB strategy %STRATEGY% [%REASON%]"
 if errorlevel 1 (
     echo [ERROR] git commit failed.
     exit /b 1
 )
 
 echo [INFO] Push to GitHub...
-git push origin %GIT_BRANCH%
+git push origin HEAD:%GIT_BRANCH%
 if errorlevel 1 (
     echo [ERROR] git push failed.
     exit /b 1
