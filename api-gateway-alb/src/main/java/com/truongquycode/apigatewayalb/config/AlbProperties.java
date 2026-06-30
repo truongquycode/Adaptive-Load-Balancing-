@@ -27,6 +27,7 @@ public class AlbProperties {
     private PidConfig pid = new PidConfig();
     private Weights weights = new Weights();
     private Routing routing = new Routing();
+    private Ablation ablation = new Ablation();
 
     @Data
     public static class Polling {
@@ -43,6 +44,28 @@ public class AlbProperties {
     @Data
     public static class Weights {
         private long updateInterval = 5000; // ms
+    }
+
+    /**
+     * Cấu hình phục vụ ablation study.
+     *
+     * full              : dùng đầy đủ Adaptive hiện tại
+     * no-pid            : bỏ PID-inspired latency penalty
+     * fixed-weights     : bỏ dynamic EWM, dùng AHP/fixed weights
+     * no-ewma-latency   : dùng latency thô thay vì EWMA latency
+     * no-score-ema      : bỏ EMA làm mượt finalScore ở MetricsPoller
+     * no-capacity       : xem các backend có capacity ngang nhau
+     * no-p2c            : chọn backend có final routing cost thấp nhất toàn cục
+     * no-probe          : tắt probe recovery
+     * no-low-load-rr    : tắt low-load fallback về Round Robin
+     */
+    @Data
+    public static class Ablation {
+        private String variant = "full";
+
+        public boolean isVariant(String expected) {
+            return expected != null && expected.equalsIgnoreCase(variant);
+        }
     }
 
     /**

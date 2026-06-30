@@ -42,7 +42,7 @@
       }
     ],
     "cursorSync": "Crosshair",
-    "description": "ALB Routing Score Dashboard — theo dõi toàn bộ pipeline điểm số: MCDM, PID, Inflight và Routing Score cuối cùng",
+    "description": "ALB Routing Score Dashboard — theo dõi pipeline điểm số, routing decision, latency thành công, latency all-status, error rate và throughput thực tế.",
     "editable": true,
     "elements": {
       "panel-10": {
@@ -1456,8 +1456,8 @@
         "kind": "Panel",
         "spec": {
           "id": 31,
-          "title": "Gateway Request Latency Percentiles",
-          "description": "Hiển thị các phân vị độ trễ P50, P90, P95 và P99 của request đi qua API Gateway đối với route backend-route, phương thức GET và trạng thái 200. Giá trị được quy đổi từ giây sang mili giây.",
+          "title": "Gateway Latency Percentiles — Successful Requests Only",
+          "description": "P50, P90, P95 và P99 của request thành công HTTP 200 qua API Gateway. Panel này dùng để phân tích latency của request thành công, không dùng thay thế cho error rate.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -1647,8 +1647,8 @@
         "kind": "Panel",
         "spec": {
           "id": 32,
-          "title": "Routing Selection Rate by Backend",
-          "description": "Số request mỗi giây được Adaptive chọn vào từng backend. Dùng để kiểm chứng routingCost có thật sự làm thay đổi phân phối traffic hay không.",
+          "title": "Gateway Latency Percentiles — All HTTP Statuses",
+          "description": "P50, P90, P95 và P99 của toàn bộ request qua API Gateway, không lọc HTTP status. Panel này tránh lỗi chỉ nhìn request 200 và bỏ qua request lỗi/timeout.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -1666,12 +1666,75 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "histogram_quantile(\r\n  0.99,\r\n  sum by (le) (\r\n    rate(spring_cloud_gateway_requests_seconds_bucket{routeId=\"backend-route\", httpMethod=\"GET\"}[1m])\r\n  )\r\n) * 1000",
-                        "legendFormat": "{{backend}}",
+                        "expr": "histogram_quantile(\n  0.50,\n  sum by (le) (\n    rate(spring_cloud_gateway_requests_seconds_bucket{routeId=\"backend-route\", httpMethod=\"GET\"}[$__rate_interval])\n  )\n) * 1000",
+                        "legendFormat": "P50 all status",
                         "range": true
                       }
                     },
                     "refId": "A",
+                    "hidden": false
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "prometheus",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "dfm73fl4rijuoa"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "expr": "histogram_quantile(\n  0.90,\n  sum by (le) (\n    rate(spring_cloud_gateway_requests_seconds_bucket{routeId=\"backend-route\", httpMethod=\"GET\"}[$__rate_interval])\n  )\n) * 1000",
+                        "legendFormat": "P90 all status",
+                        "range": true
+                      }
+                    },
+                    "refId": "B",
+                    "hidden": false
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "prometheus",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "dfm73fl4rijuoa"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "expr": "histogram_quantile(\n  0.95,\n  sum by (le) (\n    rate(spring_cloud_gateway_requests_seconds_bucket{routeId=\"backend-route\", httpMethod=\"GET\"}[$__rate_interval])\n  )\n) * 1000",
+                        "legendFormat": "P95 all status",
+                        "range": true
+                      }
+                    },
+                    "refId": "C",
+                    "hidden": false
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "prometheus",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "dfm73fl4rijuoa"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "expr": "histogram_quantile(\n  0.99,\n  sum by (le) (\n    rate(spring_cloud_gateway_requests_seconds_bucket{routeId=\"backend-route\", httpMethod=\"GET\"}[$__rate_interval])\n  )\n) * 1000",
+                        "legendFormat": "P99 all status",
+                        "range": true
+                      }
+                    },
+                    "refId": "D",
                     "hidden": false
                   }
                 }
@@ -1691,8 +1754,12 @@
                   "multiLane": false
                 },
                 "legend": {
-                  "calcs": [],
-                  "displayMode": "list",
+                  "calcs": [
+                    "last",
+                    "mean",
+                    "max"
+                  ],
+                  "displayMode": "table",
                   "placement": "bottom",
                   "showLegend": true
                 },
@@ -1704,7 +1771,7 @@
               },
               "fieldConfig": {
                 "defaults": {
-                  "unit": "reqps",
+                  "unit": "ms",
                   "thresholds": {
                     "mode": "absolute",
                     "steps": [
@@ -1754,7 +1821,8 @@
                     "thresholdsStyle": {
                       "mode": "off"
                     }
-                  }
+                  },
+                  "decimals": 1
                 },
                 "overrides": []
               }
@@ -1766,8 +1834,8 @@
         "kind": "Panel",
         "spec": {
           "id": 33,
-          "title": "Routing Selection Rate by Backend",
-          "description": "Số request mỗi giây được Adaptive chọn vào từng backend. Dùng để kiểm chứng routingCost có thật sự làm thay đổi phân phối traffic hay không.",
+          "title": "Gateway Error Rate — Non-2xx Requests",
+          "description": "Tỷ lệ request không thuộc nhóm 2xx trên toàn bộ request của route backend-route. Panel này phải được dùng cùng latency để tránh kết luận chỉ dựa trên các request thành công.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -1785,8 +1853,8 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "100 *\r\nsum(rate(spring_cloud_gateway_requests_seconds_count{routeId=\"backend-route\", httpStatusCode!~\"2..\"}[1m]))\r\n/\r\nsum(rate(spring_cloud_gateway_requests_seconds_count{routeId=\"backend-route\"}[1m]))",
-                        "legendFormat": "{{backend}}",
+                        "expr": "100 *\nsum(rate(spring_cloud_gateway_requests_seconds_count{routeId=\"backend-route\", httpStatusCode!~\"2..\"}[1m]))\n/\nclamp_min(sum(rate(spring_cloud_gateway_requests_seconds_count{routeId=\"backend-route\"}[1m])), 0.001)",
+                        "legendFormat": "Non-2xx error rate",
                         "range": true
                       }
                     },
@@ -1810,8 +1878,12 @@
                   "multiLane": false
                 },
                 "legend": {
-                  "calcs": [],
-                  "displayMode": "list",
+                  "calcs": [
+                    "last",
+                    "mean",
+                    "max"
+                  ],
+                  "displayMode": "table",
                   "placement": "bottom",
                   "showLegend": true
                 },
@@ -1823,7 +1895,7 @@
               },
               "fieldConfig": {
                 "defaults": {
-                  "unit": "reqps",
+                  "unit": "percent",
                   "thresholds": {
                     "mode": "absolute",
                     "steps": [
@@ -1873,7 +1945,9 @@
                     "thresholdsStyle": {
                       "mode": "off"
                     }
-                  }
+                  },
+                  "decimals": 2,
+                  "min": 0
                 },
                 "overrides": []
               }
@@ -2125,6 +2199,130 @@
             }
           }
         }
+      },
+      "panel-34": {
+        "kind": "Panel",
+        "spec": {
+          "id": 34,
+          "title": "Gateway Throughput — Actual RPS",
+          "description": "Số request mỗi giây thực tế đi qua API Gateway cho route backend-route. Dùng để kiểm tra JMeter target RPS có được hệ thống nhận đủ hay không.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "prometheus",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "dfm73fl4rijuoa"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "expr": "sum(rate(spring_cloud_gateway_requests_seconds_count{routeId=\"backend-route\"}[1m]))",
+                        "legendFormat": "Actual Gateway RPS",
+                        "range": true
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "13.0.1+security-01",
+            "spec": {
+              "options": {
+                "annotations": {
+                  "clustering": -1,
+                  "multiLane": false
+                },
+                "legend": {
+                  "calcs": [
+                    "last",
+                    "mean",
+                    "max"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "hideZeros": false,
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "reqps",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "green"
+                      },
+                      {
+                        "value": 80,
+                        "color": "red"
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "axisBorderShow": false,
+                    "axisCenteredZero": false,
+                    "axisColorMode": "text",
+                    "axisLabel": "",
+                    "axisPlacement": "auto",
+                    "barAlignment": 0,
+                    "barWidthFactor": 0.6,
+                    "drawStyle": "line",
+                    "fillOpacity": 0,
+                    "gradientMode": "none",
+                    "hideFrom": {
+                      "legend": false,
+                      "tooltip": false,
+                      "viz": false
+                    },
+                    "insertNulls": false,
+                    "lineInterpolation": "linear",
+                    "lineWidth": 1,
+                    "pointSize": 5,
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "showPoints": "auto",
+                    "showValues": false,
+                    "spanNulls": false,
+                    "stacking": {
+                      "group": "A",
+                      "mode": "none"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  },
+                  "decimals": 1
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
       }
     },
     "layout": {
@@ -2319,6 +2517,19 @@
               "x": 0,
               "y": 98,
               "width": 24,
+              "height": 8,
+              "element": {
+                "kind": "ElementReference",
+                "name": "panel-34"
+              }
+            }
+          },
+          {
+            "kind": "GridLayoutItem",
+            "spec": {
+              "x": 0,
+              "y": 106,
+              "width": 24,
               "height": 18,
               "element": {
                 "kind": "ElementReference",
@@ -2330,7 +2541,7 @@
             "kind": "GridLayoutItem",
             "spec": {
               "x": 0,
-              "y": 116,
+              "y": 124,
               "width": 24,
               "height": 18,
               "element": {

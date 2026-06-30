@@ -104,7 +104,7 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
         }
 
         List<RoutingCost> candidates = ctx.eligible().isEmpty() ? ctx.all() : ctx.eligible();
-        RoutingCost selectedCost = chooseByP2C(candidates);
+        RoutingCost selectedCost = isAblation("no-p2c") ? chooseLeastCost(candidates) : chooseByP2C(candidates);
         ServiceInstance selected = ctx.instancesById().get(selectedCost.instanceId());
 
         if (selected == null) {
@@ -113,6 +113,12 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
 
         emitMetric(selected, ctx.mode());
         return new DefaultResponse(selected);
+    }
+
+    private RoutingCost chooseLeastCost(List<RoutingCost> candidates) {
+        return candidates.stream()
+                .min((a, b) -> routingCostCalculator.better(a, b) == a ? -1 : 1)
+                .orElse(candidates.get(0));
     }
 
     private RoutingCost chooseByP2C(List<RoutingCost> candidates) {
@@ -132,6 +138,10 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
     }
 
     private RoutingCost maybeProbe(RoutingContext ctx, long now) {
+        if (isAblation("no-probe")) {
+            return null;
+        }
+
         AlbProperties.Routing cfg = props.getRouting();
 
         // Không probe trong vùng stress. Lúc này mục tiêu là giảm tail, không phải khám phá.
@@ -181,6 +191,10 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
     private ServiceInstance roundRobin(List<ServiceInstance> instances) {
         int idx = (int) Math.floorMod(rrCounter.getAndIncrement(), instances.size());
         return instances.get(idx);
+    }
+
+    private boolean isAblation(String variant) {
+        return props.getAblation() != null && props.getAblation().isVariant(variant);
     }
 
     private void emitMetric(ServiceInstance inst, String reason) {

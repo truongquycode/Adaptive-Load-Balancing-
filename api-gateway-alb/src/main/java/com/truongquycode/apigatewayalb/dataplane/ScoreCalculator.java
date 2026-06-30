@@ -166,12 +166,15 @@ public class ScoreCalculator {
 		// - Khi latency đột biến lớn → τ nhỏ (= tauMin) → phản ứng nhanh
 		// - Khi latency ổn định → τ lớn (= tauMax) → lọc nhiễu mạnh
 		AlbProperties.Ewma ewmaCfg = props.getEwma();
-		double ewmaLat = ewmaSmoother.smooth(instanceId, lRaw, ewmaCfg.getTauMin(), // τ tối thiểu (200ms) — phản ứng
-																					// nhanh nhất
-				ewmaCfg.getTauMax(), // τ tối đa (2000ms) — lọc nhiễu mạnh nhất
-				ewmaCfg.getK(), // k=3.0 — độ nhạy với deviation
-				p50 // fallback EWMA khởi tạo = p50 của instance
-		);
+		double ewmaLat = isAblation("no-ewma-latency")
+				? lRaw
+				: ewmaSmoother.smooth(instanceId, lRaw, ewmaCfg.getTauMin(), // τ tối thiểu (200ms) — phản ứng
+						// nhanh nhất
+						ewmaCfg.getTauMax(), // τ tối đa (2000ms) — lọc nhiễu mạnh nhất
+						ewmaCfg.getK(), // k=3.0 — độ nhạy với deviation
+						p50 // fallback EWMA khởi tạo = p50 của instance
+				);
+
 
 		// ── BƯỚC 3: Lấy system-wide snapshot để làm biên chuẩn hóa ─────────────
 		// System snapshot tổng hợp latency của TẤT CẢ instance → làm thước đo chung.
@@ -230,7 +233,9 @@ public class ScoreCalculator {
 		// Mặc định AHP: α=0.648, β=0.230, γ=0.122
 		// Khi CPU bão tải: γ tăng lên (tối đa 0.35), α giảm xuống.
 		// baseScore ∈ [0, 1]: càng thấp = instance càng tốt trên cả 3 tiêu chí.
-		double baseScore = weightEngine.computeBaseScore(nL, nQ, nC);
+		double baseScore = isAblation("fixed-weights")
+				? fixedWeightBaseScore(nL, nQ, nC)
+				: weightEngine.computeBaseScore(nL, nQ, nC);
 
 		// ── BƯỚC 6: Tính PID penalty ─────────────────────────────────────────────
 		// Setpoint của PID = P75 toàn hệ thống, cũng được chuẩn hóa về [0,1]
@@ -245,7 +250,9 @@ public class ScoreCalculator {
 		// - Phản ứng nhanh khi instance mới bắt đầu chậm (thành phần P)
 		// - Tích lũy theo thời gian nếu chậm kéo dài (thành phần I)
 		// - Hãm sớm khi latency đang có xu hướng tăng (thành phần D)
-		double penalty = pidController.calculatePenalty(instanceId, nL, normalizedP75, props.getPid());
+		double penalty = isAblation("no-pid")
+				? 0.0
+				: pidController.calculatePenalty(instanceId, nL, normalizedP75, props.getPid());
 
 		// ── BƯỚC 7: Tổng hợp finalScore ──────────────────────────────────────────
 		// finalScore = baseScore + pidPenalty
@@ -272,4 +279,14 @@ public class ScoreCalculator {
 				now // timestamp tính score, dùng để phát hiện score stale
 		);
 	}
+
+	private boolean isAblation(String variant) {
+		return props.getAblation() != null && props.getAblation().isVariant(variant);
+	}
+
+	private double fixedWeightBaseScore(double nL, double nQ, double nC) {
+		// AHP prior cố định: latency quan trọng nhất, queue thứ hai, CPU là tín hiệu hỗ trợ.
+		return (0.648 * nL) + (0.230 * nQ) + (0.122 * nC);
+	}
+
 }

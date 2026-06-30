@@ -20,7 +20,13 @@ spring:
 
 alb:
     # adaptive, round-robin, random, least-connections
-    strategy: random
+    # Có thể override khi chạy Docker bằng biến môi trường ALB_STRATEGY.
+    strategy: ${ALB_STRATEGY:random}
+
+    # Phục vụ ablation study cho Adaptive. Giá trị mặc định full để benchmark chính không bị nhiễm.
+    # full, no-pid, fixed-weights, no-ewma-latency, no-score-ema, no-capacity, no-p2c, no-probe, no-low-load-rr
+    ablation:
+        variant: ${ALB_ABLATION_VARIANT:full}
     polling:
         interval: 200
 

@@ -1,5 +1,6 @@
 package com.truongquycode.apigatewayalb.controlplane;
 
+import com.truongquycode.apigatewayalb.config.AlbProperties;
 import com.truongquycode.apigatewayalb.model.ScoreBreakdown;
 import com.truongquycode.apigatewayalb.util.MetricsCache;
 import io.micrometer.core.instrument.Gauge;
@@ -48,9 +49,15 @@ public class DynamicWeightEngine {
 
     private final MetricsCache cache;
     private final MeterRegistry registry;
+    private final AlbProperties props;
 
     @Scheduled(fixedRateString = "${alb.weights.update-interval:5000}")
     public void computeMCDMWeights() {
+        if (props.getAblation() != null && props.getAblation().isVariant("fixed-weights")) {
+            resetWeights();
+            return;
+        }
+
         List<ScoreBreakdown> scores = cache.getAllScores();
         int n = scores.size();
         if (n < 2) {

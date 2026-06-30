@@ -200,6 +200,9 @@ public class RoutingCostCalculator {
     }
 
     private double capacityWeightOf(ServiceInstance inst) {
+        if (isAblation("no-capacity")) {
+            return 1.0;
+        }
         return Math.max(0.1, cache.getCapacityWeight(inst.getInstanceId()));
     }
 
@@ -214,6 +217,9 @@ public class RoutingCostCalculator {
 
     private boolean isLowLoadStable(int totalInflight, double healthSpread, double loadSpread,
                                     AlbProperties.Routing cfg) {
+        if (isAblation("no-low-load-rr")) {
+            return false;
+        }
         return totalInflight <= cfg.getLowLoadInflight()
                 && healthSpread <= cfg.getLowLoadHealthSpread()
                 && loadSpread <= cfg.getLowLoadLoadSpread();
@@ -268,6 +274,10 @@ public class RoutingCostCalculator {
 
     private double clamp(double value, double min, double max) {
         return Math.max(min, Math.min(max, value));
+    }
+
+    private boolean isAblation(String variant) {
+        return props.getAblation() != null && props.getAblation().isVariant(variant);
     }
 
     private record RawNode(

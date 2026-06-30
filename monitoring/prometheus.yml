@@ -2,10 +2,20 @@ global:
   scrape_interval: 5s
 
 scrape_configs:
-  - job_name: "spring-boot"
+  - job_name: "api-gateway-alb"
     metrics_path: "/actuator/prometheus"
     static_configs:
       - targets: ["172.30.35.37:8080"]
-  - job_name: 'cadvisor'
+
+  # Scrape trực tiếp backend để có số liệu độc lập khi đối chiếu với metrics Gateway poll.
+  - job_name: "registration-service-alb"
+    metrics_path: "/actuator/prometheus"
     static_configs:
-      - targets: ['cadvisor:8080'] # Nếu chạy chung mạng Docker (network)
+      - targets:
+          - "172.30.35.37:8081"
+          - "172.30.35.37:8082"
+          - "172.30.35.37:8083"
+
+  - job_name: "cadvisor"
+    static_configs:
+      - targets: ["cadvisor:8080"]

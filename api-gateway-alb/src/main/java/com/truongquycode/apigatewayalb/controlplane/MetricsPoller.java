@@ -1,6 +1,7 @@
 package com.truongquycode.apigatewayalb.controlplane;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.truongquycode.apigatewayalb.config.AlbProperties;
 import com.truongquycode.apigatewayalb.dataplane.InflightTracker;
 import com.truongquycode.apigatewayalb.dataplane.ScoreCalculator;
 import com.truongquycode.apigatewayalb.dataplane.RoutingCostCalculator;
@@ -44,6 +45,7 @@ public class MetricsPoller {
 	private final WebClient.Builder webClientBuilder; // HTTP client để poll /api/alb-metrics
 	private final InflightTracker inflightTracker; // Theo dõi số request đang bay của mỗi instance
 	private final RoutingCostCalculator routingCostCalculator; // Tính routing cost thật của Adaptive v3
+	private final AlbProperties albProperties; // Đọc ablation variant để benchmark từng thành phần Adaptive
 	private WebClient webClient; // Instance WebClient, được init sau khi bean ready
 	private Set<String> lastActiveIds = Set.of(); // Snapshot topology lần poll trước — dùng để phát hiện instance
 													// mới/down
@@ -259,6 +261,11 @@ public class MetricsPoller {
 	}
 
 	private double applyScoreEma(String instanceId, double rawScore) {
+		if (albProperties.getAblation() != null && albProperties.getAblation().isVariant("no-score-ema")) {
+			smoothedScores.put(instanceId, rawScore);
+			return rawScore;
+		}
+
 		Double prevObj = smoothedScores.get(instanceId);
 
 		// Lần đầu gặp instance: khởi tạo EMA state với rawScore hiện tại (cold start)
