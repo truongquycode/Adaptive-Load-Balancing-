@@ -109,7 +109,39 @@ jobs:
           echo "Deploy changed services only: $SERVICES"
           docker compose build $SERVICES
           docker compose up -d --no-deps $SERVICES
+      - name: Cleanup stale API Gateway instances in Eureka
+        if: steps.detect.outputs.skip == 'false' && (steps.detect.outputs.services == 'all' || contains(steps.detect.outputs.services, 'api-gateway-alb'))
+        shell: bash
+        run: |
+          set -e
 
+          EUREKA="http://localhost:8761"
+          APP="API-GATEWAY-ALB"
+          CURRENT="api-gateway-alb:8080"
+
+          echo "Wait for API Gateway to register with Eureka..."
+          sleep 20
+
+          echo "Current Eureka instances for $APP:"
+          curl -s "$EUREKA/eureka/apps/$APP" || true
+          echo
+
+          IDS="$(curl -s "$EUREKA/eureka/apps/$APP" | tr -d '\n' | grep -oP '<instanceId>\K[^<]+' || true)"
+
+          if [ -z "$IDS" ]; then
+            echo "No API Gateway instance found in Eureka."
+            exit 0
+          fi
+
+          echo "$IDS" | while read -r id; do
+            if [ "$id" != "$CURRENT" ]; then
+              echo "Delete stale Eureka instance: $id"
+              curl -s -X DELETE "$EUREKA/eureka/apps/$APP/$id" || true
+              echo
+            else
+              echo "Keep current instance: $id"
+            fi
+          done
       - name: Show running containers
         if: steps.detect.outputs.skip == 'false'
         shell: bash
