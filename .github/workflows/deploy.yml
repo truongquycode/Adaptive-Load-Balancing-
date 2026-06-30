@@ -19,6 +19,20 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Validate YAML files
+        shell: bash
+        run: |
+          set -e
+
+          echo "Check YAML files do not contain tab indentation..."
+          if grep -RInP '\t' docker-compose.yml .github/workflows/*.yml .github/workflows/*.yaml 2>/dev/null; then
+            echo "ERROR: YAML file contains tab characters. Replace tabs with spaces."
+            exit 1
+          fi
+
+          echo "Validate docker compose syntax..."
+          docker compose config >/dev/null
+
       - name: Detect changed services
         id: detect
         shell: bash
