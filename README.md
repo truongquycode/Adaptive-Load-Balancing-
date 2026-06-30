@@ -2,18 +2,18 @@
 
 ## 1. Giới thiệu
 
-Đây là dự án mô phỏng và kiểm thử cơ chế cân bằng tải cho hệ thống microservices sử dụng Spring Boot. Hệ thống gồm API Gateway, Eureka Service Discovery và nhiều instance backend của `registration-service-alb`.
+Dự án này xây dựng môi trường mô phỏng và kiểm thử cơ chế cân bằng tải cho hệ thống microservices sử dụng Spring Boot. Hệ thống gồm API Gateway, Eureka Service Discovery và nhiều instance backend của `registration-service-alb`.
 
-Mục tiêu chính của dự án là so sánh nhiều chiến lược cân bằng tải khi các backend có năng lực xử lý khác nhau hoặc bị suy giảm hiệu năng cục bộ. Các chiến lược được hỗ trợ trong mã nguồn gồm:
+Mục tiêu của dự án là đánh giá và so sánh các chiến lược cân bằng tải trong điều kiện các backend có năng lực xử lý không đồng nhất hoặc xuất hiện suy giảm hiệu năng cục bộ. Các chiến lược được hỗ trợ trong mã nguồn gồm:
 
 - `adaptive`
 - `round-robin`
 - `random`
 - `least-connections`
 
-Dự án có cơ chế thu thập metrics từ backend, tính toán điểm sức khỏe của từng instance, theo dõi số request đang xử lý, sau đó dùng các thông tin này để định tuyến request trong trường hợp chạy thuật toán `adaptive`.
+Hệ thống thu thập metrics từ backend, tính toán điểm trạng thái của từng instance, theo dõi số request đang xử lý và sử dụng các thông tin này để định tuyến request khi chạy chiến lược `adaptive`.
 
-Công nghệ chính tìm thấy trong mã nguồn gồm Spring Boot, Spring Cloud Gateway, Spring Cloud LoadBalancer, Netflix Eureka, Micrometer, Prometheus, Docker Compose và JMeter.
+Các công nghệ chính của dự án gồm Spring Boot, Spring Cloud Gateway, Spring Cloud LoadBalancer, Netflix Eureka, Micrometer, Prometheus, Docker Compose và JMeter.
 
 ## 2. Kiến trúc tổng quan
 
@@ -42,13 +42,13 @@ Các thành phần chính:
 - **Eureka Server**
   - Module: `eureka-server`
   - Port: `8761`
-  - Vai trò: Service Discovery, cho phép các service đăng ký và cho Gateway lấy danh sách instance backend.
+  - Vai trò: cung cấp Service Discovery, cho phép các service đăng ký và cho Gateway lấy danh sách instance backend.
 
 - **API Gateway ALB**
   - Module: `api-gateway-alb`
   - Port: `8080`
-  - Vai trò: nhận request từ client, định tuyến các request `/api/**` đến service `REGISTRATION-SERVICE-ALB`.
-  - Có cấu hình các thuật toán cân bằng tải thông qua `alb.strategy`.
+  - Vai trò: nhận request từ client và định tuyến các request `/api/**` đến service `REGISTRATION-SERVICE-ALB`.
+  - Chiến lược cân bằng tải được cấu hình thông qua `alb.strategy`.
 
 - **Registration Service ALB**
   - Module: `registration-service-alb`
@@ -57,7 +57,7 @@ Các thành phần chính:
     - `registration-8081`: port `8081`
     - `registration-8082`: port `8082`
     - `registration-8083`: port `8083`
-  - Vai trò: backend service xử lý các API mô phỏng nghiệp vụ, mô phỏng tải, chaos và cung cấp metrics cho Gateway.
+  - Vai trò: xử lý API mô phỏng nghiệp vụ, mô phỏng tải, chaos và cung cấp metrics cho Gateway.
 
 - **Adaptive Load Balancer**
   - Nằm trong module `api-gateway-alb`
@@ -74,7 +74,7 @@ Các thành phần chính:
 
 - **Monitoring**
   - Thư mục: `monitoring`
-  - Có cấu hình Docker Compose riêng cho:
+  - Cung cấp Docker Compose cho:
     - Prometheus: `9090`
     - Grafana: `3000`
     - cAdvisor: `8088`
@@ -83,11 +83,11 @@ Các thành phần chính:
 - **Benchmark**
   - Thư mục: `jmeter`
   - Thư mục script chạy benchmark: `scripts_run_jmeter`
-  - Có các kịch bản low load, medium degradation, high degradation, stress recovery và R_sat discovery/confirm.
+  - Bao gồm các kịch bản low load, medium degradation, high degradation, stress recovery và R_sat discovery/confirm.
 
 ## 3. Công nghệ sử dụng
 
-Các công nghệ và thư viện được xác định trực tiếp từ `pom.xml`, mã nguồn và file cấu hình:
+Các công nghệ và thư viện chính được khai báo trong `pom.xml`, mã nguồn và các file cấu hình:
 
 | Nhóm | Công nghệ / thư viện |
 |---|---|
@@ -109,11 +109,11 @@ Các công nghệ và thư viện được xác định trực tiếp từ `pom.
 | Benchmark | Apache JMeter, jp@gc Throughput Shaping Timer |
 | CI/CD | GitHub Actions self-hosted runner |
 
-Không tìm thấy `build.gradle` hoặc `application.properties` trong mã nguồn hiện tại. Dự án sử dụng Maven và các file `application.yml`.
+Dự án sử dụng Maven và các file `application.yml`; không sử dụng `build.gradle` hoặc `application.properties`.
 
 ## 4. Cấu trúc thư mục
 
-Cấu trúc chính của dự án, bỏ qua hoàn toàn thư mục `docs`:
+Cấu trúc chính của dự án:
 
 ```text
 Adaptive-Load-Balancing--main/
@@ -251,7 +251,7 @@ Class quan trọng:
 | `ScoreCalculator` | Tính final score từ latency, queue, CPU, MCDM và PID |
 | `DynamicWeightEngine` | Tính trọng số MCDM động bằng EWM kết hợp AHP |
 | `SlidingWindowManager` | Lưu histogram latency/queue để lấy percentile |
-| `PIDController` | Tính penalty khi instance chậm hơn ngưỡng hệ thống |
+| `PIDController` | Tính điểm bất lợi khi instance chậm hơn ngưỡng hệ thống |
 | `EwmaSmoother` | Làm mượt latency bằng adaptive EWMA |
 | `InflightTracker` | Theo dõi số request đang xử lý trên từng instance |
 | `InflightLifecycle` | Tăng/giảm inflight theo vòng đời request của LoadBalancer |
@@ -263,14 +263,14 @@ Chiến lược cân bằng tải được chọn trong:
 api-gateway-alb/src/main/resources/application.yml
 ```
 
-Hiện tại trong file cấu hình, giá trị đang là:
+Giá trị đang được cấu hình trong `application.yml`:
 
 ```yaml
 alb:
   strategy: random
 ```
 
-Các giá trị hợp lệ theo code:
+Các giá trị cấu hình được hỗ trợ:
 
 ```text
 adaptive
@@ -279,7 +279,7 @@ random
 least-connections
 ```
 
-Lưu ý: trong `AlbProperties.java`, giá trị mặc định của property là `adaptive`, nhưng khi chạy với `application.yml` hiện tại thì giá trị thực tế sẽ là `random` vì file cấu hình đã ghi đè.
+Lưu ý: `AlbProperties.java` đặt mặc định là `adaptive`, nhưng `application.yml` đang ghi đè bằng giá trị `random`.
 
 ### 5.3. `registration-service-alb`
 
@@ -383,11 +383,11 @@ Mỗi chu kỳ, `MetricsPoller`:
 8. Lưu kết quả vào `MetricsCache`.
 9. Đăng ký/cập nhật các Prometheus Gauge liên quan đến ALB.
 
-Nếu poll metrics thất bại, `MetricsPoller` tăng penalty score cho instance đó để Adaptive tránh route vào instance không lấy được metrics.
+Nếu poll metrics thất bại, `MetricsPoller` tăng điểm bất lợi cho instance đó để Adaptive giảm khả năng định tuyến đến instance không lấy được metrics.
 
-### 6.4. Pipeline tính điểm sức khỏe backend
+### 6.4. Pipeline tính điểm trạng thái backend
 
-Trong `ScoreCalculator`, điểm sức khỏe được tính theo luồng sau:
+Trong `ScoreCalculator`, điểm trạng thái được tính theo luồng sau:
 
 ```text
 Raw latency
@@ -419,7 +419,7 @@ Các thành phần chính:
 - **CPU:** được chuẩn hóa theo CPU capacity/quota của container.
 - **MCDM weights:** do `DynamicWeightEngine` cập nhật.
 - **PID penalty:** tăng khi instance chậm hơn setpoint dựa trên percentile của toàn hệ thống.
-- **Score càng thấp thì backend càng tốt.**
+- **Score càng thấp thể hiện instance càng phù hợp để nhận request.**
 
 ### 6.5. MCDM weights
 
@@ -431,7 +431,7 @@ alb:
     update-interval: 5000
 ```
 
-Theo code hiện tại:
+Theo phần cài đặt hiện tại:
 
 - AHP prior:
 
@@ -486,10 +486,10 @@ Các yếu tố trong routing cost:
 - `healthRaw`: final score từ control-plane.
 - `loadRaw`: inflight thực tế chia cho expected inflight theo capacity.
 - `capacityWeight`: năng lực tương đối của instance, lấy từ CPU quota container.
-- `stalePenalty`: penalty nếu metrics cũ.
-- `overloadPenalty`: penalty khi loadRaw cao.
-- `capPressurePenalty`: penalty khi inflight tiến gần hard cap.
-- `absoluteHealthPenalty`: penalty khi health score tuyệt đối cao.
+- `stalePenalty`: điểm bất lợi khi metrics cũ.
+- `overloadPenalty`: điểm bất lợi khi loadRaw cao.
+- `capPressurePenalty`: điểm bất lợi khi inflight tiến gần hard cap.
+- `absoluteHealthPenalty`: điểm bất lợi khi health score tuyệt đối cao.
 - `hardExcluded`: loại instance khỏi nhóm ứng viên trong một số trường hợp như không có metrics, metrics quá cũ, score quá xấu hoặc inflight vượt ngưỡng.
 
 Adaptive có các mode quyết định như:
@@ -521,7 +521,7 @@ Adaptive có các mode quyết định như:
 | `very-slow` | Request rất chậm | Đuôi dài, CPU/RAM và DB hold cao nhất |
 | `mixed` | Trộn tự động | 60% light, 25% medium, 12% slow, 3% very-slow |
 
-Trong code không có database thật. DB pool được mô phỏng bằng `Semaphore` trong `SimulateController`.
+Dự án không kết nối database thật; DB pool được mô phỏng bằng `Semaphore` trong `SimulateController`.
 
 ## 7. API Endpoint
 
@@ -627,29 +627,29 @@ Các endpoint chaos nằm trong `ChaosController`.
 
 ### 7.6. Actuator endpoint
 
-Dựa trên `application.yml`, các actuator endpoint được expose:
+Các actuator endpoint được expose theo `application.yml`:
 
 | Module | Endpoint được expose |
 |---|---|
 | `api-gateway-alb` | `/actuator/health`, `/actuator/info`, `/actuator/prometheus`, `/actuator/metrics` |
 | `registration-service-alb` | `/actuator/health`, `/actuator/info`, `/actuator/prometheus`, `/actuator/metrics` |
 
-`eureka-server` không thấy cấu hình expose actuator riêng trong `application.yml`, nhưng Docker healthcheck đang gọi `/actuator/health`.
+`eureka-server` không cấu hình expose actuator riêng trong `application.yml`; tuy nhiên Docker healthcheck có gọi `/actuator/health`.
 
 ## 8. Cách chạy dự án
 
 ### 8.1. Yêu cầu môi trường
 
-Cần có:
+Môi trường cần chuẩn bị:
 
 - Java 21
 - Maven 3.9+
 - Docker
 - Docker Compose v2
-- Nếu chạy benchmark:
+- Benchmark:
   - Apache JMeter 5.6.3
   - Plugin jp@gc Throughput Shaping Timer
-- Nếu dùng CI/CD:
+- CI/CD:
   - GitHub self-hosted runner trên server
 
 ### 8.2. Build toàn bộ project bằng Maven
@@ -825,13 +825,13 @@ Các service monitoring:
 | Grafana | `3000` |
 | cAdvisor | `8088` |
 
-Prometheus config hiện tại scrape Spring Boot ở:
+Prometheus hiện scrape Spring Boot tại:
 
 ```text
 172.30.35.37:8080/actuator/prometheus
 ```
 
-Nếu chạy ở máy khác hoặc IP khác, cần sửa `monitoring/prometheus.yml`.
+Khi triển khai trên môi trường khác, cần cập nhật lại địa chỉ trong `monitoring/prometheus.yml`.
 
 ### 8.7. CI/CD
 
@@ -1155,7 +1155,7 @@ Các backend dùng cùng source code `registration-service-alb`, khác nhau qua 
 
 ### 9.6. Metrics Prometheus do ALB tạo
 
-Các metric ALB được đăng ký trong code:
+Các metric ALB được đăng ký trong ứng dụng:
 
 | Metric | Ý nghĩa |
 |---|---|
@@ -1205,15 +1205,15 @@ scrape_configs:
       - targets: ['cadvisor:8080']
 ```
 
-Lưu ý: Prometheus hiện chỉ scrape Spring Boot Gateway ở `172.30.35.37:8080`, chưa thấy cấu hình scrape trực tiếp các backend `8081`, `8082`, `8083` trong file này.
+Lưu ý: cấu hình Prometheus hiện chỉ scrape Gateway tại `172.30.35.37:8080` và cAdvisor; chưa cấu hình scrape trực tiếp các backend `8081`, `8082`, `8083`.
 
 ## 10. Kiểm thử hoặc benchmark nếu có
 
-Dự án có thư mục `jmeter` chứa nhiều file `.jmx` và thư mục `scripts_run_jmeter` chứa script `.bat` để chạy benchmark nhiều chiến lược.
+Dự án cung cấp các kịch bản JMeter trong thư mục `jmeter` và script `.bat` trong `scripts_run_jmeter` để chạy benchmark cho nhiều chiến lược cân bằng tải.
 
 ### 10.1. Endpoint benchmark chính
 
-Các file JMeter hiện tại dùng endpoint:
+Các file JMeter sử dụng endpoint:
 
 ```text
 /api/simulate-mixed-call
@@ -1228,7 +1228,7 @@ profile=slow
 profile=very-slow
 ```
 
-Tỷ lệ workload trong JMeter và trong code được mô tả là:
+Workload được phân bổ theo tỷ lệ:
 
 | Profile | Tỷ lệ |
 |---|---:|
@@ -1270,7 +1270,7 @@ Các kịch bản medium/high sử dụng dependency slowdown:
 | Medium degradation | `POST /api/chaos/dependency-slowdown/medium` |
 | High degradation | `POST /api/chaos/dependency-slowdown/high` |
 
-Theo code:
+Theo phần cài đặt hiện tại:
 
 - Medium dependency slowdown cộng thêm `200-400ms` vào thời gian giữ DB pool.
 - High dependency slowdown cộng thêm `400-800ms` vào thời gian giữ DB pool.
@@ -1317,46 +1317,46 @@ Lưu ý: trong script có nhắc endpoint tùy chọn:
 GET /actuator/alb/strategy
 ```
 
-Tuy nhiên, trong mã nguồn hiện tại chưa tìm thấy controller nào implement endpoint `GET /actuator/alb/strategy`. Script đang đặt:
+Repository hiện chưa cung cấp controller cho endpoint `GET /actuator/alb/strategy`. Script đang đặt:
 
 ```bat
 STRICT_SERVER_STRATEGY_CHECK=false
 ```
 
-nên endpoint này chỉ là kiểm tra tùy chọn, không bắt buộc.
+nên bước kiểm tra này chỉ mang tính tùy chọn và không bắt buộc.
 
-## 11. Ghi chú về trạng thái hiện tại của dự án
+## 11. Ghi chú vận hành và giới hạn hiện tại
 
-README cũ đã được cập nhật lại theo mã nguồn hiện tại. Nội dung trong README mới này chỉ dựa trên mã nguồn, cấu hình, JMeter và script thực tế trong project; không sử dụng nội dung trong thư mục `docs`.
+README này phản ánh trạng thái của mã nguồn, cấu hình, JMeter và script benchmark trong repository hiện tại. Nội dung không sử dụng hoặc phụ thuộc vào thư mục `docs`.
 
-Các điểm README cũ đã được điều chỉnh lại cho đúng với code hiện tại:
+Một số điểm cần lưu ý khi sử dụng dự án:
 
-- Chiến lược đang cấu hình trong `application.yml` là `random`, không phải `adaptive`.
-- `ScoreCalculator` thực tế nằm trong package `dataplane`, không nằm trong `controlplane`.
-- MCDM hiện dùng công thức blend `0.70 * EWM + 0.30 * AHP`, không phải `0.80 * EWM + 0.20 * AHP`.
-- Giới hạn beta trong `DynamicWeightEngine` hiện là `0.08` đến `0.45`.
-- Routing của Adaptive hiện không còn là công thức đơn giản `rawMcdm + relPenalty + absPenalty`; code hiện tại dùng `RoutingCostCalculator` với health cost, load cost, overload penalty, cap pressure penalty, absolute health penalty, stale penalty và capacity-normalized inflight.
-- Metrics `/api/alb-metrics` hiện trả thêm `rawCpu` và `capacityWeight`.
-- Endpoint benchmark chính hiện có `/api/simulate-mixed-call`, không chỉ `/api/simulate-call`.
-- Chaos chính cho benchmark hiện là `dependency-slowdown` và `latency-degradation`; các chaos cũ như `async-io`, `heavy`, `cpu-spike`, `hidden` vẫn còn trong code nhưng được comment là giữ lại cho tương thích hoặc test phụ.
-- Thư mục benchmark JMeter và script chạy nhiều strategy đã được bổ sung vào README mới.
-- Monitoring hiện có Prometheus, Grafana và cAdvisor trong thư mục `monitoring`.
+- `application.yml` của Gateway đang cấu hình `alb.strategy=random`, trong khi giá trị mặc định trong `AlbProperties.java` là `adaptive`. Khi benchmark cần kiểm tra và đổi đúng chiến lược mong muốn.
+- `ScoreCalculator` nằm trong package `dataplane`.
+- MCDM hiện dùng công thức kết hợp `0.70 * EWM + 0.30 * AHP`.
+- Giới hạn beta trong `DynamicWeightEngine` nằm trong khoảng `0.08` đến `0.45`.
+- Adaptive routing sử dụng `RoutingCostCalculator`, trong đó có health cost, load cost, overload penalty, cap pressure penalty, absolute health penalty, stale penalty và capacity-normalized inflight.
+- Endpoint `/api/alb-metrics` trả thêm `rawCpu` và `capacityWeight` để phục vụ tính toán routing cost.
+- Endpoint benchmark chính là `/api/simulate-mixed-call`; `/api/simulate-call` vẫn tồn tại cho các kịch bản mô phỏng cũ hơn.
+- Chaos chính trong benchmark là `dependency-slowdown` và `latency-degradation`. Các chế độ `async-io`, `heavy`, `cpu-spike`, `hidden` vẫn còn trong code để phục vụ kiểm thử phụ hoặc tương thích với kịch bản cũ.
+- Repository có sẵn kịch bản JMeter và script chạy benchmark nhiều chiến lược.
+- Monitoring gồm Prometheus, Grafana và cAdvisor trong thư mục `monitoring`.
 
-Những điểm chưa xác định hoặc cần kiểm tra thêm từ mã nguồn:
+Các giới hạn cần kiểm tra thêm trước khi triển khai production:
 
-- Chưa xác định từ mã nguồn Git remote chính xác của repository khi triển khai thực tế.
-- Chưa thấy endpoint `GET /actuator/alb/strategy` được implement, dù script benchmark có cấu hình kiểm tra tùy chọn endpoint này.
-- Chưa thấy database thật trong code; phần DB pool trong benchmark là mô phỏng bằng `Semaphore`.
-- Chưa thấy cấu hình bảo mật production như authentication, authorization, TLS hoặc rate limiting.
-- Chưa thấy cấu hình scrape Prometheus trực tiếp cho cả 3 backend trong `monitoring/prometheus.yml`; hiện file này scrape Gateway và cAdvisor.
-- Chưa xác định từ mã nguồn dashboard Grafana chính thức nằm trong project ZIP.
-- Các địa chỉ IP như `172.30.35.37` trong JMeter/script/Prometheus là cấu hình môi trường cụ thể, cần sửa lại nếu triển khai trên máy hoặc server khác.
+- Repository chưa khai báo Git remote dùng cho môi trường triển khai.
+- Endpoint `GET /actuator/alb/strategy` chưa được implement, dù script benchmark có cấu hình kiểm tra tùy chọn endpoint này.
+- Dự án chưa tích hợp database thật; DB pool trong benchmark được mô phỏng bằng `Semaphore`.
+- Repository chưa cấu hình authentication, authorization, TLS hoặc rate limiting.
+- `monitoring/prometheus.yml` chưa scrape trực tiếp 3 backend; cấu hình hiện tại scrape Gateway và cAdvisor.
+- Repository chưa cung cấp dashboard Grafana chính thức trong project ZIP.
+- Các địa chỉ IP như `172.30.35.37` trong JMeter, script và Prometheus là cấu hình theo môi trường hiện tại; cần cập nhật khi chuyển sang máy chủ khác.
 
-Khi triển khai thật, cần kiểm tra thêm:
+Trước khi benchmark hoặc triển khai trên môi trường khác, nên kiểm tra lại:
 
-- Đổi `alb.strategy` đúng với thuật toán muốn chạy trước khi benchmark hoặc deploy.
-- Sửa IP trong các file JMeter, script `.bat` và `monitoring/prometheus.yml`.
-- Đảm bảo Eureka, Gateway và 3 backend đều đăng ký thành công trước khi chạy benchmark.
-- Đảm bảo JMeter đã cài plugin jp@gc Throughput Shaping Timer.
-- Kiểm tra lại tài nguyên CPU/RAM trong `docker-compose.yml` cho phù hợp với máy chủ thực tế.
-- Nếu muốn xác minh strategy đang chạy trên server, cần bổ sung endpoint đọc strategy hoặc kiểm tra trực tiếp file cấu hình/container đang deploy.
+- Giá trị `alb.strategy` trong Gateway.
+- Địa chỉ IP trong các file JMeter, script `.bat` và `monitoring/prometheus.yml`.
+- Trạng thái đăng ký của Eureka, Gateway và 3 backend.
+- Plugin jp@gc Throughput Shaping Timer trong JMeter.
+- Tài nguyên CPU/RAM trong `docker-compose.yml`.
+- Cách xác minh strategy đang chạy trên server, ví dụ bổ sung endpoint đọc strategy hoặc kiểm tra trực tiếp cấu hình container đang deploy.
