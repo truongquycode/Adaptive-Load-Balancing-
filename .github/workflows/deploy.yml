@@ -2,7 +2,8 @@ name: CI/CD Auto Deploy to Ubuntu
 
 on:
   push:
-    branches: [ "main" ]
+    branches:
+      - main
 
 concurrency:
   group: deploy-production
@@ -30,7 +31,6 @@ jobs:
           echo "BEFORE=$BEFORE"
           echo "AFTER=$AFTER"
 
-          # Lần push đầu tiên hoặc không lấy được commit trước đó thì deploy toàn bộ.
           if [[ -z "$BEFORE" || "$BEFORE" =~ ^0+$ ]]; then
             echo "First push or unknown previous commit -> deploy all services"
             CHANGED_FILES="$(git ls-files)"
@@ -46,27 +46,22 @@ jobs:
           deploy_gateway=false
           deploy_registration=false
 
-          # Các file ảnh hưởng toàn hệ thống thì build/deploy toàn bộ.
           if echo "$CHANGED_FILES" | grep -Eq '^(docker-compose\.ya?ml|pom\.xml|\.github/workflows/|mvnw|\.mvn/)'; then
             deploy_all=true
           fi
 
-          # Parent pom hoặc cấu hình build có thể ảnh hưởng nhiều module.
           if echo "$CHANGED_FILES" | grep -Eq '(^|/)pom\.xml$'; then
             deploy_all=true
           fi
 
-          # Eureka Server.
           if echo "$CHANGED_FILES" | grep -Eq '^eureka-server/'; then
             deploy_eureka=true
           fi
 
-          # API Gateway ALB. Đổi alb.strategy trong application.yml sẽ chỉ vào nhánh này.
           if echo "$CHANGED_FILES" | grep -Eq '^api-gateway-alb/'; then
             deploy_gateway=true
           fi
 
-          # Registration Service ALB: cả 3 container 8081/8082/8083 dùng cùng source.
           if echo "$CHANGED_FILES" | grep -Eq '^registration-service-alb/'; then
             deploy_registration=true
           fi
@@ -93,15 +88,15 @@ jobs:
           fi
 
       - name: Build and deploy all services
-        if: steps.detect.outputs.skip == 'false' && steps.detect.outputs.services == 'all'
+        if: ${{ steps.detect.outputs.skip == 'false' && steps.detect.outputs.services == 'all' }}
         shell: bash
         run: |
           set -e
           docker compose build
-          docker compose up -d
+          docker compose up -d --remove-orphans
 
       - name: Build and deploy changed services only
-        if: steps.detect.outputs.skip == 'false' && steps.detect.outputs.services != 'all'
+        if: ${{ steps.detect.outputs.skip == 'false' && steps.detect.outputs.services != 'all' }}
         shell: bash
         run: |
           set -e
@@ -109,8 +104,9 @@ jobs:
           echo "Deploy changed services only: $SERVICES"
           docker compose build $SERVICES
           docker compose up -d --no-deps $SERVICES
+
       - name: Cleanup stale API Gateway instances in Eureka
-        if: steps.detect.outputs.skip == 'false' && (steps.detect.outputs.services == 'all' || contains(steps.detect.outputs.services, 'api-gateway-alb'))
+        if: ${{ steps.detect.outputs.skip == 'false' && (steps.detect.outputs.services == 'all' || contains(steps.detect.outputs.services, 'api-gateway-alb')) }}
         shell: bash
         run: |
           set -e
@@ -126,15 +122,21 @@ jobs:
           curl -s "$EUREKA/eureka/apps/$APP" || true
           echo
 
-          IDS="$(curl -s "$EUREKA/eureka/apps/$APP" | tr -d '\n' | grep -oP '<instanceId>\K[^<]+' || true)"
+          IDS="$(
+            curl -s "$EUREKA/eureka/apps/$APP"             | tr -d '\n'             | sed -n 's/.*<instanceId>\([^<]*\)<\/instanceId>.*/\1/p'
+          )"
 
-          if [ -z "$IDS" ]; then
+          if [[ -z "$IDS" ]]; then
             echo "No API Gateway instance found in Eureka."
             exit 0
           fi
 
           echo "$IDS" | while read -r id; do
-            if [ "$id" != "$CURRENT" ]; then
+            if [[ -z "$id" ]]; then
+              continue
+            fi
+
+            if [[ "$id" != "$CURRENT" ]]; then
               echo "Delete stale Eureka instance: $id"
               curl -s -X DELETE "$EUREKA/eureka/apps/$APP/$id" || true
               echo
@@ -142,8 +144,9 @@ jobs:
               echo "Keep current instance: $id"
             fi
           done
+
       - name: Show running containers
-        if: steps.detect.outputs.skip == 'false'
+        if: ${{ steps.detect.outputs.skip == 'false' }}
         shell: bash
         run: |
           docker compose ps
