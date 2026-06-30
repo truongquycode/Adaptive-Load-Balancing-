@@ -96,6 +96,9 @@ public class MetricsPoller {
 	private record TrafficState(double count, double totalTimeSec, double lastLatency) {
 	}
 
+	private record LatencySample(double latencyMs, double completedRequests) {
+	}
+
 	@PostConstruct
 	public void init() {
 		// Khởi tạo WebClient sau khi tất cả bean đã sẵn sàng.
@@ -217,8 +220,12 @@ public class MetricsPoller {
 			double capacityWeight = node.path("capacityWeight").asDouble(1.0);
 			metricsCache.putCapacityWeight(instanceId, capacityWeight);
 
-			// Tính latency trung bình trong window vừa qua (delta/delta logic)
-			double latency = calculateDeltaLatency(instanceId, currentCount, currentTotalTime);
+			// Tính latency trung bình trong window vừa qua (delta/delta logic).
+			// completedRequests chỉ > 0 khi có request nghiệp vụ thật hoàn thành.
+			// DynamicWeightEngine dùng tín hiệu này để không học MCDM từ nhiễu idle.
+			LatencySample latencySample = calculateDeltaLatency(instanceId, currentCount, currentTotalTime);
+			double latency = latencySample.latencyMs();
+			metricsCache.recordCompletedRequestsForMcdm(latencySample.completedRequests());
 
 			// Fallback: nếu instance chưa có gauge inflight, dùng InflightTracker
 			// (được tracking từ phía gateway, không phụ thuộc vào instance báo cáo)
@@ -301,10 +308,11 @@ public class MetricsPoller {
 		return smoothed;
 	}
 
-	private double calculateDeltaLatency(String id, double currentCount, double currentTotalTime) {
+	private LatencySample calculateDeltaLatency(String id, double currentCount, double currentTotalTime) {
 		TrafficState prev = trafficStates.get(id);
 
 		// Lần đầu gặp instance: thiết lập baseline counter của Micrometer Timer.
+		// Đây chưa phải traffic trong cửa sổ hiện tại, nên completedRequests = 0.
 		if (prev == null) {
 			double initLatency = initialLatencyFor(id);
 
@@ -313,7 +321,7 @@ public class MetricsPoller {
 			log.debug("[MetricsPoller] Baseline established for {}: count={}, initLatency={}ms", id, currentCount,
 					initLatency);
 
-			return initLatency;
+			return new LatencySample(initLatency, 0.0);
 		}
 
 		// Tính delta giữa 2 lần poll liên tiếp.
@@ -321,23 +329,26 @@ public class MetricsPoller {
 		double deltaTotal = currentTotalTime - prev.totalTimeSec();
 
 		double currentLatency;
+		double completedRequests = 0.0;
 
 		if (deltaCount > 0 && deltaTotal >= 0) {
 			// Có request nghiệp vụ hoàn thành trong window vừa qua.
 			// totalTime là giây, nên nhân 1000 để đổi sang millisecond.
 			currentLatency = (deltaTotal / deltaCount) * 1000.0;
+			completedRequests = deltaCount;
 
 		} else if (deltaCount < 0 || deltaTotal < 0) {
 			// Trường hợp backend container/JVM restart làm counter Micrometer reset về 0.
 			// Nếu không xử lý, delta âm có thể làm latency/score sai.
+			// Không tính là traffic thật để tránh DynamicWeightEngine học từ dữ liệu reset.
 			currentLatency = initialLatencyFor(id);
 
 			log.info("[MetricsPoller] Counter reset detected for {}, re-baseline count={}", id, currentCount);
 
 		} else {
 			// Không có request mới hoàn thành.
-			// Không kéo về 100ms cố định nữa vì node ít traffic sẽ bị score xấu giả.
-			// Kéo nhẹ về baseline cụm hiện tại để tránh feedback loop gây starvation.
+			// Vẫn giữ latency idle cho routing/cache, nhưng KHÔNG ghi nhận completedRequests.
+			// Nhờ vậy DynamicWeightEngine sẽ không cập nhật EWM từ nhiễu idle.
 			double idleTarget = idleLatencyBaselineFor(id);
 			currentLatency = prev.lastLatency() + IDLE_DECAY_ALPHA * (idleTarget - prev.lastLatency());
 		}
@@ -347,7 +358,7 @@ public class MetricsPoller {
 
 		trafficStates.put(id, new TrafficState(currentCount, currentTotalTime, currentLatency));
 
-		return currentLatency;
+		return new LatencySample(currentLatency, completedRequests);
 	}
 	
 	private double initialLatencyFor(String id) {

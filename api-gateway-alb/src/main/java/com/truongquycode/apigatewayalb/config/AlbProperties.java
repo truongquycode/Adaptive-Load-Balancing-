@@ -44,6 +44,15 @@ public class AlbProperties {
     @Data
     public static class Weights {
         private long updateInterval = 5000; // ms
+
+        /**
+         * Dynamic MCDM chỉ được cập nhật khi có đủ request nghiệp vụ thật trong
+         * cửa sổ update. Điều này tránh hiện tượng EWM học từ CPU nền/latency idle
+         * khi Gateway chỉ đang poll /api/alb-metrics.
+         */
+        private long minCompletedRequests = 20;
+        private double minActualRps = 5.0;
+        private boolean resetToAhpWhenIdle = true;
     }
 
     /**

@@ -54,6 +54,11 @@ alb:
 
     weights:
         update-interval: 5000
+        # Dynamic MCDM chỉ học trọng số khi có traffic nghiệp vụ thật.
+        # Khi idle, giữ/reset về AHP để tránh EWM hội tụ theo nhiễu nền do metrics polling.
+        min-completed-requests: 20
+        min-actual-rps: 5.0
+        reset-to-ahp-when-idle: true
 
     routing:
         warmup-ms: 5000

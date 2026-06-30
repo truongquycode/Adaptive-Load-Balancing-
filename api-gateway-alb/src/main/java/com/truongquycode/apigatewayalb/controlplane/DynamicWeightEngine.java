@@ -47,20 +47,46 @@ public class DynamicWeightEngine {
 
     private volatile McdmWeights weights = new McdmWeights(AHP_WEIGHTS[0], AHP_WEIGHTS[1], AHP_WEIGHTS[2]);
 
+    // Prometheus/debug state cho biết MCDM đang học động hay bị khóa vì idle.
+    // 0 = frozen/idle, 1 = dynamic update, 2 = fixed-weights ablation.
+    private volatile double mcdmUpdateMode = 0.0;
+    private volatile double lastTrafficCompletedRequests = 0.0;
+    private volatile double lastTrafficRps = 0.0;
+
     private final MetricsCache cache;
     private final MeterRegistry registry;
     private final AlbProperties props;
 
     @Scheduled(fixedRateString = "${alb.weights.update-interval:5000}")
     public void computeMCDMWeights() {
+        long nowMs = System.currentTimeMillis();
+        MetricsCache.TrafficActivitySnapshot traffic = cache.snapshotAndResetMcdmTrafficWindow(nowMs);
+        lastTrafficCompletedRequests = traffic.completedRequests();
+        lastTrafficRps = traffic.actualRps();
+
         if (props.getAblation() != null && props.getAblation().isVariant("fixed-weights")) {
+            mcdmUpdateMode = 2.0;
             resetWeights();
+            return;
+        }
+
+        // Guard khoa học quan trọng:
+        // Dynamic EWM chỉ được cập nhật khi có đủ request nghiệp vụ thật trong cửa sổ vừa qua.
+        // Không dùng CPU nền, idle latency hoặc điểm score được tạo bởi metrics polling để học trọng số.
+        if (!hasEnoughRealTraffic(traffic)) {
+            mcdmUpdateMode = 0.0;
+            if (props.getWeights() == null || props.getWeights().isResetToAhpWhenIdle()) {
+                resetWeights();
+            }
+            log.debug("MCDM dynamic update skipped: insufficient real traffic, completed={}, rps={}, windowMs={}",
+                    traffic.completedRequests(), traffic.actualRps(), traffic.windowMs());
             return;
         }
 
         List<ScoreBreakdown> scores = cache.getAllScores();
         int n = scores.size();
         if (n < 2) {
+            mcdmUpdateMode = 0.0;
             return;
         }
 
@@ -77,8 +103,9 @@ public class DynamicWeightEngine {
         avgQueue /= n;
         avgCpu /= n;
 
-        // Khi cụm ổn định, giữ AHP để tránh EWM khuếch đại nhiễu nhỏ.
+        // Khi có traffic thật nhưng cụm vẫn rất ổn định, giữ AHP để tránh EWM khuếch đại nhiễu nhỏ.
         if (avgQueue < 0.08 && avgCpu < 0.08 && (maxLat - minLat) < 0.12) {
+            mcdmUpdateMode = 0.0;
             this.weights = new McdmWeights(AHP_WEIGHTS[0], AHP_WEIGHTS[1], AHP_WEIGHTS[2]);
             return;
         }
@@ -86,6 +113,15 @@ public class DynamicWeightEngine {
         double[][] matrix = buildBadnessMatrix(scores, n);
         double[] ewm = calculateEntropyWeights(matrix, n);
         blendAndApplyWeights(ewm);
+        mcdmUpdateMode = 1.0;
+    }
+
+    private boolean hasEnoughRealTraffic(MetricsCache.TrafficActivitySnapshot traffic) {
+        AlbProperties.Weights weightProps = props.getWeights();
+        long minCompleted = weightProps != null ? weightProps.getMinCompletedRequests() : 20L;
+        double minRps = weightProps != null ? weightProps.getMinActualRps() : 5.0;
+
+        return traffic.completedRequests() >= minCompleted && traffic.actualRps() >= minRps;
     }
 
     private double[][] buildBadnessMatrix(List<ScoreBreakdown> scores, int n) {
@@ -173,6 +209,10 @@ public class DynamicWeightEngine {
     public double getBeta()  { return weights.beta(); }
     public double getGamma() { return weights.gamma(); }
 
+    public double getMcdmUpdateMode() { return mcdmUpdateMode; }
+    public double getLastTrafficCompletedRequests() { return lastTrafficCompletedRequests; }
+    public double getLastTrafficRps() { return lastTrafficRps; }
+
     public double computeBaseScore(double nL, double nQ, double nC) {
         McdmWeights w = weights;
         return (w.alpha() * nL) + (w.beta() * nQ) + (w.gamma() * nC);
@@ -183,6 +223,16 @@ public class DynamicWeightEngine {
         Gauge.builder("alb.mcdm.weight", this::getAlpha).tag("criterion", "latency").register(registry);
         Gauge.builder("alb.mcdm.weight", this::getBeta) .tag("criterion", "queue")  .register(registry);
         Gauge.builder("alb.mcdm.weight", this::getGamma).tag("criterion", "cpu")    .register(registry);
+
+        Gauge.builder("alb.mcdm.update.mode", this::getMcdmUpdateMode)
+                .description("0=frozen_idle_or_stable, 1=dynamic_real_traffic, 2=fixed_weights_ablation")
+                .register(registry);
+        Gauge.builder("alb.mcdm.recent.completed.requests", this::getLastTrafficCompletedRequests)
+                .description("Completed real backend requests seen in the last MCDM update window")
+                .register(registry);
+        Gauge.builder("alb.mcdm.recent.actual.rps", this::getLastTrafficRps)
+                .description("Actual real backend RPS seen in the last MCDM update window")
+                .register(registry);
     }
 
     public void resetWeights() {
