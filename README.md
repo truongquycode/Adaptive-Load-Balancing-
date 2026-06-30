@@ -74,11 +74,13 @@ Các thành phần chính:
 
 - **Monitoring**
   - Thư mục: `monitoring`
-  - Cung cấp Docker Compose cho:
+  - Cung cấp Docker Compose riêng cho:
     - Prometheus: `9090`
     - Grafana: `3000`
     - cAdvisor: `8088`
-  - Prometheus scrape Gateway qua endpoint `/actuator/prometheus`.
+  - Prometheus thu thập metrics từ API Gateway thông qua endpoint `/actuator/prometheus` và thu thập metrics tài nguyên container thông qua cAdvisor.
+  - Grafana sử dụng dashboard `dashboard-grafana.json` với tiêu đề `ALB — Routing Score & Score Breakdown`.
+  - Dashboard tập trung theo dõi pipeline đánh giá và định tuyến của Adaptive Load Balancer, gồm MCDM weights, health score, routing weights, routing cost, phân phối request, latency percentile, CPU usage và memory usage của các container chính.
 
 - **Benchmark**
   - Thư mục: `jmeter`
@@ -189,7 +191,8 @@ Adaptive-Load-Balancing--main/
 │   └── 04_stress_recovery_mixed_1200_to_0600_staged_nochaos_tst.jmx
 ├── monitoring/
 │   ├── docker-compose.yml
-│   └── prometheus.yml
+│   ├── prometheus.yml
+│   └── dashboard-grafana.json
 ├── scripts_run_jmeter/
 │   ├── 0-run_all_benchmark_scenarios.bat
 │   ├── 1-run_low_all_strategies.bat
@@ -810,7 +813,9 @@ curl -X POST http://localhost:8083/api/chaos/reset
 
 ### 8.6. Chạy monitoring
 
-Monitoring nằm trong thư mục riêng:
+Monitoring được cấu hình trong thư mục `monitoring`, gồm Prometheus, Grafana và cAdvisor.
+
+Chạy monitoring:
 
 ```bash
 cd monitoring
@@ -819,19 +824,51 @@ docker compose up -d
 
 Các service monitoring:
 
-| Service | Port |
-|---|---:|
-| Prometheus | `9090` |
-| Grafana | `3000` |
-| cAdvisor | `8088` |
+| Service | Port | Vai trò |
+|---|---:|---|
+| Prometheus | `9090` | Thu thập và lưu trữ metrics |
+| Grafana | `3000` | Hiển thị dashboard giám sát |
+| cAdvisor | `8088` | Thu thập metrics CPU/RAM của container |
 
-Prometheus hiện scrape Spring Boot tại:
+Prometheus hiện scrape Spring Boot Gateway tại:
 
 ```text
 172.30.35.37:8080/actuator/prometheus
 ```
 
-Khi triển khai trên môi trường khác, cần cập nhật lại địa chỉ trong `monitoring/prometheus.yml`.
+Nếu chạy dự án trên máy hoặc server khác, cần cập nhật lại địa chỉ IP trong file:
+
+```text
+monitoring/prometheus.yml
+```
+
+Dashboard Grafana được lưu tại:
+
+```text
+monitoring/dashboard-grafana.json
+```
+
+Dashboard có tiêu đề:
+
+```text
+ALB — Routing Score & Score Breakdown
+```
+
+Dashboard này dùng để theo dõi pipeline điểm số và quyết định định tuyến của Adaptive Load Balancer, bao gồm health score, MCDM weights, routing weights, routing cost, phân phối request, latency percentile và tài nguyên container.
+
+Sau khi Grafana chạy, có thể import dashboard bằng cách mở Grafana tại:
+
+```text
+http://localhost:3000
+```
+
+Sau đó import file:
+
+```text
+monitoring/dashboard-grafana.json
+```
+
+Khi import dashboard, cần chọn datasource Prometheus tương ứng với Prometheus đang chạy trong monitoring stack.
 
 ### 8.7. CI/CD
 
@@ -1173,19 +1210,29 @@ Các metric ALB được đăng ký trong ứng dụng:
 
 ### 9.7. Cấu hình monitoring
 
-File:
+Monitoring stack nằm trong thư mục:
 
 ```text
-monitoring/docker-compose.yml
+monitoring/
 ```
 
-Service:
+Các file chính:
 
-- `prometheus`
-- `grafana`
-- `cadvisor`
+| File | Vai trò |
+|---|---|
+| `docker-compose.yml` | Khởi chạy Prometheus, Grafana và cAdvisor |
+| `prometheus.yml` | Cấu hình scrape metrics cho Prometheus |
+| `dashboard-grafana.json` | Dashboard Grafana theo dõi ALB routing score và tài nguyên hệ thống |
 
-File:
+Service trong `monitoring/docker-compose.yml`:
+
+| Service | Port | Chức năng |
+|---|---:|---|
+| `prometheus` | `9090` | Thu thập metrics từ Spring Boot Actuator và cAdvisor |
+| `grafana` | `3000` | Hiển thị dashboard giám sát |
+| `cadvisor` | `8088` | Theo dõi CPU, memory và thông tin container |
+
+File cấu hình Prometheus:
 
 ```text
 monitoring/prometheus.yml
@@ -1205,7 +1252,50 @@ scrape_configs:
       - targets: ['cadvisor:8080']
 ```
 
-Lưu ý: cấu hình Prometheus hiện chỉ scrape Gateway tại `172.30.35.37:8080` và cAdvisor; chưa cấu hình scrape trực tiếp các backend `8081`, `8082`, `8083`.
+Trong cấu hình hiện tại, Prometheus scrape metrics Spring Boot từ API Gateway tại địa chỉ `172.30.35.37:8080`. Nếu triển khai trên môi trường khác, cần thay địa chỉ này bằng IP hoặc hostname phù hợp.
+
+Grafana dashboard được lưu tại:
+
+```text
+monitoring/dashboard-grafana.json
+```
+
+Dashboard có tên:
+
+```text
+ALB — Routing Score & Score Breakdown
+```
+
+Dashboard này được thiết kế để theo dõi toàn bộ quá trình đánh giá backend và ra quyết định định tuyến của Adaptive Load Balancer.
+
+Các nhóm panel chính trong dashboard:
+
+| Nhóm panel | Metric chính | Ý nghĩa |
+|---|---|---|
+| Backend health score | `alb_final_score` | Theo dõi điểm sức khỏe cuối cùng của từng backend sau khi tổng hợp latency, queue, CPU, MCDM và PID |
+| Dynamic MCDM weights | `alb_mcdm_weight` | Theo dõi trọng số động của các tiêu chí latency, queue và CPU |
+| Adaptive routing weights | `alb_routing_weight` | Theo dõi tỷ trọng giữa health cost và load cost trong quyết định routing |
+| Backend capacity weight | `alb_routing_capacity_weight` | Hiển thị năng lực tương đối của từng backend dựa trên CPU quota container |
+| Health cost | `alb_routing_health_cost` | Phản ánh chi phí sức khỏe của backend sau khi chuẩn hóa từ final score |
+| Capacity-normalized load ratio | `alb_routing_load_raw` | So sánh lượng request đang xử lý với tải kỳ vọng theo năng lực của từng backend |
+| Final routing cost | `alb_routing_score` | Chi phí định tuyến cuối cùng; giá trị càng thấp thì backend càng có khả năng được chọn |
+| Routing selection rate by backend | `rate(alb_routing_selected_total[10s])` | Theo dõi số request mỗi giây được chọn vào từng backend |
+| Routing selection rate by decision reason | `rate(alb_routing_selected_total[10s])` theo `reason` | Cho biết Adaptive đang route theo warmup, low-load, health-dominant, load-dominant, normal P2C hoặc probe recovery |
+| EWMA latency | `alb_latency_ewma` | Theo dõi độ trễ đã được làm mượt của từng backend |
+| Queue depth | `alb_queue_current` | Theo dõi số request đang xử lý hoặc đang chờ trên từng backend |
+| Gateway latency percentiles | `spring_cloud_gateway_requests_seconds_bucket` | Tính P50, P90, P95 và P99 của request đi qua API Gateway |
+| Gateway P99 latency | `histogram_quantile(0.99, ...)` | Theo dõi riêng độ trễ P99 của route backend để đánh giá tail latency |
+| Gateway error rate | `spring_cloud_gateway_requests_seconds_count` | Tính tỷ lệ request non-2xx của route backend |
+| CPU usage by container | `container_cpu_usage_seconds_total`, `container_spec_cpu_quota`, `container_spec_cpu_period` | Theo dõi CPU usage đã chuẩn hóa theo CPU quota của container |
+| Memory usage by container | `container_memory_working_set_bytes`, `container_spec_memory_limit_bytes` | Theo dõi memory usage theo phần trăm giới hạn RAM của container |
+
+Dashboard này giúp kiểm chứng ba nhóm thông tin quan trọng:
+
+1. **Backend có đang bị suy giảm hiệu năng hay không** thông qua health score, EWMA latency, queue depth, CPU và memory.
+2. **Adaptive Load Balancer phản ứng như thế nào** thông qua routing weights, health/load cost, final routing cost và decision reason.
+3. **Traffic có được phân phối hợp lý hay không** thông qua routing selection rate theo backend và latency percentile tại Gateway.
+
+Lưu ý: dashboard sử dụng cả metrics từ Gateway và metrics từ cAdvisor. Vì vậy, để dashboard hiển thị đầy đủ, cần đảm bảo Prometheus scrape được cả `/actuator/prometheus` của Gateway và cAdvisor.
 
 ## 10. Kiểm thử hoặc benchmark nếu có
 
@@ -1340,7 +1430,8 @@ Một số điểm cần lưu ý khi sử dụng dự án:
 - Endpoint benchmark chính là `/api/simulate-mixed-call`; `/api/simulate-call` vẫn tồn tại cho các kịch bản mô phỏng cũ hơn.
 - Chaos chính trong benchmark là `dependency-slowdown` và `latency-degradation`. Các chế độ `async-io`, `heavy`, `cpu-spike`, `hidden` vẫn còn trong code để phục vụ kiểm thử phụ hoặc tương thích với kịch bản cũ.
 - Repository có sẵn kịch bản JMeter và script chạy benchmark nhiều chiến lược.
-- Monitoring gồm Prometheus, Grafana và cAdvisor trong thư mục `monitoring`.
+- Monitoring gồm Prometheus, Grafana, cAdvisor và dashboard Grafana `dashboard-grafana.json` trong thư mục `monitoring`.
+- Dashboard `ALB — Routing Score & Score Breakdown` theo dõi Adaptive Load Balancer ở ba lớp chính: health score, routing cost và kết quả phân phối request. Dashboard cũng có các panel latency percentile, CPU usage và memory usage của container.
 
 Các giới hạn cần kiểm tra thêm trước khi triển khai production:
 
@@ -1348,8 +1439,7 @@ Các giới hạn cần kiểm tra thêm trước khi triển khai production:
 - Endpoint `GET /actuator/alb/strategy` chưa được implement, dù script benchmark có cấu hình kiểm tra tùy chọn endpoint này.
 - Dự án chưa tích hợp database thật; DB pool trong benchmark được mô phỏng bằng `Semaphore`.
 - Repository chưa cấu hình authentication, authorization, TLS hoặc rate limiting.
-- `monitoring/prometheus.yml` chưa scrape trực tiếp 3 backend; cấu hình hiện tại scrape Gateway và cAdvisor.
-- Repository chưa cung cấp dashboard Grafana chính thức trong project ZIP.
+- `monitoring/prometheus.yml` chưa scrape trực tiếp 3 backend; cấu hình hiện tại scrape Gateway và cAdvisor. Dashboard Grafana vì vậy sử dụng metrics từ Gateway và cAdvisor làm nguồn dữ liệu chính.
 - Các địa chỉ IP như `172.30.35.37` trong JMeter, script và Prometheus là cấu hình theo môi trường hiện tại; cần cập nhật khi chuyển sang máy chủ khác.
 
 Trước khi benchmark hoặc triển khai trên môi trường khác, nên kiểm tra lại:
