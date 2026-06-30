@@ -1,177 +1,283 @@
-# PIDController — Luồng hoạt động
+# PIDController
 
-## Mục đích
+## 1. Vai trò
 
-PIDController tính một giá trị penalty cho từng instance backend. Penalty này được cộng vào baseScore (do DynamicWeightEngine tính) để ra finalScore trong ScoreBreakdown. Instance nào có finalScore cao hơn thì xác suất được AdaptiveLoadBalancer chọn thấp hơn.
+`PIDController` tính thêm một khoản penalty cho backend có latency cao hơn mức tham chiếu của toàn hệ thống.
 
-Nói ngắn gọn: nếu một instance đang trả lời chậm hơn mức trung bình của toàn hệ thống, PID sẽ tích lũy penalty để hướng traffic sang instance khác. Khi instance hồi phục, penalty giảm dần và traffic được phân bổ lại.
+Trong pipeline hiện tại:
+
+```text
+ScoreCalculator
+    |
+    | baseScore = MCDM(latency, queue, cpu)
+    |
+    | pidPenalty = PIDController.calculatePenalty(...)
+    v
+finalScore = baseScore + pidPenalty
+```
+
+`PIDController` không thay thế MCDM. Nó chỉ bổ sung khả năng phản ứng theo sai số latency theo thời gian.
 
 ---
 
-## Đầu vào và đầu ra
+## 2. Đầu vào
 
-Hàm duy nhất được gọi từ bên ngoài là `calculatePenalty()`. Nó nhận bốn tham số:
+Hàm chính:
 
-- `instanceId`: định danh của instance, dùng làm key để tra cứu trạng thái PID tương ứng.
-- `rawLat`: giá trị latency đã chuẩn hóa về khoảng [0, 1], được tính bởi ScoreCalculator từ EWMA latency thực tế và dải p5-p95 toàn hệ thống.
-- `setpoint`: ngưỡng latency "chấp nhận được", cụ thể là P75 toàn hệ thống sau khi chuẩn hóa. Khi instance vượt ngưỡng này thì PID mới bắt đầu phạt.
-- `cfg`: bộ hệ số PID đọc từ application.yml, bao gồm kp, ki, kd, tauD, minI, maxI, lambda, kappa.
+```java
+calculatePenalty(String instanceId, double rawLat, double setpoint, PidConfig cfg)
+```
 
-Hàm trả về một giá trị penalty trong khoảng [0, lambda]. Với cấu hình mặc định lambda=0.8, penalty tối đa là 0.8. Penalty bằng 0 khi instance nhanh hơn hoặc bằng setpoint.
+Trong thực tế:
+
+| Tham số | Ý nghĩa |
+|---|---|
+| `instanceId` | ID backend |
+| `rawLat` | `normLatency` của backend, đã chuẩn hóa về `[0,1]` |
+| `setpoint` | P75 toàn hệ thống, cũng đã chuẩn hóa về `[0,1]` |
+| `cfg` | Tham số PID trong `application.yml` |
+
+Sai số PID:
+
+```text
+error = normLatency - normalizedSystemP75
+```
+
+Nếu `error > 0`, backend chậm hơn ngưỡng P75 hệ thống và có thể bị tăng penalty.
+
+Nếu `error <= 0`, backend không bị thưởng thêm; penalty cuối cùng được clamp về không âm.
 
 ---
 
-## Trạng thái nội bộ — PidState
+## 3. Cấu hình hiện tại
 
-Mỗi instance có một đối tượng PidState riêng, được lưu trong Caffeine Cache với TTL 5 phút (tự xóa khi instance down lâu không được poll). PidState lưu sáu trường:
+Trong `application.yml`:
 
-- `lastTimestamp`: thời điểm (millisecond) lần tính penalty trước, dùng để tính delta thời gian.
-- `lastRawLat`: giá trị rawLat của lần trước, dùng làm baseline để tính tốc độ thay đổi latency cho thành phần D.
-- `integral`: giá trị tích phân I tích lũy theo thời gian, phản ánh lịch sử chậm của instance.
-- `lastFilteredD`: giá trị thành phần D sau khi qua bộ lọc, dùng để tiếp tục filter ở lần tiếp theo.
-- `lastOutput`: kết quả u (P + I + D) chưa squash của lần trước, dùng để kiểm tra trạng thái bão hòa.
-- `lastError`: trường này tồn tại trong model nhưng không được dùng trực tiếp trong phiên bản hiện tại.
+```yaml
+alb:
+    pid:
+        kp: 1.0
+        ki: 0.08
+        kd: 0.04
+        tau-d: 2.0
+        min-i: -0.8
+        max-i: 2.5
+        lambda: 0.8
+        kappa: 1.2
+```
+
+Ý nghĩa:
+
+| Tham số | Vai trò |
+|---|---|
+| `kp` | Hệ số proportional, phản ứng theo sai số hiện tại |
+| `ki` | Hệ số integral, tích lũy sai số kéo dài |
+| `kd` | Hệ số derivative, phản ứng theo tốc độ thay đổi latency |
+| `tau-d` | Hằng số thời gian cho low-pass filter của D |
+| `min-i` | Giới hạn dưới của integral |
+| `max-i` | Giới hạn trên của integral |
+| `lambda` | Biên trên của penalty |
+| `kappa` | Độ dốc hàm `tanh` khi squash output |
 
 ---
 
-## Luồng tính penalty — từng bước
+## 4. Deadband
 
+Mã nguồn có vùng chết:
+
+```java
+ERROR_DEADBAND = 0.08
 ```
-calculatePenalty(instanceId, rawLat, setpoint, cfg)
-        |
-        |-- tra cứu PidState từ Caffeine Cache
-        |        |-- nếu chưa có: khởi tạo mới, lastTimestamp = now - 200ms
-        |
-        |-- tính actualDt (giây) = (now - lastTimestamp) / 1000
-        |        clamp vào [0.001, 5.0]
-        |
-        |-- error = rawLat - setpoint
-        |        dương: instance chậm hơn P75 → cần phạt
-        |        âm:    instance nhanh hơn P75 → penalty sẽ về 0
-        |
-        |-- P = kp × error
-        |
-        |-- I: tích lũy error × dt
-        |        kiểm tra Conditional Anti-Windup trước khi tích lũy
-        |        nếu |error| < 0.1: áp decay 0.97^dt để integral giảm dần
-        |        clamp integral vào [minI, maxI]
-        |        I = ki × integral
-        |
-        |-- D: tốc độ thay đổi latency
-        |        rawD = (rawLat - lastRawLat) / actualDt
-        |        filteredD = low-pass filter(rawD, prevFilteredD, tauD, actualDt)
-        |        D = kd × filteredD
-        |
-        |-- u = P + I + D
-        |
-        |-- lưu state mới (lastRawLat, lastFilteredD, lastOutput, lastTimestamp)
-        |
-        |-- penalty = lambda × tanh(kappa × max(0, u))
-        |
-        return penalty ∈ [0, lambda]
+
+Nếu sai số nằm trong khoảng nhỏ này, PID xem như bằng 0:
+
+```text
+|error| <= 0.08  =>  error = 0
 ```
+
+Nếu sai số lớn hơn deadband, phần deadband được trừ ra:
+
+```text
+error > 0  =>  error = error - 0.08
+error < 0  =>  error = error + 0.08
+```
+
+Mục đích:
+
+- Bỏ qua dao động nhỏ ở low load.
+- Tránh instance bị penalty chỉ vì chênh lệch latency vài mili giây.
+- Giảm khả năng Adaptive tự dao động khi hệ thống ổn định.
 
 ---
 
-## Chi tiết từng thành phần
+## 5. Thành phần P
 
-### Thành phần P — Phản ứng tức thì
+Thành phần P phản ứng tức thời với sai số hiện tại:
 
-```
-P = kp × error
-```
-
-P phản ứng ngay lập tức với mức độ lệch so với setpoint. Khi instance đột ngột chậm hơn P75 hệ thống, P tăng ngay trong cùng poll cycle 200ms. Khi instance nhanh trở lại, P giảm ngay.
-
-P phù hợp với việc phát hiện sự cố cấp tính nhưng không có "bộ nhớ" — nếu instance chậm kinh niên nhưng không quá tệ, P không đủ để phân biệt.
-
-### Thành phần I — Tích lũy lịch sử
-
-```
-integral = integral + (error × actualDt)
-I = ki × integral
+```text
+P = kp * error
 ```
 
-I tích lũy error theo thời gian. Nếu instance liên tục chậm hơn P75 trong nhiều chu kỳ poll liên tiếp, integral tăng dần và I làm tăng penalty đáng kể. Ngược lại, nếu instance hồi phục, error âm và integral giảm dần.
+Nếu backend đột ngột chậm hơn P75 hệ thống, P tăng ngay trong chu kỳ tính score đó.
 
-Có hai cơ chế bảo vệ cho I:
+---
 
-**Conditional Anti-Windup:** Trước mỗi lần tích lũy, kiểm tra hai điều kiện đồng thời:
-- Output lần trước đã đạt biên bão hòa (|lastOutput| >= 2.0).
-- Error hiện tại cùng chiều với output (đang đẩy sâu hơn vào vùng bão hòa).
+## 6. Thành phần I
 
-Nếu cả hai điều kiện đều đúng thì dừng tích lũy I. Cơ chế này tránh tình trạng integral "chạy ngầm" khi PID đã đạt biên và không còn khả năng điều chỉnh thêm.
+Thành phần I tích lũy sai số theo thời gian:
 
-**Decay khi error nhỏ:** Khi |error| < 0.1, tức là instance đang hoạt động gần với setpoint, integral được nhân với `0.97^actualDt` mỗi giây. Điều này giúp integral tự giảm về 0 chậm nhưng chắc, tránh tình trạng instance đã phục hồi nhưng vẫn bị phạt do tích lũy từ quá khứ.
-
-Sau cùng, integral được clamp vào [minI, maxI] = [-0.8, 2.5] để giới hạn ảnh hưởng tối đa.
-
-### Thành phần D — Tốc độ thay đổi
-
-```
-rawD = (rawLat - lastRawLat) / actualDt
-filteredD = (1 - e^(-dt/tauD)) × rawD + e^(-dt/tauD) × prevFilteredD
-D = kd × filteredD
+```text
+I_state = I_state + error * dt
+I = ki * I_state
 ```
 
-D đo tốc độ thay đổi của latency. Khi latency đang tăng nhanh, D dương và làm tăng penalty sớm hơn trước khi I kịp tích lũy. Khi latency đang giảm nhanh, D âm và hãm bớt penalty ngay cả khi I vẫn còn cao.
+`dt` được tính bằng giây và bị clamp:
 
-Bộ lọc thông thấp (low-pass filter) bậc 1 với hằng số thời gian tauD=2 giây được áp vào rawD trước khi nhân với kd. Bộ lọc này loại bỏ nhiễu cao tần — một spike latency đơn lẻ trong một poll cycle sẽ không gây ra D lớn đột biến. Chỉ khi latency tăng liên tục qua nhiều chu kỳ thì filteredD mới tăng đáng kể.
-
-### Bước squash cuối
-
+```text
+dt ∈ [0.001, 5.0]
 ```
+
+Integral bị giới hạn:
+
+```text
+I_state ∈ [minI, maxI]
+```
+
+Với cấu hình hiện tại:
+
+```text
+I_state ∈ [-0.8, 2.5]
+```
+
+Mục đích của I là phát hiện backend chậm kéo dài. Nếu backend chỉ chậm một lần ngắn, I không tăng nhiều. Nếu backend liên tục chậm, I tích lũy và penalty tăng rõ hơn.
+
+---
+
+## 7. Conditional anti-windup
+
+Mã nguồn có cơ chế chống windup:
+
+```java
+boolean isSaturated = Math.abs(prevOutput) >= 2.0;
+boolean sameSign = (error * prevOutput) > 0.0;
+```
+
+Nếu output đã bão hòa và error tiếp tục đẩy output theo cùng chiều, integral không tích lũy thêm.
+
+Mục đích:
+
+- Tránh integral tăng ngầm quá lớn.
+- Khi backend phục hồi, penalty không bị kéo dài quá lâu do integral cũ.
+- Giữ PID ổn định trong giai đoạn stress.
+
+---
+
+## 8. Integral decay
+
+Khi sai số nhỏ:
+
+```text
+|error| < 0.1
+```
+
+Integral được giảm dần:
+
+```text
+I_state = I_state * exp(ln(0.97) * dt)
+```
+
+Tương đương giảm khoảng 3% mỗi giây khi backend gần về trạng thái ổn định.
+
+---
+
+## 9. Thành phần D
+
+Thành phần D phản ứng với tốc độ thay đổi latency:
+
+```text
+rawD = (rawLat - previousRawLat) / dt
+```
+
+Để tránh nhiễu cao tần, D được đưa qua low-pass filter:
+
+```text
+filteredD = (1 - e^(-dt/tauD)) * rawD
+          + e^(-dt/tauD) * previousFilteredD
+```
+
+Sau đó:
+
+```text
+D = kd * filteredD
+```
+
+D giúp PID phản ứng với xu hướng latency đang tăng, không chỉ giá trị latency hiện tại.
+
+---
+
+## 10. Output và squash
+
+Output thô:
+
+```text
 u = P + I + D
-
-penalty = lambda × tanh(kappa × max(0, u))
 ```
 
-`max(0, u)`: loại bỏ trường hợp instance nhanh hơn setpoint (u âm). PID không "thưởng" instance bằng penalty âm — việc đó thuộc về baseScore từ MCDM.
+Penalty cuối:
 
-`tanh(kappa × u)`: ép output vào khoảng [0, 1) theo hàm sigmoid. Khi u lớn, penalty không tăng vô hạn mà bão hòa tiệm cận 1.0. Kappa kiểm soát độ dốc: kappa lớn hơn thì penalty bão hòa sớm hơn với cùng giá trị u.
+```text
+pidPenalty = lambda * tanh(kappa * max(0, u))
+```
 
-`lambda × ...`: scale kết quả về [0, lambda] = [0, 0.8]. Tổng hợp với baseScore ∈ [0, 1], finalScore tối đa khoảng 1.8.
+Ý nghĩa:
 
----
+- `max(0, u)`: chỉ phạt backend chậm, không thưởng backend nhanh.
+- `tanh`: giới hạn output, tránh penalty vô hạn.
+- `lambda`: biên trên của penalty.
 
-## Ví dụ kịch bản thực tế
+Với cấu hình hiện tại, penalty nằm trong khoảng:
 
-**Kịch bản:** Instance 8083 bật CPU spike. Latency tăng từ 60ms lên 800ms. Setpoint P75 toàn hệ thống = 80ms. Sau chuẩn hóa, rawLat của 8083 tăng từ 0.2 lên 0.9.
-
-Các chu kỳ poll đầu tiên (error = 0.9 - setpoint):
-- P phản ứng ngay: penalty xuất hiện từ chu kỳ đầu.
-- I bắt đầu tích lũy: sau 5-10 chu kỳ (1-2 giây), integral đủ lớn để I đóng góp đáng kể.
-- D dương khi latency đang tăng: tăng thêm penalty trong giai đoạn transient.
-- Tổng penalty tiệm cận 0.8 sau vài giây.
-
-Khi tắt CPU spike, latency về 60ms:
-- error âm: P về 0 ngay.
-- rawD âm: D âm, hãm penalty nhanh hơn.
-- I giảm dần: error âm làm integral giảm từ từ, decay thêm khi |error| < 0.1.
-- Penalty giảm về 0 sau 5-15 giây tùy mức tích lũy của integral.
+```text
+[0, 0.8)
+```
 
 ---
 
-## Mối quan hệ với các component khác
+## 11. State theo instance
 
-| Component | Chiều | Mô tả |
-|---|---|---|
-| ScoreCalculator | Gọi PID | Gọi `calculatePenalty()` mỗi khi tính score cho một instance. Truyền vào rawLat (đã qua EWMA) và setpoint (P75 từ SlidingWindowManager). |
-| SlidingWindowManager | Gián tiếp qua ScoreCalculator | Cung cấp P75 toàn hệ thống làm setpoint. P75 thay đổi mỗi khi histogram flip, kéo theo setpoint thay đổi và ảnh hưởng đến error. |
-| MetricsPoller | Kích hoạt gián tiếp | Poll metrics mỗi 200ms, gọi ScoreCalculator, từ đó gọi PID. Tần suất poll = tần suất PID cập nhật state. |
-| AdminController | Gọi `resetAllStates()` | Xóa toàn bộ PID state khi nhận POST /actuator/alb/reset. Sau reset, lần gọi tiếp theo sẽ khởi tạo PidState mới từ đầu (integral = 0, không còn ký ức về lần benchmark trước). |
-| AlbProperties / PidConfig | Đọc cấu hình | PID đọc kp, ki, kd, tauD, minI, maxI, lambda, kappa từ application.yml thông qua PidConfig. Các giá trị này ảnh hưởng trực tiếp đến tốc độ phản ứng và biên độ penalty. |
+Mỗi backend có state PID riêng trong Caffeine cache:
+
+```java
+private final Cache<String, PidState> states = Caffeine.newBuilder()
+        .expireAfterAccess(5, TimeUnit.MINUTES)
+        .build();
+```
+
+`PidState` lưu:
+
+- `lastError`
+- `integral`
+- `lastFilteredD`
+- `lastOutput`
+- `lastTimestamp`
+- `lastRawLat`
+
+State hết hạn sau 5 phút không truy cập.
 
 ---
 
-## Lưu ý khi điều chỉnh tham số
+## 12. Reset
 
-**kp cao hơn:** Phản ứng P mạnh hơn ngay khi instance bắt đầu chậm. Dễ gây dao động nếu latency không ổn định.
+Khi gọi:
 
-**ki thấp hơn:** Integral tích lũy chậm hơn, tránh phạt quá nặng khi instance chỉ chậm tạm thời. Đổi lại, mất nhiều thời gian hơn để nhận ra instance chậm mãn tính.
+```text
+POST /actuator/alb/reset
+```
 
-**kd cao hơn:** D phản ứng mạnh với sự thay đổi latency. Kết hợp với tauD lớn (filter mượt), có thể phát hiện sớm xu hướng xấu. Nếu tauD nhỏ, D dễ bị nhiễu.
+`AdminController` gọi:
 
-**lambda thấp hơn:** Penalty tối đa thấp hơn, PID ảnh hưởng ít hơn đến routing decision. Phù hợp khi muốn MCDM baseScore chiếm ưu thế.
+```java
+pidController.resetAllStates();
+```
 
-**kappa cao hơn:** Penalty bão hòa nhanh hơn — instance vừa vượt setpoint một chút đã nhận penalty gần tối đa. Phù hợp khi muốn phản ứng quyết liệt nhưng dễ gây flapping.
+Toàn bộ integral, derivative và output cũ bị xóa. Đây là bước quan trọng trước benchmark để PID không mang trạng thái từ lần chạy trước sang lần chạy mới.

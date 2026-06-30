@@ -1,163 +1,482 @@
-# AdaptiveLoadBalancer — Luồng hoạt động
+# Adaptive Load Balancer
 
-## Vai trò trong hệ thống
+## 1. Vai trò
 
-`AdaptiveLoadBalancer` là thành phần quyết định mỗi HTTP request đến từ client sẽ được chuyển đến instance backend nào (8081, 8082, hoặc 8083).
+`AdaptiveLoadBalancer` là thành phần data-plane dùng để chọn backend cho từng request đi qua API Gateway. Class này được đăng ký thông qua Spring Cloud LoadBalancer cho service name:
 
-Nó **không tự thu thập metrics** và **không tự tính điểm**. Toàn bộ công việc phân tích nặng (đo latency, tính CPU, chạy MCDM và PID) đã được `MetricsPoller` và `ScoreCalculator` thực hiện trước đó, mỗi 200ms một lần. Kết quả được lưu vào `MetricsCache`.
-
-Khi một request đến, `AdaptiveLoadBalancer` chỉ cần **đọc điểm từ cache** và kết hợp với thông tin inflight tức thời để chọn ra instance phù hợp nhất. Thiết kế này giúp quyết định routing xảy ra cực nhanh, không block request.
-
+```text
+REGISTRATION-SERVICE-ALB
 ```
-MetricsPoller (mỗi 200ms)
-    --> ScoreCalculator
-        --> MetricsCache (lưu finalScore theo instanceId)
 
-HTTP request đến Gateway
-    --> AdaptiveLoadBalancer.choose()
-        --> đọc score từ MetricsCache
-        --> đọc inflight từ InflightTracker
-        --> chọn instance
-        --> route request
+Route tương ứng trong Gateway:
+
+```java
+.route("backend-route", r -> r.path("/api/**")
+        .uri("lb://REGISTRATION-SERVICE-ALB"))
+```
+
+Khi `alb.strategy=adaptive`, Gateway dùng `AdaptiveLoadBalancer` thay vì Round Robin, Random hoặc Least Connections.
+
+---
+
+## 2. Nguyên tắc thiết kế
+
+Adaptive Load Balancer trong mã nguồn hiện tại không tự poll metrics và không tự tính health score trực tiếp trong mỗi request. Hệ thống được tách thành hai phần:
+
+```text
+Control-plane
+    MetricsPoller
+    ScoreCalculator
+    DynamicWeightEngine
+    SlidingWindowManager
+    PIDController
+    EwmaSmoother
+    MetricsCache
+
+Data-plane
+    AdaptiveLoadBalancer
+    RoutingCostCalculator
+    InflightTracker
+    InflightLifecycle
+```
+
+Control-plane chạy định kỳ để tính trạng thái backend. Data-plane dùng trạng thái đã có sẵn trong cache và số inflight tức thời để chọn backend nhanh nhất có thể.
+
+---
+
+## 3. Luồng xử lý khi có request
+
+```text
+Gateway nhận request /api/**
+    |
+    v
+AdaptiveLoadBalancer.choose()
+    |
+    v
+Lấy danh sách instance từ ServiceInstanceListSupplier
+    |
+    v
+RoutingCostCalculator.calculate(instances)
+    |
+    v
+Tạo RoutingContext:
+    - all costs
+    - eligible costs
+    - healthWeight
+    - loadWeight
+    - mode
+    |
+    v
+AdaptiveLoadBalancer chọn instance:
+    - Single instance
+    - Warmup Round Robin
+    - Low-load Round Robin
+    - Probe recovery
+    - P2C
+    - Least-cost fallback
+```
+
+Nếu không có instance nào từ Eureka, Gateway nhận `EmptyResponse`.
+
+Nếu chỉ có một instance, hệ thống chọn thẳng instance đó và ghi reason `SINGLE_INSTANCE`.
+
+---
+
+## 4. Warmup Round Robin
+
+Adaptive dùng biến `firstSeenMs` để ghi nhận thời điểm mỗi instance xuất hiện lần đầu trong danh sách Eureka.
+
+Cấu hình warmup:
+
+```yaml
+alb:
+  routing:
+    warmup-ms: 5000
+```
+
+Nếu tất cả instance đều mới xuất hiện và chưa vượt qua `warmup-ms`, Adaptive chưa tin vào metrics. Lúc này thuật toán dùng Round Robin và ghi reason:
+
+```text
+WARMUP_RR
+```
+
+Cơ chế này giúp tránh việc một instance bị đánh giá sai chỉ vì chưa kịp có đủ dữ liệu poll.
+
+---
+
+## 5. RoutingCostCalculator
+
+`RoutingCostCalculator` là nơi tính chi phí định tuyến cuối cùng cho từng backend. Đây là phần quan trọng nhất của Adaptive Load Balancer hiện tại.
+
+Đầu vào:
+
+- Danh sách `ServiceInstance` từ Eureka.
+- `finalScore` của từng backend từ `MetricsCache`.
+- Số inflight hiện tại từ `InflightTracker`.
+- `capacityWeight` của từng backend từ `MetricsCache`.
+- Cấu hình trong `alb.routing`.
+
+Đầu ra:
+
+- `RoutingContext`
+- Danh sách `RoutingCost`
+- `healthWeight`
+- `loadWeight`
+- `mode`
+
+---
+
+## 6. Health raw
+
+Với mỗi backend, thuật toán lấy `ScoreBreakdown` trong `MetricsCache`.
+
+```java
+double healthRaw = bd != null ? Math.max(0.0, bd.finalScore()) : DEFAULT_HEALTH_SCORE;
+```
+
+Nếu chưa có metrics, hệ thống dùng giá trị mặc định:
+
+```text
+DEFAULT_HEALTH_SCORE = 0.50
+```
+
+`healthRaw` càng thấp thì backend càng tốt. Giá trị này đã bao gồm:
+
+- EWMA latency
+- normalized latency
+- normalized queue
+- normalized CPU
+- Dynamic MCDM base score
+- PID penalty
+- EMA smoothing ở tầng final score
+
+---
+
+## 7. Capacity-normalized load
+
+Adaptive không so sánh inflight thô giữa các backend một cách ngang bằng, vì các container có CPU quota khác nhau.
+
+Công thức trong `RoutingCostCalculator`:
+
+```text
+capacityShare = capacityWeight / sumCapacity
+expectedInflight = max(minExpectedInflight, totalInflight * capacityShare)
+loadRaw = inflight / expectedInflight
+```
+
+Cấu hình liên quan:
+
+```yaml
+alb:
+  routing:
+    min-expected-inflight: 3.0
+```
+
+Ý nghĩa:
+
+- Backend có CPU quota cao hơn được kỳ vọng xử lý nhiều inflight hơn.
+- `loadRaw = 1.0` nghĩa là backend đang nhận đúng phần tải hợp lý theo năng lực.
+- `loadRaw > 1.0` nghĩa là backend đang nhận nhiều hơn mức hợp lý.
+- `loadRaw < 1.0` nghĩa là backend còn tương đối rảnh so với năng lực.
+
+---
+
+## 8. Hard exclusion
+
+Một backend có thể bị loại khỏi danh sách `eligible` nếu rơi vào một trong các trạng thái sau:
+
+| Reason | Điều kiện |
+|---|---|
+| `NO_METRICS` | Chưa có `ScoreBreakdown` trong cache |
+| `STALE` | Score quá cũ, vượt `stale-hard-ms` |
+| `UNHEALTHY_SCORE` | `healthRaw >= unhealthy-score-cutoff` |
+| `HARD_INFLIGHT_CAP` | Inflight vượt ngưỡng hard cap theo capacity |
+
+Cấu hình liên quan:
+
+```yaml
+alb:
+  routing:
+    stale-soft-ms: 1500
+    stale-hard-ms: 5000
+    unhealthy-score-cutoff: 2.0
+    hard-inflight-cap: 220
+```
+
+Hard cap được điều chỉnh theo năng lực backend:
+
+```text
+factor = capacityWeight / avgCapacity
+factor = clamp(factor, 0.70, 1.50)
+hardCap = max(40, round(hardInflightCap * factor))
+```
+
+Vì vậy instance 8081 có thể chịu hard cap cao hơn 8083.
+
+---
+
+## 9. Chuẩn hóa health và load trong cụm
+
+Sau khi có `healthRaw` và `loadRaw`, thuật toán chuẩn hóa tương đối trong cụm:
+
+```text
+healthCost = normalize(healthRaw, minHealth, maxHealth)
+loadCost   = normalize(loadRaw, minLoad, maxLoad)
+```
+
+Nếu khoảng chênh lệch quá nhỏ, hàm `normalize()` trả về `0.5` để tránh phóng đại nhiễu:
+
+```text
+MIN_ROUTING_NORM_RANGE = 0.12
+```
+
+Ý nghĩa:
+
+- `0.0` là tốt nhất trong cụm hiện tại.
+- `1.0` là xấu nhất trong cụm hiện tại.
+- `0.5` là trung lập khi khác biệt không đủ rõ.
+
+---
+
+## 10. Trọng số health/load động
+
+Adaptive tính mức phân tán tương đối của health và load:
+
+```text
+healthSpread = relativeSpread(healthRaw[])
+loadSpread   = relativeSpread(loadRaw[])
+```
+
+Sau đó tính trọng số mục tiêu:
+
+```text
+targetHealthWeight = healthSpread / (healthSpread + loadSpread + EPS)
+```
+
+Giá trị này được clamp trong khoảng cấu hình:
+
+```yaml
+alb:
+  routing:
+    min-health-weight: 0.25
+    max-health-weight: 0.75
+```
+
+Sau đó áp EMA:
+
+```text
+healthWeight = previous + 0.18 * (target - previous)
+loadWeight = 1.0 - healthWeight
+```
+
+Ý nghĩa:
+
+- Khi khác biệt health rõ hơn khác biệt load, thuật toán ưu tiên health.
+- Khi khác biệt load rõ hơn, thuật toán ưu tiên inflight/capacity.
+- EMA giúp trọng số không nhảy đột ngột giữa hai lần định tuyến.
+
+---
+
+## 11. Final routing cost
+
+Chi phí định tuyến cuối cùng được tính theo công thức:
+
+```text
+finalCost =
+    healthWeight * healthCost
+  + loadWeight   * loadCost
+  + overloadPenalty
+  + capPressurePenalty
+  + absoluteHealthPenalty
+  + stalePenalty
+```
+
+Trong đó:
+
+```text
+overloadPenalty = 0.30 * clamp((loadRaw - 0.95) / 0.45, 0, 1)
+capPressurePenalty = 0.20 * clamp((inflight / hardCap - 0.70) / 0.30, 0, 1)
+absoluteHealthPenalty = 0.12 * clamp((healthRaw - 0.75) / 0.75, 0, 1)
+```
+
+`finalCost` càng thấp thì backend càng có khả năng được chọn.
+
+Điểm quan trọng của bản hiện tại là ngoài min-max relative cost, thuật toán còn có penalty tuyệt đối. Điều này giúp Adaptive không mất tín hiệu khi cả ba backend cùng bị quá tải.
+
+---
+
+## 12. Low-load Round Robin
+
+Nếu tải thấp và các backend không khác biệt rõ, Adaptive chuyển sang Round Robin để tránh tự tạo dao động.
+
+Điều kiện:
+
+```text
+totalInflight <= lowLoadInflight
+healthSpread <= lowLoadHealthSpread
+loadSpread <= lowLoadLoadSpread
+```
+
+Cấu hình:
+
+```yaml
+alb:
+  routing:
+    low-load-inflight: 20
+    low-load-health-spread: 0.12
+    low-load-load-spread: 0.25
+```
+
+Khi nhánh này được kích hoạt, reason ghi nhận là:
+
+```text
+LOW_LOAD_RR
 ```
 
 ---
 
-## Luồng chính: choose()
+## 13. P2C selection
 
-Khi Spring Cloud Gateway nhận một request và cần biết phải gửi đến đâu, nó gọi `choose()`.
+Khi không ở warmup hoặc low-load, Adaptive chọn backend bằng Power of Two Choices.
 
-Hàm này lấy danh sách các instance đang UP từ Eureka qua `ServiceInstanceListSupplier`, sau đó đẩy danh sách đó vào `selectBestInstance()` để chọn instance. Kết quả được bọc trong `DefaultResponse` và trả về cho Gateway.
+Luồng chọn:
 
-Nếu Eureka chưa sẵn sàng hoặc không có instance nào, hàm trả về `EmptyResponse` để Gateway tự xử lý lỗi.
+```text
+Lấy danh sách candidates = eligible nếu có, ngược lại dùng all
+    |
+    v
+Random chọn hai RoutingCost a và b
+    |
+    v
+So sánh bằng RoutingCostCalculator.better(a, b)
+    |
+    v
+Chọn backend có finalCost thấp hơn
+```
+
+Nếu `finalCost` bằng nhau:
+
+1. Chọn backend có `loadCostRaw` thấp hơn.
+2. Nếu vẫn bằng nhau, chọn backend có `capacityWeight` cao hơn.
+
+P2C giúp giảm chi phí tính toán so với việc luôn chọn min toàn cục, đồng thời vẫn tránh phân phối ngẫu nhiên mù.
 
 ---
 
-## Luồng chi tiết: selectBestInstance()
+## 14. Probe recovery
 
-Đây là nơi toàn bộ logic chọn instance diễn ra. Hàm nhận vào danh sách instance và trả về 1 instance được chọn.
+Adaptive có cơ chế probe nhẹ để kiểm tra backend đang bị loại có thể hồi phục hay chưa.
 
-### Bước 0 — Xử lý các trường hợp đặc biệt
+Cấu hình:
 
-Nếu danh sách rỗng, trả về `EmptyResponse`.
-
-Nếu chỉ có đúng 1 instance, chọn ngay, không cần tính toán gì thêm.
-
-### Bước 1 — Thu thập thông tin của từng instance
-
-Với mỗi instance, hàm đọc 3 thông tin:
-
-**firstSeenMs** — thời điểm instance này lần đầu xuất hiện trong danh sách Eureka. Dùng để xác định instance có đang trong giai đoạn warmup không. Giá trị này chỉ được ghi lần đầu, không bao giờ bị ghi đè.
-
-**rawMcdm** — điểm tổng hợp của instance, đọc từ `MetricsCache`. Điểm này do `ScoreCalculator` tính dựa trên latency, queue length, và CPU, sau đó được làm mượt qua hai lớp EMA trước khi lưu vào cache. Giá trị thấp nghĩa là instance đang hoạt động tốt. Nếu cache chưa có dữ liệu (instance mới, chưa kịp poll), dùng giá trị mặc định là 0.35 — mức trung lập, không ưu tiên cũng không né tránh.
-
-**inflight** — số request đang được instance này xử lý tại thời điểm hiện tại, đọc từ `InflightTracker`. Đây là thông tin real-time, khác với score trong cache vốn phản ánh trạng thái trung bình trong khoảng 200ms vừa qua.
-
-Đồng thời trong bước này, hàm tìm ra `minCurrentInflight` — số inflight nhỏ nhất trong tất cả instance. Giá trị này dùng ở bước tính penalty sau.
-
-### Bước 2 — Kiểm tra warmup toàn hệ thống
-
-Một instance được coi là đang warmup nếu nó xuất hiện trong Eureka chưa đủ 5 giây. Trong thời gian đó, `MetricsCache` chưa có đủ dữ liệu đáng tin cậy để MCDM cho ra điểm chính xác.
-
-Nếu **tất cả** instance đều đang trong warmup (thường xảy ra khi hệ thống vừa khởi động), hàm chuyển sang Round-Robin đơn giản: dùng một bộ đếm tăng dần, lấy modulo số instance, chọn lần lượt.
-
-Nếu chỉ có **một số** instance trong warmup (còn có instance đã ổn định), instance đang warmup được gán `share = 1.0` — mức trung bình — và tiếp tục tham gia quá trình chọn bình thường cùng các instance khác.
-
-### Bước 3 — Tính capacity weight (share)
-
-`share[i]` đại diện cho tỉ lệ traffic mà instance i xứng đáng nhận, dựa trên điểm MCDM.
-
-Công thức: `share[i] = 1 / sqrt(rawMcdm)`
-
-Dùng căn bậc hai thay vì nghịch đảo thẳng (`1/score`) là có chủ đích: hàm căn bậc hai làm mềm sự chênh lệch. Khi một instance tốt hơn nhiều so với các instance còn lại, nó không nhận được quá nhiều traffic — điều này giúp hệ thống tránh dồn hết tải vào một điểm duy nhất.
-
-Ví dụ với 3 instance:
-| Instance | rawMcdm | share (trước normalize) |
-|----------|---------|--------------------------|
-| 8081     | 0.10    | 3.16                     |
-| 8082     | 0.50    | 1.41                     |
-| 8083     | 1.00    | 1.00                     |
-
-Sau khi normalize (chia cho tổng 5.57): 8081 nhận ~57%, 8082 nhận ~25%, 8083 nhận ~18%.
-
-**Share floor** — để instance tệ nhất không bao giờ bị "chết đói", hàm áp một ngưỡng tối thiểu:
-
-```
-capFloor = maxShare / 3.0
+```yaml
+alb:
+  routing:
+    probe-interval-ms: 3000
+    probe-probability: 0.005
 ```
 
-Nếu share của một instance thấp hơn ngưỡng này, nó được nâng lên bằng ngưỡng. Mục đích là để `MetricsPoller` vẫn có thể tiếp tục đo được dữ liệu thực tế từ instance đó — nếu không có traffic, không có metrics, không có metrics thì điểm không được cập nhật.
+Probe chỉ áp dụng cho backend bị loại vì health/stale/no-metrics, không áp dụng cho backend bị `HARD_INFLIGHT_CAP`.
 
-### Bước 4 — Tính routing score và chọn instance
+Adaptive không probe khi mode là:
 
-Với mỗi instance còn lại (không bị hard-cap), hàm tính `routingScore`:
-
+```text
+LOAD_DOMINANT
+ALL_HARD_EXCLUDED_FALLBACK
 ```
-routingScore = rawMcdm + relPenalty + absPenalty
-```
 
-Instance có `routingScore` thấp nhất được chọn.
-
-**Hard cap** — Instance có inflight >= 200 bị loại hoàn toàn, không tham gia tính điểm. Đây là biện pháp bảo vệ cuối: dù điểm MCDM tốt đến đâu, một instance đang xử lý 200 request song song cũng không nên nhận thêm request.
+Mục đích là tránh gửi thêm request thử nghiệm vào node đang quá tải trong giai đoạn stress.
 
 ---
 
-## Cơ chế hai loại penalty inflight
+## 15. Các mode quyết định
 
-MCDM score phản ánh trạng thái của instance trong khoảng thời gian vừa qua (trung bình qua EWMA và EMA). Nhưng giữa hai lần poll, inflight có thể thay đổi nhanh — đặc biệt khi traffic tăng đột biến. Hai loại penalty bổ sung bù đắp cho khoảng mù này.
+`RoutingContext.mode()` có thể là:
 
-### Penalty tương đối (relPenalty)
+| Mode | Ý nghĩa |
+|---|---|
+| `LOW_LOAD_RR` | Tải thấp, các node gần giống nhau, dùng Round Robin |
+| `ALL_HARD_EXCLUDED_FALLBACK` | Tất cả backend bị hard-excluded, phải fallback |
+| `HEALTH_DOMINANT` | Health weight chiếm ưu thế |
+| `LOAD_DOMINANT` | Load weight chiếm ưu thế |
+| `NORMAL_P2C` | Chọn bằng P2C bình thường |
 
-```
-relPenalty = 0.010 * (inflight_node - inflight_min)
-```
+Ngoài mode từ `RoutingContext`, metric `alb.routing.selected` còn có reason:
 
-Câu hỏi: "Instance này đang bận hơn instance nhàn nhất bao nhiêu request?"
-
-Mỗi request dư thêm so với instance nhàn nhất cộng thêm 0.010 vào score. Penalty này nhỏ, chỉ tạo ra sự ưu tiên nhẹ cho instance ít bận hơn khi các điểm MCDM gần bằng nhau.
-
-### Penalty tuyệt đối (absPenalty)
-
-```
-expected = totalInflight * share[i]
-excessRatio = (inflight / expected) - 1.0
-absPenalty = 0.6 * excessRatio^1.3   (chỉ khi excessRatio > 0)
-```
-
-Câu hỏi: "Instance này đang nhận nhiều hơn phần traffic công bằng của nó bao nhiêu?"
-
-`expected` là số inflight mà instance này nên đang xử lý nếu traffic được phân bổ đúng theo `share`. Nếu thực tế vượt quá expected, penalty tăng theo hàm mũ 1.3 — không tuyến tính. Điều này có nghĩa là vượt 50% bị phạt nặng hơn đúng tỉ lệ, vượt 100% bị phạt nặng hơn nhiều. Mục đích là ngăn việc một instance tiếp tục nhận request khi đã rõ ràng đang quá tải so với kỳ vọng.
-
----
-
-## Fallback khi tất cả instance đều bị hard-cap
-
-Nếu tất cả instance đều có inflight >= 200, vòng lặp kết thúc mà không chọn được instance nào (`best == null`).
-
-Trong trường hợp này, hàm chọn instance có inflight thấp nhất trong số các instance bị hard-cap (`leastLoadFb`). Nếu kể cả fallback này cũng không có, hàm lấy instance đầu tiên trong danh sách Eureka. Một cảnh báo được ghi vào log.
-
-Đây là biện pháp tránh trả về lỗi cho client trong trường hợp toàn hệ thống bão tải.
+| Reason | Khi nào xuất hiện |
+|---|---|
+| `SINGLE_INSTANCE` | Chỉ có một backend |
+| `WARMUP_RR` | Tất cả backend đang warmup |
+| `LOW_LOAD_RR` | Low-load guard được kích hoạt |
+| `PROBE_RECOVERY` | Request được dùng để probe backend bị loại |
+| `HEALTH_DOMINANT` | Chọn bằng P2C trong mode health-dominant |
+| `LOAD_DOMINANT` | Chọn bằng P2C trong mode load-dominant |
+| `NORMAL_P2C` | Chọn bằng P2C bình thường |
+| `ALL_HARD_EXCLUDED_FALLBACK` | Fallback khi tất cả backend bị loại |
 
 ---
 
-## State tĩnh và vòng đời
+## 16. Metrics Prometheus
 
-Ba biến sau đây là `static` — tồn tại ở cấp độ class, không phải instance của class:
+Adaptive ghi counter:
 
-`firstSeenMs` lưu thời điểm lần đầu thấy mỗi instanceId. Không bao giờ bị ghi đè sau khi đã được ghi.
+```text
+alb_routing_selected_total
+```
 
-`rrCounter` bộ đếm Round-Robin dùng trong warmup.
+Tag chính:
 
-`counterCache` lưu các Prometheus Counter object để tái sử dụng, tránh tra cứu registry mỗi request.
+- `backend`
+- `port`
+- `reason`
 
-Khi `AdminController` nhận POST `/actuator/alb/reset`, nó gọi `resetStaticState()` để xóa cả ba. Sau reset, tất cả instance vào lại warmup 5 giây, counter bắt đầu từ 0, Counter object được tạo lại. Đây là cách làm sạch state trước mỗi lần benchmark.
+Dashboard dùng PromQL:
+
+```promql
+sum by (backend) (
+  rate(alb_routing_selected_total[10s])
+)
+```
+
+và:
+
+```promql
+sum by (reason) (
+  rate(alb_routing_selected_total[10s])
+)
+```
+
+Các metric routing cost được đăng ký trong `MetricsPoller` và `RoutingCostCalculator`:
+
+```text
+alb_routing_score
+alb_routing_health_cost
+alb_routing_load_cost
+alb_routing_load_raw
+alb_routing_capacity_weight
+alb_routing_weight
+```
 
 ---
 
-## Ghi metric Prometheus
+## 17. Reset state
 
-Sau khi chọn được instance, hàm `emitMetric()` tăng counter `alb.routing.selected` gắn tag `backend` và `port`.
+Endpoint reset:
 
-Counter này cho phép Grafana vẽ biểu đồ tỉ lệ phân bổ traffic theo thời gian — qua đó kiểm chứng xem thuật toán có đang ưu tiên đúng instance hay không.
+```text
+POST /actuator/alb/reset
+```
 
-`counterCache` tránh gọi `Metrics.counter()` mỗi request. Lần đầu gặp instanceId mới, Counter được tạo và lưu vào map. Từ lần thứ hai trở đi, chỉ cần lấy từ map và gọi `.increment()`.
+Endpoint này gọi:
+
+- `InflightTracker.resetAll()`
+- `AdaptiveLoadBalancer.resetStaticState()`
+- `InflightLifecycle.resetActiveRequests()`
+- `PIDController.resetAllStates()`
+- `EwmaSmoother.resetAllStates()`
+- `SlidingWindowManager.resetAll()`
+- `MetricsPoller.resetAllStates()`
+- `DynamicWeightEngine.resetWeights()`
+- `MetricsCache.clearAll()`
+
+Reset state là bước bắt buộc trước benchmark để kết quả không bị ảnh hưởng bởi lần chạy trước.

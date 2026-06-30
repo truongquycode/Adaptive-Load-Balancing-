@@ -1,125 +1,312 @@
 # MetricsPoller
 
-## Vai trò
+## 1. Vai trò
 
-MetricsPoller là component chạy nền trong api-gateway-alb, có nhiệm vụ định kỳ
-thu thập metrics từ tất cả instance của registration-service-alb, tính toán score
-cho từng instance, rồi lưu vào MetricsCache để AdaptiveLoadBalancer đọc khi cần
-chọn instance cho request tiếp theo.
+`MetricsPoller` là thành phần control-plane chịu trách nhiệm thu thập metrics từ các backend `REGISTRATION-SERVICE-ALB`, xử lý metrics thô và cập nhật score cho Adaptive Load Balancer.
 
-Nói ngắn gọn: đây là "mắt" của hệ thống. Không có MetricsPoller, AdaptiveLoadBalancer
-không biết instance nào đang khỏe, instance nào đang quá tải.
+Nó chạy định kỳ, không chạy theo từng request của client.
 
+---
 
-## Luồng chạy tổng quát
-	@Scheduled(200ms)
-	       │
-	       ├─ [mutex isPolling] skip nếu đang bận
-	       │
-	       ├─ Eureka → List<ServiceInstance>
-	       │
-	       ├─ topology changed? → cleanupStaleData()
-	       │
-	       └─ Parallel WebClient.GET /api/alb-metrics × N instances
-	              │
-	              ├─ SUCCESS → processMetrics()
-	              │     ├─ calculateDeltaLatency() → latency (ms)
-	              │     ├─ ScoreCalculator.calculateScore() → ScoreBreakdown
-	              │     │     └─ [EWMA → normalize p5/p95 → MCDM → PID penalty]
-	              │     ├─ applyScoreEma() → smoothedFinalScore
-	              │     └─ metricsCache.putScore() ← AdaptiveLoadBalancer đọc từ đây
-	              │
-	              └─ FAILURE → penalty score tăng dần, lưu vào cache
-## Các thành phần chính
+## 2. Tần suất poll
 
-### isPolling
+Mã nguồn dùng annotation:
 
-AtomicBoolean dùng làm mutex. Mục đích là ngăn hai poll cycle chạy cùng lúc
-khi backend chậm hơn polling interval. Nếu cycle trước chưa xong thì cycle mới
-bị skip hoàn toàn, không xếp hàng chờ.
+```java
+@Scheduled(fixedRateString = "${alb.polling.interval:200}")
+```
 
+Cấu hình hiện tại:
 
-### lastActiveIds
+```yaml
+alb:
+    polling:
+        interval: 200
+```
 
-Lưu tập instanceId của lần poll trước. Mỗi cycle so sánh với tập hiện tại từ
-Eureka. Nếu khác nhau (có instance mới join hoặc down) thì gọi cleanupStaleData()
-để xóa data cũ tránh memory leak và tránh score cũ ảnh hưởng routing.
+Nghĩa là Gateway cố gắng poll backend mỗi `200ms`.
 
+Để tránh các chu kỳ poll chồng lên nhau, `MetricsPoller` dùng `AtomicBoolean isPolling`. Nếu chu kỳ trước chưa hoàn tất, chu kỳ mới sẽ bị bỏ qua.
 
-### trafficStates
+---
 
-Lưu trạng thái (count, totalTimeSec, lastLatency) của lần poll trước theo từng
-instanceId. Cần thiết vì Micrometer chỉ expose cumulative counter, không expose
-latency trực tiếp. Mỗi cycle tính delta giữa hai lần poll để ra latency trung
-bình của window ~200ms vừa qua.
+## 3. Danh sách backend
 
-Khi không có request nào hoàn thành trong window (idle instance), giữ nguyên
-latency lần trước thay vì trả về 0, tránh làm nhiễu EWMA.
+Mỗi lần poll, Gateway lấy danh sách instance từ Eureka:
 
+```java
+discoveryClient.getInstances("REGISTRATION-SERVICE-ALB")
+```
 
-### consecutiveFailures
+Nếu danh sách instance thay đổi, poller xóa dữ liệu cũ của instance không còn active:
 
-Đếm số lần poll thất bại liên tiếp theo từng instanceId. Score penalty tăng dần
-theo công thức min(10.0, failures x 2.5). Reset về 0 ngay khi poll thành công
-trở lại. Cho phép hệ thống tự động tránh instance down mà không cần chờ Eureka
-deregister.
+- raw metrics,
+- score,
+- capacity weight,
+- latency values,
+- queue values,
+- smoothed scores,
+- failure counters.
 
+---
 
-### smoothedScores
+## 4. Endpoint được poll
 
-EMA state của finalScore theo từng instanceId. Đây là tầng EMA thứ hai, khác
-với EwmaSmoother dùng cho latency. Mục đích là kiểm soát tốc độ phản ứng khi
-score thay đổi.
+Với mỗi backend, poller gọi:
 
-Dùng hệ số alpha bất đối xứng:
-- delta > 0.30  alpha = 0.60  phản ứng rất nhanh khi instance đột ngột xấu
-- delta > 0.00  alpha = 0.35  phản ứng vừa khi score tăng nhẹ
-- delta <= 0.00  alpha = 0.25  phản ứng chậm khi instance đang hồi phục
+```text
+GET /api/alb-metrics
+```
 
-Lý do bất đối xứng: phát hiện degradation nhanh để bảo vệ user, nhưng phục hồi
-chậm để tránh flapping (không vội route lại traffic khi instance mới ổn định
-được vài giây).
+URL được tạo từ `ServiceInstance.getUri()`:
 
+```java
+String url = instance.getUri().toString() + "/api/alb-metrics";
+```
 
-### registeredGauges
+Timeout hiện tại:
 
-Set lưu instanceId đã đăng ký Prometheus Gauge. Gauge.builder().register() chỉ
-được gọi một lần duy nhất cho mỗi instance. Nếu gọi lại sẽ gây
-DuplicateMeterException vì Micrometer không cho phép đăng ký trùng meter name
-và tag.
+```java
+METRICS_POLL_TIMEOUT_MS = 800
+```
 
+Nếu backend không trả lời trong 800ms hoặc có lỗi network, poller chuyển sang nhánh penalty.
 
-## Các metric được đẩy lên Prometheus
+---
 
-| Tên metric           | Ý nghĩa                                                  |
-|----------------------|----------------------------------------------------------|
-| alb.latency.ewma     | EWMA latency (ms) của instance                           |
-| alb.queue.current    | Số request đang chờ xử lý                                |
-| alb.final.score      | Score sau EMA, càng thấp càng tốt                        |
-| alb.routing.score    | Score có cộng thêm penalty nếu instance nhận quá nhiều traffic so với phần chia công bằng. Dùng để debug tại sao một instance ít được chọn dù score thấp. |
+## 5. Dữ liệu `/api/alb-metrics`
 
-## Mối quan hệ với các component khác
+Backend trả về các field:
 
-MetricsPoller phụ thuộc vào:
-- DiscoveryClient: lấy danh sách instance từ Eureka
-- WebClient: gọi HTTP đến /api/alb-metrics của từng instance
-- ScoreCalculator: tính score từ metrics thô
-- SlidingWindowManager: lưu HDR Histogram, cung cấp percentile cho ScoreCalculator
-- InflightTracker: fallback khi instance chưa có gauge inflight
-- MetricsCache: nơi lưu kết quả cuối cùng
+```json
+{
+  "cpu": 0.0,
+  "rawCpu": 0.0,
+  "count": 0.0,
+  "totalTime": 0.0,
+  "queue": 0.0,
+  "capacityWeight": 1.0
+}
+```
 
-MetricsPoller được đọc bởi:
-- AdaptiveLoadBalancer: đọc score từ MetricsCache mỗi khi cần chọn instance
-- DynamicWeightEngine: đọc raw metrics từ MetricsCache để tính lại MCDM weights
+Ý nghĩa:
 
+| Field | Ý nghĩa |
+|---|---|
+| `cpu` | CPU usage đã chuẩn hóa theo CPU quota container |
+| `rawCpu` | `process.cpu.usage` thô từ Micrometer |
+| `count` | Tổng số request nghiệp vụ đã hoàn thành |
+| `totalTime` | Tổng thời gian xử lý request, đơn vị giây |
+| `queue` | Số request đang xử lý tại backend |
+| `capacityWeight` | Số core CPU tương đối phát hiện từ cgroup/JVM |
 
-## Lưu ý khi debug
+Backend loại trừ các endpoint control khỏi thống kê latency:
 
-Nếu một instance liên tục bị tránh dù đang chạy bình thường, kiểm tra:
-1. /api/alb-metrics của instance đó có trả về đúng không (cpu, count, totalTime, queue)
-2. consecutiveFailures của instance đó có đang tích lũy không (log warn "Poll failed")
-3. smoothedScores có đang giảm đủ chậm không do alpha=0.25 khi recover
+- `/api/alb-metrics`
+- `/actuator/**`
+- `/api/chaos/**`
 
-Để reset toàn bộ state về ban đầu, gọi POST /actuator/alb/reset.
-Sau reset, lần poll tiếp theo sẽ cold-start lại: calculateDeltaLatency dùng p50
-histogram làm baseline, applyScoreEma khởi tạo lại từ rawScore đầu tiên.ầu tiên.
+---
+
+## 6. Tính delta latency
+
+Micrometer Timer trả về counter tích lũy, không trả latency tức thời. Vì vậy poller tính latency theo chênh lệch giữa hai lần poll:
+
+```text
+deltaCount = currentCount - previousCount
+deltaTotal = currentTotalTime - previousTotalTime
+latencyMs = (deltaTotal / deltaCount) * 1000
+```
+
+Nếu `deltaCount > 0`, đây là latency trung bình của các request hoàn thành trong cửa sổ poll vừa qua.
+
+Nếu counter bị reset do container/JVM restart, poller tái thiết lập baseline.
+
+Nếu không có request mới hoàn thành, poller không kéo latency về 0. Thay vào đó, nó kéo nhẹ latency về baseline idle:
+
+```text
+currentLatency = previousLatency + 0.20 * (idleTarget - previousLatency)
+```
+
+Baseline mặc định khi chưa có dữ liệu là:
+
+```text
+IDLE_LATENCY_BASELINE_MS = 65.0
+```
+
+Latency được clamp vào khoảng:
+
+```text
+[1ms, 3000ms]
+```
+
+---
+
+## 7. Xử lý queue
+
+Poller ưu tiên giá trị `queue` do backend báo cáo từ gauge:
+
+```text
+http.server.requests.inflight
+```
+
+Nếu backend không cung cấp queue hợp lệ, Gateway fallback về `InflightTracker`:
+
+```java
+double realQueue = reportedQueue >= 0 ? reportedQueue : inflightTracker.getInflight(instanceId);
+```
+
+Trong mã nguồn hiện tại, backend có `RegistrationServiceMetricsFilter` để đăng ký gauge inflight và loại trừ endpoint control.
+
+---
+
+## 8. Capacity weight
+
+Poller đọc:
+
+```java
+double capacityWeight = node.path("capacityWeight").asDouble(1.0);
+metricsCache.putCapacityWeight(instanceId, capacityWeight);
+```
+
+`capacityWeight` được dùng bởi `RoutingCostCalculator` để tính phân bổ tải theo năng lực container:
+
+```text
+capacityShare = capacityWeight / sumCapacity
+expectedInflight = max(minExpectedInflight, totalInflight * capacityShare)
+```
+
+Nhờ đó backend 2 CPU được kỳ vọng xử lý nhiều request hơn backend 1 CPU.
+
+---
+
+## 9. Pipeline xử lý metrics
+
+Sau khi parse dữ liệu, poller tạo:
+
+```java
+InstanceMetrics metrics = new InstanceMetrics(instanceId, latency, realQueue, cpu);
+```
+
+Sau đó:
+
+```text
+1. Lưu raw metrics vào MetricsCache.
+2. Ghi latency và queue vào SlidingWindowManager.
+3. Gọi ScoreCalculator.calculateScore().
+4. Áp EMA bất đối xứng lên finalScore.
+5. Lưu ScoreBreakdown đã smooth vào MetricsCache.
+6. Cập nhật backing maps cho Prometheus Gauge.
+7. Đăng ký gauge nếu instance chưa từng được đăng ký.
+```
+
+---
+
+## 10. EMA bất đối xứng cho finalScore
+
+Sau khi `ScoreCalculator` trả về `finalScore`, poller làm mượt thêm lần nữa bằng EMA.
+
+Cấu hình hard-code trong mã nguồn:
+
+```text
+EMA_ALPHA_SPIKE = 0.60
+EMA_ALPHA_RISE = 0.35
+EMA_ALPHA_RECOVER = 0.25
+EMA_SPIKE_THRESHOLD = 0.30
+```
+
+Quy tắc:
+
+| Trường hợp | Alpha | Ý nghĩa |
+|---|---:|---|
+| Score tăng mạnh | `0.60` | Phản ứng nhanh khi backend xấu đi |
+| Score tăng nhẹ | `0.35` | Phản ứng vừa phải |
+| Score giảm | `0.25` | Phục hồi chậm để tránh flapping |
+
+Công thức:
+
+```text
+smoothedScore = previous + alpha * (rawScore - previous)
+```
+
+---
+
+## 11. Xử lý poll failure
+
+Nếu gọi `/api/alb-metrics` thất bại, poller tăng số lần lỗi liên tiếp:
+
+```text
+failures = consecutiveFailures + 1
+```
+
+Penalty score:
+
+```text
+rawPenaltyScore = min(10.0, failures * 2.5)
+```
+
+Sau đó vẫn áp EMA finalScore và tạo một `ScoreBreakdown` giả với trạng thái xấu:
+
+```text
+normLatency = 1
+normQueue = 1
+normCpu = 1
+finalScore = smoothedPenaltyScore
+```
+
+Mục đích là để Adaptive tránh route vào backend không còn cung cấp metrics.
+
+---
+
+## 12. Metrics Prometheus do poller đăng ký
+
+Theo từng backend:
+
+```text
+alb_latency_ewma
+alb_queue_current
+alb_final_score
+alb_routing_score
+alb_routing_health_cost
+alb_routing_load_cost
+alb_routing_load_raw
+alb_routing_capacity_weight
+```
+
+Trong đó:
+
+- `alb_latency_ewma`: latency đã làm mượt bằng EWMA.
+- `alb_queue_current`: số request đang xử lý.
+- `alb_final_score`: health score sau EMA.
+- `alb_routing_score`: final routing cost.
+- `alb_routing_health_cost`: health cost đã chuẩn hóa trong cụm.
+- `alb_routing_load_cost`: load cost đã chuẩn hóa trong cụm.
+- `alb_routing_load_raw`: tỷ lệ `inflight / expectedInflight`.
+- `alb_routing_capacity_weight`: năng lực tương đối của backend.
+
+---
+
+## 13. Reset
+
+Khi gọi:
+
+```text
+POST /actuator/alb/reset
+```
+
+`MetricsPoller.resetAllStates()` sẽ xóa:
+
+- `trafficStates`
+- `consecutiveFailures`
+- `smoothedScores`
+- `latencyValues`
+- `queueValues`
+- `scoreValues`
+
+Đồng thời gọi:
+
+```java
+routingCostCalculator.reset();
+```
+
+Các Prometheus gauge đã đăng ký không bị hủy, nhưng backing map được làm sạch.

@@ -1,343 +1,383 @@
-# ScoreCalculator — Luồng hoạt động
+# ScoreCalculator
 
-## Mục đích
+## 1. Vai trò
 
-ScoreCalculator là component trung tâm chịu trách nhiệm tính điểm tổng hợp
-(finalScore) cho từng instance backend. Điểm này phản ánh "sức khỏe" hiện tại
-của một instance theo ba tiêu chí: latency, queue length và CPU usage.
+`ScoreCalculator` tính health score cho từng backend dựa trên metrics vừa được `MetricsPoller` thu thập.
 
-Điểm càng thấp nghĩa là instance càng tốt. AdaptiveLoadBalancer dựa vào điểm
-này để quyết định route request đến instance nào.
+Đầu vào:
 
-ScoreCalculator không chạy theo lịch. Nó được gọi bởi MetricsPoller mỗi 200ms,
-một lần cho mỗi instance đang hoạt động. Kết quả được lưu vào MetricsCache để
-AdaptiveLoadBalancer đọc khi có request đến.
+```text
+InstanceMetrics:
+    - latency
+    - queueLength
+    - cpu
+```
 
----
+Đầu ra:
 
-## Vị trí trong hệ thống
+```text
+ScoreBreakdown:
+    - ewmaLatency
+    - normLatency
+    - normQueue
+    - normCpu
+    - baseScore
+    - pidPenalty
+    - finalScore
+    - updatedAtMs
+```
 
-MetricsPoller là bên gọi ScoreCalculator. Trước khi gọi, MetricsPoller đã có:
-- Raw latency (tính từ delta counter của Micrometer)
-- Queue length (số request đang xử lý)
-- CPU usage (process.cpu.usage từ Micrometer)
-
-ScoreCalculator nhận ba giá trị thô này và đi qua một pipeline gồm bốn tầng:
-
-	raw metrics
-	|
-	|-- EWMA smoothing (EwmaSmoother)
-	|-- Normalization (NormalizationFunctions)
-	|-- MCDM base score (DynamicWeightEngine)
-	|-- PID penalty (PIDController)
-	|
-	finalScore → MetricsCache → AdaptiveLoadBalancer
----
-
-## Hằng số
-
-### SCORE_NULL_INSTANCE = 20.0
-
-Điểm trả về khi InstanceMetrics là null, tức là poll metrics thất bại hoàn toàn
-và ScoreCalculator không có dữ liệu nào để tính. Giá trị 20.0 cao hơn nhiều
-so với điểm bình thường trong khoảng 0.05 đến 1.8. Điều này đảm bảo
-AdaptiveLoadBalancer gần như không bao giờ chọn instance không có dữ liệu.
-
-### SYSTEM_P5_FALLBACK = 30.0 (ms)
-
-Giá trị fallback cho P5 toàn hệ thống khi HDR Histogram chưa có đủ data.
-Tình huống này xảy ra ngay sau khi hệ thống khởi động hoặc sau khi gọi
-POST /actuator/alb/reset. 30ms phản ánh latency tối thiểu thực tế của một
-Java microservice có kèm I/O delay.
-
-### SYSTEM_P95_FALLBACK = 300.0 (ms)
-
-Giá trị fallback cho P95 toàn hệ thống, dùng cùng với P5_FALLBACK để tạo
-dải chuẩn hóa [30ms, 300ms] khi histogram chưa đủ data. Instance có latency
-300ms sẽ nhận normLatency = 1.0 (tệ nhất có thể).
+`finalScore` càng thấp thì backend càng tốt.
 
 ---
 
-## Luồng chạy chính
-	calculateScore(instanceId, current)
-	|
-	|-- [current == null] ----------------> trả về score = 20.0, bỏ qua toàn bộ pipeline
-	|
-	|-- getSnapshot(instanceId)
-	|       |
-	|       |-- p50: fallback EWMA khi instance idle
-	|       |-- qP99: ngưỡng chuẩn hóa queue
-	|
-	|-- lRaw = current.latency > 0 ? latency : p50
-	|
-	|-- ewmaSmoother.smooth(lRaw, tauMin, tauMax, k, p50)
-	|       |
-	|       |-- ewmaLat: latency đã qua Adaptive EWMA
-	|
-	|-- getSystemSnapshot()
-	|       |
-	|       |-- sysP5, sysP75, sysP95 (toàn hệ thống)
-	|       |-- kiểm tra tính hợp lệ → fallback nếu cần
-	|
-	|-- invRange = 1.0 / (sysP95 - sysP5)
-	|
-	|-- normalizeLatency(ewmaLat, sysP5, invRange)  → nL ∈ [0,1]
-	|-- normalizeQueue(queueLength, qP99)            → nQ ∈ [0,1]
-	|-- normalizeCpu(cpu)                            → nC ∈ [0,1]
-	|
-	|-- weightEngine.computeBaseScore(nL, nQ, nC)
-	|       |
-	|       |-- baseScore = alphanL + betanQ + gamma*nC
-	|
-	|-- normalizeLatency(sysP75, sysP5, invRange)   → normalizedP75
-	|
-	|-- pidController.calculatePenalty(nL, normalizedP75, pidConfig)
-	|       |
-	|       |-- penalty ∈ [0, lambda=0.8]
-	|
-	|-- finalScore = baseScore + penalty
-	|
-	return ScoreBreakdown(ewmaLat, nL, nQ, nC, baseScore, penalty, finalScore)
----
+## 2. Vị trí trong pipeline
 
-## Chi tiết từng bước
+```text
+MetricsPoller
+    |
+    | InstanceMetrics
+    v
+ScoreCalculator
+    |
+    | EWMA
+    | normalization
+    | Dynamic MCDM
+    | PID
+    v
+ScoreBreakdown
+    |
+    v
+MetricsCache
+    |
+    v
+RoutingCostCalculator
+```
 
-### Bước 0 — Kiểm tra null
-
-Nếu InstanceMetrics là null, ScoreCalculator trả về ngay một ScoreBreakdown với
-tất cả giá trị normalized bằng 1.0 và finalScore = 20.0. Bước này không tính
-PID penalty vì không có dữ liệu latency nào để so sánh.
-
-Trong thực tế, MetricsPoller đã có cơ chế penalty riêng cho trường hợp poll
-thất bại. Nhánh null này là lớp bảo vệ cuối cùng nếu ScoreCalculator được
-gọi từ luồng khác.
-
-### Bước 1 — Lấy per-instance percentile snapshot
-
-ScoreCalculator lấy snapshot từ HDR Histogram riêng của instance đó. Snapshot
-trả về bốn giá trị:
-
-- p5: không dùng trực tiếp trong ScoreCalculator nhưng có trong PercentileSnapshot.
-- p50: dùng làm giá trị khởi tạo EWMA và fallback khi instance không có request.
-- p95: không dùng trực tiếp ở đây; system snapshot đảm nhiệm vai trò chuẩn hóa.
-- qP99: dùng làm ngưỡng trên khi chuẩn hóa queue length.
-
-### Bước 2 — Xác định lRaw
-
-Raw latency từ MetricsPoller (current.getLatency()) là giá trị trung bình của
-các request hoàn thành trong window 200ms vừa qua. Nếu window không có request
-nào hoàn thành (instance đang idle), giá trị này bằng 0. Trong trường hợp đó,
-ScoreCalculator dùng p50 làm thay thế để EWMA không bị kéo xuống 0 một cách
-giả tạo.
-
-### Bước 3 — Adaptive EWMA smoothing
-
-EwmaSmoother nhận lRaw và trả về ewmaLat — latency đã được làm mượt. Mục đích là
-lọc bỏ noise ngắn hạn trong khi vẫn phản ứng nhanh với thay đổi thực sự.
-
-Điểm khác biệt so với EWMA thông thường là tham số tau (thời hằng làm mượt) được
-điều chỉnh tự động theo mức độ lệch giữa lRaw và ewmaLat hiện tại:
-
-- Deviation lớn (latency đột ngột thay đổi nhiều): tau giảm về tauMin (200ms),
-  EWMA phản ứng nhanh để bắt kịp thay đổi.
-- Deviation nhỏ (latency ổn định): tau tăng về tauMax (2000ms), EWMA lọc nhiễu
-  mạnh hơn.
-
-ewmaLat là giá trị được dùng cho tất cả các bước còn lại, không phải lRaw.
-
-### Bước 4 — Lấy system-wide snapshot
-
-ScoreCalculator lấy snapshot tổng hợp latency của toàn bộ hệ thống từ global
-HDR Histogram trong SlidingWindowManager. Snapshot này chứa sysP5, sysP75
-và sysP95.
-
-Sau khi lấy về, ScoreCalculator kiểm tra tính hợp lệ:
-
-- Nếu sysP95 nhỏ hơn hoặc bằng sysP5: histogram bị đảo, không thể dùng.
-- Nếu sysP5 nhỏ hơn 1.0: histogram chưa có đủ data.
-
-Trong cả hai trường hợp, sysP5 và sysP95 được thay bằng SYSTEM_P5_FALLBACK
-và SYSTEM_P95_FALLBACK.
-
-Lý do dùng system-wide snapshot thay vì per-instance snapshot cho bước chuẩn
-hóa: để so sánh các instance với nhau trên cùng một thước đo chung. Nếu mỗi
-instance tự chuẩn hóa theo lịch sử của chính mình, một instance vốn chậm
-sẽ luôn nhận normLatency tốt khi so với chính nó, dù thực ra đang chậm hơn
-các instance khác.
-
-### Bước 5 — Tính invRange
-
-invRange = 1.0 / (sysP95 - sysP5)
-
-Đây là giá trị được tính trước một lần để dùng cho cả hai lần gọi
-normalizeLatency (cho ewmaLat và cho sysP75). Nhân với invRange nhanh hơn chia
-mỗi lần khoảng 5 CPU cycle, không đáng kể trong một lần tính nhưng cộng lại
-qua hàng nghìn lần gọi mỗi giây thì có ý nghĩa.
-
-### Bước 6 — Chuẩn hóa ba tiêu chí
-
-Ba giá trị normalized nL, nQ, nC đều nằm trong khoảng [0, 1].
-Giá trị 0 nghĩa là tốt nhất, giá trị 1 nghĩa là tệ nhất.
-
-**nL (normalized Latency):** Áp dụng Min-Max scaling trên dải [sysP5, sysP95].
-	`nL = clamp((ewmaLat - sysP5) / (sysP95 - sysP5), 0, 1)`
-Instance có ewmaLat bằng sysP5 (nhanh như top 5% toàn hệ thống) sẽ nhận nL = 0.
-Instance có ewmaLat bằng sysP95 (chậm như bottom 5% toàn hệ thống) sẽ nhận nL = 1.
-
-**nQ (normalized Queue):** Áp dụng log-scale với ngưỡng qP99 của chính instance.
-Log-scale phù hợp vì phân phối queue thường lệch phải (right-skewed): hầu hết
-thời gian queue thấp, chỉ spike khi overload. Log-scale nhạy với queue nhỏ
-(1 đến 5 request) nhưng không bị sốc khi queue tăng rất cao đột ngột.
-
-**nC (normalized CPU):** Đơn giản là clamp cpu vào [0, 1]. process.cpu.usage
-từ Micrometer đã ở dạng tỉ lệ nhưng đôi khi JVM burst trả về giá trị hơi lớn
-hơn 1.0. Nếu giá trị là NaN hoặc âm (chưa đo được), fallback về 0.5.
-
-### Bước 7 — Tính MCDM baseScore
-
-baseScore = alpha * nL + beta * nQ + gamma * nC
-
-Ba trọng số alpha, beta, gamma được DynamicWeightEngine cập nhật mỗi 5 giây
-dựa trên Entropy Weight Method kết hợp với AHP. Giá trị mặc định:
-
-| Tiêu chí | Trọng số mặc định |
-|----------|-------------------|
-| alpha (latency) | 0.648 |
-| beta  (queue)   | 0.230 |
-| gamma (cpu)     | 0.122 |
-
-Khi CPU bão tải và có sự chênh lệch lớn giữa các instance, gamma sẽ tăng lên
-(tối đa 0.35) và alpha giảm xuống (tối thiểu 0.15).
-
-baseScore nằm trong khoảng [0, 1].
-
-### Bước 8 — Tính PID penalty
-
-Trước khi gọi PIDController, ScoreCalculator chuẩn hóa sysP75 về cùng thang đo
-với nL để PID có thể so sánh apples-to-apples:
-
-	normalizedP75 = clamp((sysP75 - sysP5) / (sysP95 - sysP5), 0, 1)
-normalizedP75 đóng vai trò setpoint: ngưỡng mà một instance được coi là
-"hoạt động bình thường". Khi nL của instance vượt quá normalizedP75, PID bắt
-đầu tích lũy penalty.
-
-PIDController trả về penalty trong khoảng [0, lambda] với lambda = 0.8 theo
-cấu hình mặc định.
-
-Chi tiết cách PID tính penalty (thành phần P, I, D; anti-windup; decay integral;
-low-pass filter cho D) được mô tả trong tài liệu riêng của PIDController.
-
-### Bước 9 — Tổng hợp finalScore và trả về
-
-finalScore = baseScore + penalty
-
-Khoảng thực tế trong điều kiện bình thường:
-- Instance khỏe: khoảng 0.05 đến 0.3
-- Instance bình thường: khoảng 0.3 đến 0.7
-- Instance đang quá tải: khoảng 0.7 đến 1.8
-
-ScoreCalculator trả về ScoreBreakdown chứa toàn bộ giá trị trung gian. MetricsPoller
-nhận ScoreBreakdown này, áp thêm một lớp EMA bất đối xứng lên finalScore (phản
-ứng nhanh khi xấu đi, phục hồi chậm khi tốt trở lại), rồi mới lưu vào MetricsCache.
-
-AdaptiveLoadBalancer đọc finalScore từ MetricsCache mỗi khi có request cần routing.
+`ScoreCalculator` không trực tiếp route request. Kết quả của nó được lưu vào `MetricsCache` để Adaptive Load Balancer dùng ở tầng data-plane.
 
 ---
 
-## Mối quan hệ với các component khác
+## 3. Xử lý trường hợp không có metrics
 
-| Component | Chiều | Mô tả |
-|---|---|---|
-| MetricsPoller | Gọi ScoreCalculator | Gọi calculateScore() mỗi 200ms sau khi tính delta latency từ Micrometer. Truyền vào InstanceMetrics gồm latency, queueLength, cpu. |
-| SlidingWindowManager | ScoreCalculator đọc | Cung cấp per-instance snapshot (p50, qP99) và system-wide snapshot (sysP5, sysP75, sysP95). ScoreCalculator không ghi vào SlidingWindowManager, chỉ đọc. |
-| EwmaSmoother | ScoreCalculator gọi | Nhận lRaw và trả về ewmaLat. EwmaSmoother giữ state nội bộ (giá trị EWMA hiện tại) per-instance trong Caffeine Cache. |
-| DynamicWeightEngine | ScoreCalculator gọi | Nhận nL, nQ, nC và trả về baseScore đã nhân với trọng số hiện tại. DynamicWeightEngine cập nhật trọng số nền riêng mỗi 5 giây. |
-| PIDController | ScoreCalculator gọi | Nhận nL và normalizedP75 (setpoint) rồi trả về penalty. PIDController giữ state PID (integral, derivative) per-instance trong Caffeine Cache. |
-| NormalizationFunctions | ScoreCalculator gọi | Stateless utility: normalizeLatency, normalizeQueue, normalizeCpu. Không có state nội bộ. |
-| AlbProperties | ScoreCalculator đọc | Cung cấp tham số EWMA (tauMin, tauMax, k) và PID (kp, ki, kd, lambda...) từ application.yml. |
-| MetricsCache | Ghi gián tiếp qua MetricsPoller | ScoreCalculator không ghi trực tiếp vào MetricsCache. Nó trả về ScoreBreakdown cho MetricsPoller, MetricsPoller mới quyết định lưu vào cache sau khi áp EMA. |
-| AdminController | Gọi gián tiếp | POST /actuator/alb/reset gọi reset trên EwmaSmoother và PIDController, xóa state EWMA và integral PID. Lần gọi calculateScore() tiếp theo sẽ cold-start lại cả hai. |
+Nếu `InstanceMetrics current == null`, `ScoreCalculator` trả về score rất xấu:
+
+```text
+SCORE_NULL_INSTANCE = 20.0
+```
+
+Score này cao hơn nhiều so với score bình thường, giúp Adaptive gần như không chọn backend không có metrics.
 
 ---
 
-## Ví dụ kịch bản thực tế
+## 4. Lấy percentile snapshot
 
-Kịch bản: instance 8083 (1.0 CPU) bật CPU spike. Hai instance còn lại (8081, 8082)
-bình thường.
+Đầu tiên, `ScoreCalculator` lấy snapshot theo instance:
 
-**Trước khi bật CPU spike:**
+```java
+PercentileSnapshot snap = windowManager.getSnapshot(instanceId);
+```
 
-MetricsPoller poll xong, ScoreCalculator nhận được cho 8083:
-- latency = 80ms, queue = 2, cpu = 0.15
+Snapshot gồm:
 
-SlidingWindowManager trả về sysP5 = 40ms, sysP75 = 80ms, sysP95 = 150ms.
+```text
+p5
+p50
+p95
+qP99
+```
 
-invRange = 1 / (150 - 40) = 0.00909
+Trong đó:
 
-ewmaLat sau smooth ≈ 82ms (EWMA gần với raw vì latency ổn định)
+- `p50` dùng làm fallback khi khởi tạo EWMA.
+- `qP99` dùng làm ngưỡng chuẩn hóa queue.
+- `p5`, `p95` theo instance vẫn được lưu trong snapshot, nhưng latency normalization chính hiện dùng system-wide snapshot.
 
-nL = (82 - 40) * 0.00909 ≈ 0.38
-nQ ≈ 0.12 (queue thấp)
-nC ≈ 0.15
+Sau đó lấy system-wide snapshot:
 
-baseScore = 0.648 * 0.38 + 0.230 * 0.12 + 0.122 * 0.15 ≈ 0.29
+```java
+SlidingWindowManager.SystemSnapshot sysSs = windowManager.getSystemSnapshot();
+```
 
-normalizedP75 = (80 - 40) * 0.00909 ≈ 0.36
+System snapshot gồm:
 
-nL (0.38) vừa vượt normalizedP75 (0.36) một chút → penalty ≈ 0.02
-
-finalScore ≈ 0.31
-
-**Sau khi bật CPU spike (vài giây sau):**
-
-latency tăng lên 700ms vì CPU bị burner thread chiếm. cpu = 0.90.
-
-sysP95 tăng lên (global histogram ghi nhận thêm latency cao từ 8083) ≈ 350ms.
-
-ewmaLat phản ứng nhanh (tau giảm về tauMin vì deviation lớn) ≈ 500ms.
-
-nL = (500 - 40) / (350 - 40) ≈ 1.0 (clamp về 1.0)
-
-nC = 0.90
-
-DynamicWeightEngine sau vài chu kỳ 5 giây: gamma tăng lên ≈ 0.28 (CPU đang có
-variance lớn giữa các instance).
-
-baseScore = 0.55 * 1.0 + 0.17 * nQ + 0.28 * 0.90 ≈ 0.80
-
-normalizedP75 đã tăng theo vì global P75 tăng ≈ 0.45. Nhưng nL của 8083 = 1.0
-nên error vẫn lớn. PID đã tích lũy integral sau vài giây → penalty ≈ 0.65.
-
-finalScore ≈ 1.45
-
-AdaptiveLoadBalancer thấy 8083 có finalScore 1.45 so với 8081 khoảng 0.25 và
-8082 khoảng 0.30 → traffic gần như không được route đến 8083.
+```text
+systemP5
+systemP75
+systemP95
+```
 
 ---
 
-## Lưu ý khi debug
+## 5. EWMA latency
 
-**Nếu tất cả instance đều bị coi là "tệ" (score cao bất thường):**
+Latency thô được xác định:
 
-Kiểm tra system snapshot có đang dùng fallback không. Nếu sysP5 = 30ms và
-sysP95 = 300ms cố định sau nhiều giây, nghĩa là global histogram chưa có đủ
-data. Nguyên nhân thường là MetricsPoller đang không gọi được addMetrics() do
-poll thất bại liên tục.
+```text
+lRaw = current.latency > 0 ? current.latency : p50
+```
 
-**Nếu một instance có score thấp bất thường dù đang chậm:**
+Sau đó gọi:
 
-Kiểm tra EwmaSmoother có đang giữ ewmaLat quá thấp do state cũ không. Gọi
-POST /actuator/alb/reset để xóa EWMA state và PID state. Lần tính score tiếp
-theo sẽ bắt đầu từ p50 của instance đó.
+```java
+ewmaSmoother.smooth(instanceId, lRaw, tauMin, tauMax, k, p50)
+```
 
-**Để xem chi tiết từng thành phần của score:**
+Cấu hình hiện tại:
 
-ScoreBreakdown trả về đầy đủ ewmaLat, nL, nQ, nC, baseScore, pidPenalty, finalScore.
-Prometheus Gauges alb.latency.ewma, alb.queue.current, alb.final.score hiển thị
-các giá trị này theo thời gian thực trên Grafana.
+```yaml
+alb:
+    ewma:
+        tau-min: 200.0
+        tau-max: 2000.0
+        k: 3.0
+```
 
-**Nếu score không thay đổi dù instance đã bật chaos:**
+Kết quả là:
 
-Kiểm tra polling có đang bị skip liên tục do isPolling mutex không. Log của
-MetricsPoller sẽ có "Poll cycle skipped" nếu cycle trước chưa xong trong 200ms.
-Đây thường xảy ra khi response timeout của backend cao hơn polling interval.
+```text
+ewmaLatency
+```
+
+Đây là latency đã được làm mượt, dùng cho bước chuẩn hóa.
+
+---
+
+## 6. Fallback system percentile
+
+Nếu system snapshot chưa hợp lệ:
+
+```text
+sysP95 <= sysP5
+sysP5 < 1.0
+```
+
+ScoreCalculator dùng fallback:
+
+```text
+SYSTEM_P5_FALLBACK = 30.0ms
+SYSTEM_P95_FALLBACK = 300.0ms
+```
+
+Sau đó kiểm tra độ rộng dải latency:
+
+```text
+latencyRange = sysP95 - sysP5
+```
+
+Nếu dải nhỏ hơn:
+
+```text
+MIN_SYSTEM_LATENCY_RANGE_MS = 80.0
+```
+
+thì dải được mở rộng tối thiểu thành 80ms. Mục đích là tránh khuếch đại nhiễu nhỏ ở low load.
+
+---
+
+## 7. Chuẩn hóa latency
+
+Latency được chuẩn hóa theo min-max trên system-wide P5/P95:
+
+```text
+normLatency = clamp((ewmaLatency - sysP5) / (sysP95 - sysP5), 0, 1)
+```
+
+Ý nghĩa:
+
+- `0`: latency tốt gần system P5.
+- `1`: latency xấu gần system P95.
+- Giá trị nằm giữa phản ánh vị trí tương đối của backend trong cụm.
+
+---
+
+## 8. Chuẩn hóa queue
+
+Queue dùng log scaling:
+
+```text
+qMax = max(qP99, 40.0)
+
+logScore = log1p(qRaw) / log1p(qMax)
+linearScore = min(1.0, qRaw / (qMax * 2.0))
+
+normQueue = min(1.0, 0.6 * logScore + 0.4 * linearScore)
+```
+
+Lý do dùng log scaling:
+
+- Queue thường tăng theo phân phối lệch phải.
+- Chênh lệch từ 0 lên 5 request quan trọng hơn chênh lệch từ 100 lên 105.
+- Log scaling giúp thuật toán nhạy với queue nhỏ nhưng không bị sốc khi queue spike lớn.
+
+Nếu `qRaw <= 0`:
+
+```text
+normQueue = 0
+```
+
+---
+
+## 9. Chuẩn hóa CPU
+
+CPU được chuẩn hóa đơn giản:
+
+```text
+normCpu = clamp(cpuRaw, 0, 1)
+```
+
+Nếu giá trị CPU là NaN hoặc âm:
+
+```text
+normCpu = 0.5
+```
+
+Ở backend, `cpu` đã được chuẩn hóa theo CPU quota container trước khi trả về `/api/alb-metrics`.
+
+---
+
+## 10. MCDM base score
+
+Sau khi có ba giá trị chuẩn hóa:
+
+```text
+normLatency
+normQueue
+normCpu
+```
+
+ScoreCalculator gọi:
+
+```java
+weightEngine.computeBaseScore(nL, nQ, nC)
+```
+
+Công thức:
+
+```text
+baseScore = alpha * normLatency
+          + beta  * normQueue
+          + gamma * normCpu
+```
+
+Với trọng số được `DynamicWeightEngine` cập nhật định kỳ.
+
+Khi hệ thống vừa reset hoặc ổn định, trọng số quay về AHP prior:
+
+```text
+alpha = 0.648
+beta  = 0.230
+gamma = 0.122
+```
+
+---
+
+## 11. PID penalty
+
+Setpoint của PID là system P75 đã chuẩn hóa cùng thang với latency:
+
+```text
+normalizedP75 = normalizeLatency(systemP75, sysP5, invRange)
+```
+
+Sau đó tính penalty:
+
+```java
+pidPenalty = pidController.calculatePenalty(
+    instanceId,
+    normLatency,
+    normalizedP75,
+    props.getPid()
+);
+```
+
+PID penalty tăng khi backend chậm hơn P75 toàn hệ thống trong thời gian đủ dài.
+
+---
+
+## 12. Final score
+
+Công thức cuối:
+
+```text
+finalScore = baseScore + pidPenalty
+```
+
+Trong đó:
+
+- `baseScore` thường nằm trong `[0,1]`.
+- `pidPenalty` nằm trong `[0, lambda]`, với cấu hình hiện tại `lambda = 0.8`.
+
+Vì vậy score thực tế thường nằm khoảng:
+
+```text
+0.0 đến 1.8
+```
+
+Nếu poll failure hoặc null metrics, score có thể cao hơn nhiều do cơ chế penalty của `MetricsPoller`.
+
+---
+
+## 13. ScoreBreakdown
+
+Kết quả trả về:
+
+```java
+new ScoreBreakdown(
+    instanceId,
+    ewmaLatency,
+    normLatency,
+    normQueue,
+    normCpu,
+    baseScore,
+    pidPenalty,
+    finalScore,
+    updatedAtMs
+)
+```
+
+Các trường này giúp:
+
+- Gateway định tuyến bằng `finalScore`.
+- Grafana hiển thị health score.
+- Debug được vì sao một backend bị giảm traffic.
+
+---
+
+## 14. Quan hệ với MetricsPoller
+
+`ScoreCalculator` trả `finalScore` thô. Sau đó `MetricsPoller` áp thêm EMA bất đối xứng:
+
+```text
+raw finalScore
+    |
+    v
+MetricsPoller.applyScoreEma()
+    |
+    v
+smoothed finalScore
+    |
+    v
+MetricsCache.putScore()
+```
+
+Do đó `alb_final_score` trên Prometheus là score đã qua bước smoothing cuối trong `MetricsPoller`.
+
+---
+
+## 15. Reset
+
+`ScoreCalculator` không có state riêng cần reset. Các state ảnh hưởng đến kết quả của nó nằm ở:
+
+- `EwmaSmoother`
+- `PIDController`
+- `SlidingWindowManager`
+- `DynamicWeightEngine`
+- `MetricsCache`
+- `MetricsPoller`
+
+Tất cả được reset thông qua:
+
+```text
+POST /actuator/alb/reset
+```
