@@ -208,6 +208,7 @@ Khi phân tích kết quả, không được chỉ nhìn latency của HTTP 200.
 | `metrics-poller.md` | Poll metrics và real-traffic gate |
 | `score-calculator.md` | Health score |
 | `dynamic-weight-engine.md` | Dynamic MCDM |
+| `ahp-default-weight-rationale.md` | Cơ sở chọn AHP prior mặc định |
 | `pid-controller.md` | PID-inspired penalty |
 | `ewma-smoother.md` | Adaptive EWMA |
 | `sliding-window-manager.md` | Percentile windows |

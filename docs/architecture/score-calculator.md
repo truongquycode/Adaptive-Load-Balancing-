@@ -121,6 +121,16 @@ beta  = 0.230
 gamma = 0.122
 ```
 
+Các giá trị này được suy ra từ ma trận so sánh cặp AHP giữa ba tiêu chí `latency`, `queue`, `cpu`:
+
+```text
+A = | 1    3    5 |
+    | 1/3  1    2 |
+    | 1/5  1/2  1 |
+```
+
+Ma trận có Consistency Ratio xấp xỉ `0.003 < 0.1`, nên đủ nhất quán để dùng làm trọng số nền. Chi tiết xem `ahp-default-weight-rationale.md`.
+
 Khi có đủ real traffic, `DynamicWeightEngine` có thể cập nhật weights bằng EWM + AHP blend.
 
 Ablation `fixed-weights` bỏ dynamic EWM và dùng fixed weights.

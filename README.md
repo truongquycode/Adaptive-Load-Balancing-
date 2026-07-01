@@ -268,6 +268,28 @@ queue   = 0.230
 cpu     = 0.122
 ```
 
+Bộ trọng số này được suy ra từ ma trận so sánh cặp AHP theo thứ tự tiêu chí `latency`, `queue`, `cpu`:
+
+```text
+A = | 1    3    5 |
+    | 1/3  1    2 |
+    | 1/5  1/2  1 |
+```
+
+Cách diễn giải ngắn:
+
+- latency quan trọng hơn queue ở mức 3 vì latency phản ánh trực tiếp QoS/SLA, còn queue là tín hiệu nguyên nhân;
+- latency quan trọng hơn CPU ở mức 5 vì CPU dễ bão hòa hoặc gây hiểu nhầm khi bottleneck nằm ở I/O, dependency hoặc thread pool;
+- queue quan trọng hơn CPU ở mức 2 vì queue là tín hiệu sớm của quá tải và có quan hệ trực tiếp hơn với waiting delay.
+
+Sau khi chuẩn hóa cột và lấy trung bình hàng, vector trọng số là:
+
+```text
+W = [0.648, 0.230, 0.122]
+```
+
+Consistency Ratio của ma trận xấp xỉ `0.003`, nhỏ hơn ngưỡng `0.1`, nên các phán đoán so sánh cặp đạt mức nhất quán chấp nhận được. Chi tiết xem `docs/architecture/ahp-default-weight-rationale.md`.
+
 Dynamic EWM chỉ cập nhật khi có traffic nghiệp vụ thật trong cửa sổ update:
 
 ```yaml
@@ -491,6 +513,7 @@ Gateway đã cấu hình `eureka.instance.instance-id: ${spring.application.name
 | `docs/architecture/metrics-poller.md` | Poll metrics, delta latency, real traffic gate |
 | `docs/architecture/score-calculator.md` | Health score, normalization, EWMA, PID-inspired penalty |
 | `docs/architecture/dynamic-weight-engine.md` | AHP/EWM và điều kiện update khi có traffic thật |
+| `docs/architecture/ahp-default-weight-rationale.md` | Cơ sở chọn AHP prior `[0.648, 0.230, 0.122]` và kiểm tra CR |
 | `docs/architecture/pid-controller.md` | PID-inspired latency penalty |
 | `docs/architecture/ewma-smoother.md` | Adaptive EWMA smoother |
 | `docs/architecture/sliding-window-manager.md` | HDRHistogram và percentile window |
@@ -518,7 +541,7 @@ Gateway đã cấu hình `eureka.instance.instance-id: ${spring.application.name
 Vì Gateway điều chỉnh routing dựa trên metrics runtime gồm latency EWMA, queue/inflight, CPU, capacity, stale metrics và routing cost. Khi backend xấu đi, cost tăng và traffic được giảm hoặc chuyển sang backend khác.
 
 **Vì sao dùng latency, queue, CPU?**  
-Latency phản ánh trải nghiệm request, queue/inflight phản ánh tải tức thời, CPU phản ánh áp lực tài nguyên. Ba tiêu chí bổ sung cho nhau.
+Latency phản ánh trực tiếp QoS/SLA, queue/inflight là tín hiệu sớm của quá tải, CPU phản ánh áp lực tài nguyên nhưng có thể bão hòa hoặc không phản ánh dependency/I/O. Vì vậy AHP prior của dự án đặt latency cao nhất, queue thứ hai, CPU là tiêu chí phụ trợ.
 
 **PID trong code có phải PID đầy đủ không?**  
 Không nên diễn giải như bộ điều khiển PID cổ điển. Trong dự án, nó là PID-inspired latency penalty để tăng score của backend chậm kéo dài.

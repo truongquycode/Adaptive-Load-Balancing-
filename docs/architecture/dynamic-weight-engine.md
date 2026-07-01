@@ -20,7 +20,7 @@ baseScore = alpha * normLatency
 
 ---
 
-## 2. AHP prior
+## 2. AHP prior mặc định
 
 Trọng số mặc định trong code:
 
@@ -30,13 +30,57 @@ queue   = 0.230
 cpu     = 0.122
 ```
 
-Ý nghĩa thiết kế:
+Đây là **AHP prior**, tức bộ trọng số nền được thiết lập bằng Analytic Hierarchy Process. AHP prior được dùng khi Gateway mới khởi động, khi không có đủ traffic thật để cập nhật EWM, hoặc khi chạy ablation `fixed-weights`.
 
-- latency là mục tiêu chính vì phản ánh trải nghiệm request;
-- queue là tín hiệu sớm của quá tải;
-- CPU là tín hiệu tài nguyên, đặc biệt hữu ích khi có hidden degradation.
+Tài liệu chi tiết: [`ahp-default-weight-rationale.md`](./ahp-default-weight-rationale.md).
 
-Giới hạn: hiện tại đây là prior thiết kế/thực nghiệm. Nếu trình bày là AHP đầy đủ thì cần bổ sung ma trận so sánh cặp và consistency ratio trong luận văn.
+### 2.1. Ma trận so sánh cặp
+
+Thứ tự tiêu chí:
+
+```text
+C1 = latency
+C2 = queue
+C3 = cpu
+```
+
+Ma trận AHP dùng cho project:
+
+```text
+A = | 1    3    5 |
+    | 1/3  1    2 |
+    | 1/5  1/2  1 |
+```
+
+Diễn giải:
+
+| So sánh | Giá trị | Lý do |
+|---|---:|---|
+| Latency > Queue | 3 | Latency phản ánh trực tiếp QoS/SLA; queue là tín hiệu nguyên nhân của độ trễ. |
+| Latency > CPU | 5 | CPU là tín hiệu tài nguyên nhưng có thể bão hòa hoặc gây hiểu nhầm khi bottleneck nằm ở dependency, I/O hoặc thread pool. |
+| Queue > CPU | 2 | Queue là leading indicator của quá tải và có quan hệ trực tiếp hơn với waiting delay; CPU vẫn được giữ vai trò phụ trợ. |
+
+### 2.2. Trọng số suy ra
+
+Chuẩn hóa tổng cột và lấy trung bình hàng cho kết quả:
+
+```text
+W = [0.648, 0.230, 0.122]
+```
+
+Nghĩa là trong health score nền, latency chiếm khoảng 64.8%, queue khoảng 23.0%, CPU khoảng 12.2%.
+
+### 2.3. Kiểm tra nhất quán
+
+Với ma trận trên:
+
+```text
+lambda_max ≈ 3.004
+CI ≈ 0.002
+CR ≈ 0.003  < 0.1
+```
+
+Do đó, ma trận so sánh cặp đạt mức nhất quán chấp nhận được theo tiêu chuẩn AHP. Tuy nhiên, cần trình bày đúng: AHP giúp hợp thức hóa bộ trọng số prior theo một quy trình ra quyết định đa tiêu chí, **không chứng minh đây là bộ trọng số tối ưu tuyệt đối cho mọi hệ thống**.
 
 ---
 
@@ -169,6 +213,6 @@ EWM chứng minh tiêu chí tối ưu hoặc tạo ra trọng số đúng tuyệ
 ## 10. Rủi ro còn lại
 
 - Chỉ có 3 backend nên entropy weight nhạy với outlier.
-- AHP prior chưa có ma trận AHP chính thức trong tài liệu luận văn.
+- AHP prior đã có ma trận so sánh cặp và CR trong `ahp-default-weight-rationale.md`, nhưng vẫn cần benchmark/ablation để chứng minh hiệu quả thực nghiệm.
 - Các bound và blend factor vẫn là tham số thực nghiệm.
 - Cần ablation và sensitivity analysis để chứng minh dynamic weight thật sự có ích.

@@ -117,7 +117,23 @@ queue   = 0.230
 cpu     = 0.122
 ```
 
-Giới hạn: nếu trình bày là AHP chính thức cần bổ sung ma trận so sánh cặp và consistency ratio. Nếu không, nên gọi là AHP-inspired prior.
+Bộ trọng số này được tạo từ ma trận AHP:
+
+```text
+A = | 1    3    5 |
+    | 1/3  1    2 |
+    | 1/5  1/2  1 |
+```
+
+Theo thứ tự tiêu chí `latency`, `queue`, `cpu`, ma trận này thể hiện ba phán đoán:
+
+- latency quan trọng hơn queue ở mức 3;
+- latency quan trọng hơn CPU ở mức 5;
+- queue quan trọng hơn CPU ở mức 2.
+
+Chuẩn hóa cột và lấy trung bình hàng cho ra `W = [0.648, 0.230, 0.122]`. Consistency Ratio xấp xỉ `0.003 < 0.1`, nên ma trận đủ nhất quán để dùng làm prior. Chi tiết nằm trong `docs/architecture/ahp-default-weight-rationale.md`.
+
+Giới hạn: AHP prior chỉ hợp thức hóa bộ trọng số nền theo một quy trình ra quyết định đa tiêu chí. Nó không chứng minh đây là bộ trọng số tối ưu tuyệt đối; hiệu quả thực tế vẫn cần benchmark, ablation và sensitivity analysis.
 
 ---
 
