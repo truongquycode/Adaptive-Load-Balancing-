@@ -1,10 +1,21 @@
-# Kế hoạch Adaptive Ablation Study
+# Adaptive Ablation Study
 
-Ablation study dùng để trả lời câu hỏi phản biện: từng thành phần trong Adaptive Load Balancer có thật sự đóng góp vào kết quả hay chỉ làm thuật toán phức tạp hơn.
+## 1. Mục đích
 
-## 1. Cách bật ablation variant
+Ablation study dùng để trả lời câu hỏi phản biện:
 
-Gateway đọc cấu hình:
+```text
+Các thành phần trong Adaptive Load Balancer có thật sự đóng góp vào kết quả không,
+hay chỉ làm thuật toán phức tạp hơn?
+```
+
+Nếu không làm ablation, rất khó bảo vệ việc dùng nhiều kỹ thuật cùng lúc như MCDM, AHP/EWM, EWMA, PID-inspired penalty, capacity weight, P2C, probe recovery và low-load fallback.
+
+---
+
+## 2. Cách bật variant
+
+Cấu hình:
 
 ```yaml
 alb:
@@ -19,7 +30,7 @@ Endpoint xác minh:
 GET /actuator/alb/strategy
 ```
 
-Response phải có:
+Response phải có đúng:
 
 ```json
 {
@@ -28,29 +39,33 @@ Response phải có:
 }
 ```
 
-## 2. Các variant hiện có
+Script benchmark strict mode sẽ dừng nếu response không khớp.
+
+---
+
+## 3. Các variant hiện có
 
 | Variant | Thành phần bị tắt/thay đổi | File/class liên quan | Mục đích kiểm chứng |
 |---|---|---|---|
-| `full` | Không tắt gì | Toàn bộ Adaptive | Baseline thuật toán đầy đủ |
-| `no-pid` | PID penalty = 0 | `ScoreCalculator.java`, `PIDController.java` | PID-inspired penalty có giúp giảm traffic khỏi node chậm kéo dài không |
-| `fixed-weights` | Không dùng dynamic EWM, dùng AHP fixed weights | `ScoreCalculator.java`, `DynamicWeightEngine.java` | Dynamic weight có tạo khác biệt so với trọng số cố định không |
-| `no-ewma-latency` | Dùng latency thô thay vì EWMA latency | `ScoreCalculator.java`, `EwmaSmoother.java` | EWMA có giảm nhiễu/flapping không |
-| `no-score-ema` | Không làm mượt finalScore | `MetricsPoller.java` | Score EMA có giảm dao động routing không |
-| `no-capacity` | Xem mọi backend có capacity = 1.0 | `RoutingCostCalculator.java` | Capacity weight có giúp tận dụng instance mạnh hơn không |
-| `no-p2c` | Chọn backend có routing cost thấp nhất toàn cục | `AdaptiveLoadBalancer.java` | P2C có giảm herd effect/dao động không |
-| `no-probe` | Tắt probe recovery | `AdaptiveLoadBalancer.java` | Probe có giúp backend hồi phục nhận traffic trở lại không |
-| `no-low-load-rr` | Tắt low-load fallback về Round Robin | `RoutingCostCalculator.java` | Low-load fallback có tránh phản ứng quá mức khi tải thấp không |
+| `full` | Không tắt gì | Toàn bộ Adaptive | Baseline đầy đủ |
+| `no-pid` | PID penalty = 0 | `ScoreCalculator`, `PIDController` | PID-inspired penalty có giúp node chậm kéo dài bị giảm traffic không |
+| `fixed-weights` | Không dùng dynamic EWM, dùng AHP fixed weights | `DynamicWeightEngine`, `ScoreCalculator` | Dynamic weights có tạo khác biệt không |
+| `no-ewma-latency` | Dùng latency thô thay vì EWMA | `ScoreCalculator`, `EwmaSmoother` | EWMA có giảm nhiễu/flapping không |
+| `no-score-ema` | Không làm mượt finalScore | `MetricsPoller` | Score EMA có giảm dao động routing không |
+| `no-capacity` | Xem mọi backend capacity = 1.0 | `RoutingCostCalculator` | Capacity weight có giúp tận dụng instance mạnh hơn không |
+| `no-p2c` | Chọn min cost toàn cục | `AdaptiveLoadBalancer` | P2C có giảm herd effect/dao động không |
+| `no-probe` | Tắt probe recovery | `AdaptiveLoadBalancer` | Probe có giúp backend hồi phục nhận traffic trở lại không |
+| `no-low-load-rr` | Tắt low-load fallback | `RoutingCostCalculator`, `AdaptiveLoadBalancer` | Low-load RR có tránh phản ứng quá mức khi tải thấp không |
 
-## 3. Script chạy ablation
+---
 
-Chạy:
+## 4. Script chạy
 
 ```bat
 scripts_run_jmeter\5-run_adaptive_ablation_medium.bat
 ```
 
-Script này dùng JMX:
+Script dùng JMX:
 
 ```text
 jmeter/02_medium_dependency_slowdown_mixed_0600_tst.jmx
@@ -60,39 +75,62 @@ Lý do chọn medium dependency slowdown:
 
 - đủ tải để thấy khác biệt;
 - có degradation rõ;
-- chưa quá nặng tới mức toàn hệ thống sập;
-- phù hợp để quan sát routing shift, latency tail và recovery.
+- chưa quá nặng đến mức toàn hệ thống sập;
+- phù hợp để quan sát routing shift, tail latency và recovery.
 
-## 4. Chỉ số cần so sánh
+---
 
-| Nhóm chỉ số | Metric/JMeter | Ý nghĩa |
-|---|---|---|
-| Latency | avg, p90, p95, p99 | Trải nghiệm người dùng |
-| Throughput | actual RPS | Hệ thống có giữ được target RPS không |
-| Error rate | non-2xx % | Có đổi latency thấp bằng lỗi không |
-| Routing distribution | `alb_routing_selected_total` | Traffic có chuyển khỏi backend xấu không |
-| Routing reason | `reason` label | Adaptive đang warmup, low-load, probe hay normal |
-| Score/cost | `alb_final_score`, `alb_routing_score` | Thành phần nào làm thay đổi quyết định |
-| Resource | cAdvisor CPU/memory | Backend có bị quá tải tài nguyên không |
+## 5. Chỉ số cần so sánh
 
-## 5. Cách kết luận ablation
+| Nhóm | Chỉ số |
+|---|---|
+| Latency | avg, p90, p95, p99 |
+| Throughput | actual RPS trên JMeter và Grafana |
+| Error | error rate, non-2xx rate |
+| Routing | request distribution theo backend |
+| Reason | `alb_routing_selected_total{reason=...}` |
+| Score/cost | `alb_final_score`, `alb_routing_score`, `alb_routing_weight` |
+| MCDM | `alb_mcdm_weight`, `alb_mcdm_update_mode` |
+| Resource | cAdvisor CPU/memory |
+| Recovery | thời gian traffic quay lại backend hồi phục |
 
-Không nên kết luận chỉ dựa vào một chỉ số. Mẫu kết luận nên theo cấu trúc:
+---
+
+## 6. Mẫu kết luận
+
+Không nên kết luận bằng một chỉ số duy nhất. Mẫu nên dùng:
 
 ```text
-Khi tắt [thành phần], p95/p99 tăng/giảm ..., error rate ..., routing distribution ...
+Khi tắt [thành phần], p95/p99 thay đổi ..., error rate ..., actual RPS ..., routing distribution ...
 Điều này cho thấy [thành phần] có/không có đóng góp rõ trong kịch bản medium dependency slowdown.
 ```
 
 Ví dụ:
 
 ```text
-Nếu `no-capacity` làm 8083 nhận tải gần ngang 8081 và p99 tăng, có thể kết luận capacity weight giúp thuật toán phù hợp hơn với cụm backend không đồng nhất.
+Nếu `no-capacity` làm 8083 nhận tải gần ngang 8081 và p99 tăng, có thể kết luận capacity weight giúp Adaptive phù hợp hơn với cụm backend không đồng nhất.
 ```
 
-## 6. Rủi ro khi diễn giải
+---
 
-- Nếu một variant không kém hơn `full`, không nên che giấu. Cần ghi nhận rằng thành phần đó chưa chứng minh được lợi ích trong kịch bản hiện tại.
-- Nếu `full` chỉ tốt hơn trong một kịch bản, cần thêm low/high/stress ablation để tránh overfitting.
-- Nếu error rate tăng, không được chỉ nói latency giảm.
-- Nếu throughput thực tế thấp hơn target RPS, so sánh latency có thể không công bằng.
+## 7. Cách diễn giải trung thực
+
+- Nếu variant không kém hơn `full`, không được che giấu.
+- Nếu `full` chỉ tốt hơn trong một kịch bản, cần nói rõ phạm vi kết luận.
+- Nếu latency giảm nhưng error rate tăng, không được xem là cải thiện rõ ràng.
+- Nếu actual RPS thấp hơn target RPS, so sánh latency có thể không công bằng.
+- Nếu một thành phần chưa chứng minh được lợi ích, có thể trình bày là hướng cải tiến/tối giản trong tương lai.
+
+---
+
+## 8. Ablation nên có trong luận văn
+
+Tối thiểu nên có:
+
+1. `full` vs `fixed-weights` để kiểm tra Dynamic MCDM.
+2. `full` vs `no-pid` để kiểm tra PID-inspired penalty.
+3. `full` vs `no-capacity` để kiểm tra capacity awareness.
+4. `full` vs `no-p2c` để kiểm tra P2C.
+5. `full` vs `no-low-load-rr` trong low load để kiểm tra stability guard.
+
+Nếu thời gian hạn chế, ưu tiên 1-3 vì đây là các điểm dễ bị phản biện nhất.

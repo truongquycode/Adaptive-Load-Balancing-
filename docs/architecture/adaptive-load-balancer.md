@@ -2,33 +2,32 @@
 
 ## 1. Vai trò
 
-`AdaptiveLoadBalancer` là thành phần data-plane dùng để chọn backend cho từng request đi qua API Gateway. Class này được đăng ký thông qua Spring Cloud LoadBalancer cho service name:
+`AdaptiveLoadBalancer` là thành phần data-plane chọn backend cho từng request đi qua API Gateway khi cấu hình:
 
-```text
-REGISTRATION-SERVICE-ALB
+```yaml
+alb:
+  strategy: adaptive
 ```
 
-Route tương ứng trong Gateway:
+Route Gateway tương ứng:
 
 ```java
 .route("backend-route", r -> r.path("/api/**")
         .uri("lb://REGISTRATION-SERVICE-ALB"))
 ```
 
-Khi `alb.strategy=adaptive`, Gateway dùng `AdaptiveLoadBalancer` thay vì Round Robin, Random hoặc Least Connections.
+Class này không tự poll metrics. Nó đọc kết quả đã được control-plane cập nhật trong `MetricsCache` và kết hợp với inflight realtime để chọn instance.
 
 ---
 
-## 2. Nguyên tắc thiết kế
-
-Adaptive Load Balancer trong mã nguồn hiện tại không tự poll metrics và không tự tính health score trực tiếp trong mỗi request. Hệ thống được tách thành hai phần:
+## 2. Phân tách control-plane và data-plane
 
 ```text
 Control-plane
     MetricsPoller
+    SlidingWindowManager
     ScoreCalculator
     DynamicWeightEngine
-    SlidingWindowManager
     PIDController
     EwmaSmoother
     MetricsCache
@@ -40,53 +39,46 @@ Data-plane
     InflightLifecycle
 ```
 
-Control-plane chạy định kỳ để tính trạng thái backend. Data-plane dùng trạng thái đã có sẵn trong cache và số inflight tức thời để chọn backend nhanh nhất có thể.
+Cách tách này giúp request path không phải tự gọi HTTP đến backend để lấy metrics. Gateway chỉ đọc cache và counter cục bộ.
 
 ---
 
-## 3. Luồng xử lý khi có request
+## 3. Luồng chọn backend
 
 ```text
-Gateway nhận request /api/**
-    |
-    v
 AdaptiveLoadBalancer.choose()
     |
     v
-Lấy danh sách instance từ ServiceInstanceListSupplier
+Lấy danh sách ServiceInstance từ supplier/Eureka
     |
     v
 RoutingCostCalculator.calculate(instances)
     |
     v
-Tạo RoutingContext:
-    - all costs
-    - eligible costs
-    - healthWeight
-    - loadWeight
-    - mode
-    |
+RoutingContext
+    |-- costs
+    |-- eligibleCosts
+    |-- healthWeight
+    |-- loadWeight
+    |-- mode
     v
-AdaptiveLoadBalancer chọn instance:
-    - Single instance
-    - Warmup Round Robin
-    - Low-load Round Robin
-    - Probe recovery
-    - P2C
-    - Least-cost fallback
+Chọn backend theo thứ tự ưu tiên:
+    1. Không có instance -> EmptyResponse
+    2. Một instance -> chọn thẳng
+    3. Warmup -> Round Robin
+    4. Low-load stable -> Round Robin
+    5. Probe recovery -> chọn instance bị phạt có kiểm soát
+    6. Normal -> P2C trên routing cost
+    7. Fallback -> least cost
 ```
 
-Nếu không có instance nào từ Eureka, Gateway nhận `EmptyResponse`.
-
-Nếu chỉ có một instance, hệ thống chọn thẳng instance đó và ghi reason `SINGLE_INSTANCE`.
+Mỗi lần chọn backend, thuật toán ghi counter `alb.routing.selected` với label `backend`, `port`, `strategy`, `reason`.
 
 ---
 
 ## 4. Warmup Round Robin
 
-Adaptive dùng biến `firstSeenMs` để ghi nhận thời điểm mỗi instance xuất hiện lần đầu trong danh sách Eureka.
-
-Cấu hình warmup:
+Khi backend mới xuất hiện hoặc Gateway vừa reset, metrics chưa đủ ổn định. Trong khoảng:
 
 ```yaml
 alb:
@@ -94,230 +86,15 @@ alb:
     warmup-ms: 5000
 ```
 
-Nếu tất cả instance đều mới xuất hiện và chưa vượt qua `warmup-ms`, Adaptive chưa tin vào metrics. Lúc này thuật toán dùng Round Robin và ghi reason:
-
-```text
-WARMUP_RR
-```
-
-Cơ chế này giúp tránh việc một instance bị đánh giá sai chỉ vì chưa kịp có đủ dữ liệu poll.
+Adaptive dùng Round Robin và ghi reason `WARMUP_RR`. Cơ chế này tránh phạt sai một instance chỉ vì chưa có đủ metrics sau restart.
 
 ---
 
-## 5. RoutingCostCalculator
+## 5. Low-load fallback
 
-`RoutingCostCalculator` là nơi tính chi phí định tuyến cuối cùng cho từng backend. Đây là phần quan trọng nhất của Adaptive Load Balancer hiện tại.
+Ở tải thấp, chênh lệch latency/queue/CPU nhỏ có thể chỉ là nhiễu. Nếu data-plane phản ứng quá mạnh thì Adaptive có thể tự tạo dao động không cần thiết.
 
-Đầu vào:
-
-- Danh sách `ServiceInstance` từ Eureka.
-- `finalScore` của từng backend từ `MetricsCache`.
-- Số inflight hiện tại từ `InflightTracker`.
-- `capacityWeight` của từng backend từ `MetricsCache`.
-- Cấu hình trong `alb.routing`.
-
-Đầu ra:
-
-- `RoutingContext`
-- Danh sách `RoutingCost`
-- `healthWeight`
-- `loadWeight`
-- `mode`
-
----
-
-## 6. Health raw
-
-Với mỗi backend, thuật toán lấy `ScoreBreakdown` trong `MetricsCache`.
-
-```java
-double healthRaw = bd != null ? Math.max(0.0, bd.finalScore()) : DEFAULT_HEALTH_SCORE;
-```
-
-Nếu chưa có metrics, hệ thống dùng giá trị mặc định:
-
-```text
-DEFAULT_HEALTH_SCORE = 0.50
-```
-
-`healthRaw` càng thấp thì backend càng tốt. Giá trị này đã bao gồm:
-
-- EWMA latency
-- normalized latency
-- normalized queue
-- normalized CPU
-- Dynamic MCDM base score
-- PID penalty
-- EMA smoothing ở tầng final score
-
----
-
-## 7. Capacity-normalized load
-
-Adaptive không so sánh inflight thô giữa các backend một cách ngang bằng, vì các container có CPU quota khác nhau.
-
-Công thức trong `RoutingCostCalculator`:
-
-```text
-capacityShare = capacityWeight / sumCapacity
-expectedInflight = max(minExpectedInflight, totalInflight * capacityShare)
-loadRaw = inflight / expectedInflight
-```
-
-Cấu hình liên quan:
-
-```yaml
-alb:
-  routing:
-    min-expected-inflight: 3.0
-```
-
-Ý nghĩa:
-
-- Backend có CPU quota cao hơn được kỳ vọng xử lý nhiều inflight hơn.
-- `loadRaw = 1.0` nghĩa là backend đang nhận đúng phần tải hợp lý theo năng lực.
-- `loadRaw > 1.0` nghĩa là backend đang nhận nhiều hơn mức hợp lý.
-- `loadRaw < 1.0` nghĩa là backend còn tương đối rảnh so với năng lực.
-
----
-
-## 8. Hard exclusion
-
-Một backend có thể bị loại khỏi danh sách `eligible` nếu rơi vào một trong các trạng thái sau:
-
-| Reason | Điều kiện |
-|---|---|
-| `NO_METRICS` | Chưa có `ScoreBreakdown` trong cache |
-| `STALE` | Score quá cũ, vượt `stale-hard-ms` |
-| `UNHEALTHY_SCORE` | `healthRaw >= unhealthy-score-cutoff` |
-| `HARD_INFLIGHT_CAP` | Inflight vượt ngưỡng hard cap theo capacity |
-
-Cấu hình liên quan:
-
-```yaml
-alb:
-  routing:
-    stale-soft-ms: 1500
-    stale-hard-ms: 5000
-    unhealthy-score-cutoff: 2.0
-    hard-inflight-cap: 220
-```
-
-Hard cap được điều chỉnh theo năng lực backend:
-
-```text
-factor = capacityWeight / avgCapacity
-factor = clamp(factor, 0.70, 1.50)
-hardCap = max(40, round(hardInflightCap * factor))
-```
-
-Vì vậy instance 8081 có thể chịu hard cap cao hơn 8083.
-
----
-
-## 9. Chuẩn hóa health và load trong cụm
-
-Sau khi có `healthRaw` và `loadRaw`, thuật toán chuẩn hóa tương đối trong cụm:
-
-```text
-healthCost = normalize(healthRaw, minHealth, maxHealth)
-loadCost   = normalize(loadRaw, minLoad, maxLoad)
-```
-
-Nếu khoảng chênh lệch quá nhỏ, hàm `normalize()` trả về `0.5` để tránh phóng đại nhiễu:
-
-```text
-MIN_ROUTING_NORM_RANGE = 0.12
-```
-
-Ý nghĩa:
-
-- `0.0` là tốt nhất trong cụm hiện tại.
-- `1.0` là xấu nhất trong cụm hiện tại.
-- `0.5` là trung lập khi khác biệt không đủ rõ.
-
----
-
-## 10. Trọng số health/load động
-
-Adaptive tính mức phân tán tương đối của health và load:
-
-```text
-healthSpread = relativeSpread(healthRaw[])
-loadSpread   = relativeSpread(loadRaw[])
-```
-
-Sau đó tính trọng số mục tiêu:
-
-```text
-targetHealthWeight = healthSpread / (healthSpread + loadSpread + EPS)
-```
-
-Giá trị này được clamp trong khoảng cấu hình:
-
-```yaml
-alb:
-  routing:
-    min-health-weight: 0.25
-    max-health-weight: 0.75
-```
-
-Sau đó áp EMA:
-
-```text
-healthWeight = previous + 0.18 * (target - previous)
-loadWeight = 1.0 - healthWeight
-```
-
-Ý nghĩa:
-
-- Khi khác biệt health rõ hơn khác biệt load, thuật toán ưu tiên health.
-- Khi khác biệt load rõ hơn, thuật toán ưu tiên inflight/capacity.
-- EMA giúp trọng số không nhảy đột ngột giữa hai lần định tuyến.
-
----
-
-## 11. Final routing cost
-
-Chi phí định tuyến cuối cùng được tính theo công thức:
-
-```text
-finalCost =
-    healthWeight * healthCost
-  + loadWeight   * loadCost
-  + overloadPenalty
-  + capPressurePenalty
-  + absoluteHealthPenalty
-  + stalePenalty
-```
-
-Trong đó:
-
-```text
-overloadPenalty = 0.30 * clamp((loadRaw - 0.95) / 0.45, 0, 1)
-capPressurePenalty = 0.20 * clamp((inflight / hardCap - 0.70) / 0.30, 0, 1)
-absoluteHealthPenalty = 0.12 * clamp((healthRaw - 0.75) / 0.75, 0, 1)
-```
-
-`finalCost` càng thấp thì backend càng có khả năng được chọn.
-
-Điểm quan trọng của bản hiện tại là ngoài min-max relative cost, thuật toán còn có penalty tuyệt đối. Điều này giúp Adaptive không mất tín hiệu khi cả ba backend cùng bị quá tải.
-
----
-
-## 12. Low-load Round Robin
-
-Nếu tải thấp và các backend không khác biệt rõ, Adaptive chuyển sang Round Robin để tránh tự tạo dao động.
-
-Điều kiện:
-
-```text
-totalInflight <= lowLoadInflight
-healthSpread <= lowLoadHealthSpread
-loadSpread <= lowLoadLoadSpread
-```
-
-Cấu hình:
+Các ngưỡng chính:
 
 ```yaml
 alb:
@@ -327,47 +104,15 @@ alb:
     low-load-load-spread: 0.25
 ```
 
-Khi nhánh này được kích hoạt, reason ghi nhận là:
+Nếu tổng inflight thấp và health/load spread nhỏ, Adaptive dùng Round Robin và ghi reason `LOW_LOAD_RR`. Vì vậy trong low load, Adaptive có thể cho kết quả gần Round Robin; đây là hành vi cố ý để ổn định.
 
-```text
-LOW_LOAD_RR
-```
+Ablation `no-low-load-rr` dùng để kiểm chứng cơ chế này.
 
 ---
 
-## 13. P2C selection
+## 6. Probe recovery
 
-Khi không ở warmup hoặc low-load, Adaptive chọn backend bằng Power of Two Choices.
-
-Luồng chọn:
-
-```text
-Lấy danh sách candidates = eligible nếu có, ngược lại dùng all
-    |
-    v
-Random chọn hai RoutingCost a và b
-    |
-    v
-So sánh bằng RoutingCostCalculator.better(a, b)
-    |
-    v
-Chọn backend có finalCost thấp hơn
-```
-
-Nếu `finalCost` bằng nhau:
-
-1. Chọn backend có `loadCostRaw` thấp hơn.
-2. Nếu vẫn bằng nhau, chọn backend có `capacityWeight` cao hơn.
-
-P2C giúp giảm chi phí tính toán so với việc luôn chọn min toàn cục, đồng thời vẫn tránh phân phối ngẫu nhiên mù.
-
----
-
-## 14. Probe recovery
-
-Adaptive có cơ chế probe nhẹ để kiểm tra backend đang bị loại có thể hồi phục hay chưa.
-
-Cấu hình:
+Nếu một backend từng bị phạt do latency/queue/CPU xấu, nó cần cơ hội nhận một lượng request nhỏ để chứng minh đã hồi phục. Cơ chế probe dùng:
 
 ```yaml
 alb:
@@ -376,107 +121,75 @@ alb:
     probe-probability: 0.005
 ```
 
-Probe chỉ áp dụng cho backend bị loại vì health/stale/no-metrics, không áp dụng cho backend bị `HARD_INFLIGHT_CAP`.
-
-Adaptive không probe khi mode là:
-
-```text
-LOAD_DOMINANT
-ALL_HARD_EXCLUDED_FALLBACK
-```
-
-Mục đích là tránh gửi thêm request thử nghiệm vào node đang quá tải trong giai đoạn stress.
+Probe không phải chia tải đều. Nó chỉ là lưu lượng kiểm tra hồi phục có xác suất thấp. Ablation `no-probe` dùng để xem recovery có bị chậm hoặc backend bị bỏ đói không.
 
 ---
 
-## 15. Các mode quyết định
+## 7. P2C selection
 
-`RoutingContext.mode()` có thể là:
+Khi không ở warmup/low-load/probe, Adaptive dùng Power of Two Choices:
 
-| Mode | Ý nghĩa |
+```text
+randomly pick 2 eligible backends
+choose the one with lower final routing cost
+```
+
+P2C giảm nguy cơ herd effect so với chọn min toàn cục trong mọi request, đồng thời rẻ hơn về chi phí tính toán. Ablation `no-p2c` thay bằng chọn backend có cost thấp nhất toàn cục.
+
+---
+
+## 8. Hard exclusion
+
+`RoutingCostCalculator` có thể loại một backend khỏi danh sách eligible nếu:
+
+| Reason | Ý nghĩa |
 |---|---|
-| `LOW_LOAD_RR` | Tải thấp, các node gần giống nhau, dùng Round Robin |
-| `ALL_HARD_EXCLUDED_FALLBACK` | Tất cả backend bị hard-excluded, phải fallback |
-| `HEALTH_DOMINANT` | Health weight chiếm ưu thế |
-| `LOAD_DOMINANT` | Load weight chiếm ưu thế |
-| `NORMAL_P2C` | Chọn bằng P2C bình thường |
+| `NO_METRICS` | Chưa có score trong cache |
+| `STALE` | Metrics quá cũ |
+| `UNHEALTHY_SCORE` | Score vượt ngưỡng unhealthy |
+| `HARD_INFLIGHT_CAP` | Inflight vượt hard cap theo capacity |
 
-Ngoài mode từ `RoutingContext`, metric `alb.routing.selected` còn có reason:
-
-| Reason | Khi nào xuất hiện |
-|---|---|
-| `SINGLE_INSTANCE` | Chỉ có một backend |
-| `WARMUP_RR` | Tất cả backend đang warmup |
-| `LOW_LOAD_RR` | Low-load guard được kích hoạt |
-| `PROBE_RECOVERY` | Request được dùng để probe backend bị loại |
-| `HEALTH_DOMINANT` | Chọn bằng P2C trong mode health-dominant |
-| `LOAD_DOMINANT` | Chọn bằng P2C trong mode load-dominant |
-| `NORMAL_P2C` | Chọn bằng P2C bình thường |
-| `ALL_HARD_EXCLUDED_FALLBACK` | Fallback khi tất cả backend bị loại |
+Nếu tất cả backend đều bị loại, Adaptive phải fallback để không làm Gateway mất route. Trường hợp này cần quan sát trong Grafana qua routing reason và error rate.
 
 ---
 
-## 16. Metrics Prometheus
+## 9. Vì sao gọi là adaptive
 
-Adaptive ghi counter:
+Adaptive là adaptive ở mức thực nghiệm vì:
 
-```text
-alb_routing_selected_total
-```
+- backend metrics được cập nhật liên tục;
+- health score thay đổi theo latency/queue/CPU;
+- MCDM weights có thể thay đổi khi có traffic thật;
+- routing cost kết hợp health và load realtime;
+- capacity weight làm instance mạnh/yếu nhận tải khác nhau;
+- stale penalty xử lý metrics lỗi/chậm;
+- probe recovery cho phép instance hồi phục quay lại.
 
-Tag chính:
-
-- `backend`
-- `port`
-- `reason`
-
-Dashboard dùng PromQL:
-
-```promql
-sum by (backend) (
-  rate(alb_routing_selected_total[10s])
-)
-```
-
-và:
-
-```promql
-sum by (reason) (
-  rate(alb_routing_selected_total[10s])
-)
-```
-
-Các metric routing cost được đăng ký trong `MetricsPoller` và `RoutingCostCalculator`:
-
-```text
-alb_routing_score
-alb_routing_health_cost
-alb_routing_load_cost
-alb_routing_load_raw
-alb_routing_capacity_weight
-alb_routing_weight
-```
+Không nên mô tả thuật toán này là tối ưu toàn cục hoặc có chứng minh ổn định như một bộ điều khiển lý thuyết đầy đủ.
 
 ---
 
-## 17. Reset state
+## 10. Quan hệ với benchmark
 
-Endpoint reset:
+Để benchmark không gắn nhãn sai strategy, script phải xác minh:
 
-```text
+```http
+GET /actuator/alb/strategy
+```
+
+Trước mỗi run cần reset:
+
+```http
 POST /actuator/alb/reset
+POST /api/chaos/reset trên 8081, 8082, 8083
 ```
 
-Endpoint này gọi:
+Khi báo cáo Adaptive, nên đọc cùng lúc:
 
-- `InflightTracker.resetAll()`
-- `AdaptiveLoadBalancer.resetStaticState()`
-- `InflightLifecycle.resetActiveRequests()`
-- `PIDController.resetAllStates()`
-- `EwmaSmoother.resetAllStates()`
-- `SlidingWindowManager.resetAll()`
-- `MetricsPoller.resetAllStates()`
-- `DynamicWeightEngine.resetWeights()`
-- `MetricsCache.clearAll()`
-
-Reset state là bước bắt buộc trước benchmark để kết quả không bị ảnh hưởng bởi lần chạy trước.
+- `alb_routing_selected_total` theo backend/reason;
+- `alb_routing_score`;
+- `alb_final_score`;
+- `alb_routing_weight`;
+- Gateway latency all-status;
+- Gateway error rate;
+- actual throughput.

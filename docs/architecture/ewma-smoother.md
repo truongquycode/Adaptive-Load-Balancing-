@@ -2,211 +2,107 @@
 
 ## 1. Vai trò
 
-`EwmaSmoother` làm mượt latency thô của từng backend bằng Adaptive EWMA.
+`EwmaSmoother` làm mượt latency trước khi `ScoreCalculator` chuẩn hóa và tính score.
 
-Latency thô lấy từ Micrometer Timer có thể dao động mạnh do:
+Latency raw có thể dao động do:
 
-- request nhẹ/nặng khác nhau,
-- I/O wait,
-- DB pool giả lập,
-- GC,
-- network jitter,
-- chaos/dependency slowdown,
-- số lượng request hoàn thành trong mỗi chu kỳ poll không đều.
+- outlier request;
+- network jitter;
+- JVM/GC;
+- poll window ngắn;
+- backend vừa reset hoặc vừa nhận spike.
 
-Nếu đưa latency thô trực tiếp vào `ScoreCalculator`, score sẽ dao động mạnh và làm thuật toán định tuyến không ổn định. `EwmaSmoother` giảm nhiễu nhưng vẫn cho phép phản ứng nhanh khi latency tăng bất thường.
+EWMA giúp routing không đổi hướng quá mạnh chỉ vì một vài sample bất thường.
 
 ---
 
-## 2. Vị trí trong pipeline
+## 2. Công thức tổng quát
+
+Ý tưởng EWMA:
 
 ```text
-MetricsPoller
-    |
-    | tính delta latency từ count và totalTime
-    v
-ScoreCalculator
-    |
-    | gọi EwmaSmoother.smooth()
-    v
-ewmaLatency
-    |
-    v
-normalize latency
-    |
-    v
-MCDM + PID
+smoothed = alpha * current + (1 - alpha) * previous
 ```
 
-`EwmaSmoother` không chọn backend. Nó chỉ tạo ra `ewmaLatency` để `ScoreCalculator` dùng.
+Trong dự án, alpha không cố định hoàn toàn. `EwmaSmoother` dùng tham số tau và điều chỉnh theo độ lệch giữa latency mới và latency đã làm mượt.
 
----
-
-## 3. Cấu hình
-
-Cấu hình hiện tại trong `api-gateway-alb/src/main/resources/application.yml`:
+Cấu hình:
 
 ```yaml
 alb:
-    ewma:
-        tau-min: 200.0
-        tau-max: 2000.0
-        k: 3.0
+  ewma:
+    tau-min: 200.0
+    tau-max: 2000.0
+    k: 3.0
 ```
 
 Ý nghĩa:
 
-| Tham số | Ý nghĩa |
+- tau nhỏ -> phản ứng nhanh hơn;
+- tau lớn -> ổn định hơn;
+- khi latency lệch mạnh, tau giảm để phản ứng nhanh;
+- khi latency ổn định, tau tăng để lọc nhiễu.
+
+---
+
+## 3. Vị trí trong pipeline
+
+```text
+raw latency from MetricsPoller
+    |
+    v
+EwmaSmoother.smooth(...)
+    |
+    v
+ewmaLatency
+    |
+    v
+ScoreCalculator normalization
+```
+
+Ablation `no-ewma-latency` bỏ bước này và dùng latency thô.
+
+---
+
+## 4. Lợi ích
+
+- Giảm flapping khi latency chỉ dao động nhẹ.
+- Giúp routing ổn định hơn trong low/medium load.
+- Giảm khả năng một spike đơn lẻ làm backend bị phạt quá lâu.
+- Vẫn phản ứng nhanh hơn EWMA cố định khi deviation lớn.
+
+---
+
+## 5. Trade-off
+
+EWMA luôn có đánh đổi:
+
+| Lợi ích | Rủi ro |
 |---|---|
-| `tau-min` | Hằng số thời gian nhỏ nhất, dùng khi latency thay đổi mạnh |
-| `tau-max` | Hằng số thời gian lớn nhất, dùng khi latency ổn định |
-| `k` | Độ nhạy của tau đối với deviation |
+| Giảm nhiễu | Có thể phản ứng chậm hơn với degradation rất nhanh |
+| Ổn định routing | Có thể che spike ngắn |
+| Giảm flapping | Cần reset state trước benchmark |
 
----
+Do đó benchmark cần reset ALB trước mỗi run:
 
-## 4. Công thức Adaptive EWMA
-
-EWMA thông thường dùng một hệ số alpha cố định. Trong dự án này, hệ số làm mượt được điều chỉnh theo mức biến động latency.
-
-Đầu tiên tính độ lệch tương đối:
-
-```text
-deviation = |rawLatency - ewmaPrevious| / max(ewmaPrevious, 1.0)
-```
-
-Sau đó tính tau thích nghi:
-
-```text
-tau = tauMin + (tauMax - tauMin) * e^(-k * deviation)
-```
-
-Khi deviation thấp:
-
-```text
-tau gần tauMax
-```
-
-EWMA phản ứng chậm hơn, lọc nhiễu tốt hơn.
-
-Khi deviation cao:
-
-```text
-tau gần tauMin
-```
-
-EWMA phản ứng nhanh hơn, phù hợp khi backend bắt đầu chậm hoặc có chaos.
-
----
-
-## 5. Tính hệ số theta
-
-Sau khi có tau, hệ số cập nhật được tính theo thời gian giữa hai lần cập nhật:
-
-```text
-theta = 1 - e^(-dt / tau)
-```
-
-Trong đó:
-
-- `dt` là thời gian từ lần tính EWMA trước đến hiện tại.
-- `tau` là hằng số thời gian thích nghi.
-
-Giá trị EWMA mới:
-
-```text
-ewma = theta * rawLatency + (1 - theta) * ewmaPrevious
-```
-
-Nếu `theta` nhỏ, giá trị cũ được giữ nhiều hơn. Nếu `theta` lớn, latency mới có ảnh hưởng mạnh hơn.
-
----
-
-## 6. Xử lý cold start
-
-State EWMA được lưu theo `instanceId`.
-
-Nếu instance chưa có state, `EwmaSmoother` khởi tạo bằng `fallbackP50`:
-
-```java
-return new EwmaState(fallbackP50, now);
-```
-
-`fallbackP50` đến từ `SlidingWindowManager.getSnapshot(instanceId).p50()`.
-
-Lý do không khởi tạo từ `0ms`:
-
-- Nếu bắt đầu từ 0, EWMA cần nhiều chu kỳ mới lên được latency thực tế.
-- Trong thời gian đó backend có thể bị đánh giá tốt giả.
-- P50 lịch sử là giá trị khởi tạo hợp lý hơn.
-
----
-
-## 7. Giới hạn dt
-
-Mã nguồn giới hạn `dt`:
-
-```text
-dt ∈ [1ms, 3 * tauMax]
-```
-
-Mục đích:
-
-- Tránh `dt = 0` làm EWMA không cập nhật.
-- Tránh instance offline lâu rồi quay lại khiến EWMA reset quá mạnh về raw latency mới.
-- Giữ trạng thái làm mượt ổn định khi backend tạm thời không được poll.
-
----
-
-## 8. Lưu state bằng Caffeine
-
-State được lưu trong cache:
-
-```java
-private final Cache<String, EwmaState> states = Caffeine.newBuilder()
-        .expireAfterAccess(5, TimeUnit.MINUTES)
-        .build();
-```
-
-Mỗi backend có một `EwmaState` riêng gồm:
-
-```text
-value
-lastTimestamp
-```
-
-Sau 5 phút không được truy cập, state sẽ tự hết hạn. Điều này giúp dọn state của instance đã down hoặc không còn xuất hiện trong Eureka.
-
----
-
-## 9. Khác biệt giữa EWMA latency và EMA finalScore
-
-Trong dự án có hai lớp smoothing khác nhau:
-
-| Thành phần | Làm mượt cái gì | Nằm ở đâu |
-|---|---|---|
-| `EwmaSmoother` | latency thô | `ScoreCalculator` |
-| `MetricsPoller.applyScoreEma()` | finalScore | `MetricsPoller` |
-
-`EwmaSmoother` xử lý nhiễu latency đầu vào.
-
-EMA finalScore xử lý dao động của điểm tổng hợp sau khi đã có MCDM và PID.
-
-Hai lớp này không trùng vai trò.
-
----
-
-## 10. Reset
-
-Khi gọi:
-
-```text
+```http
 POST /actuator/alb/reset
 ```
 
-`AdminController` gọi:
+---
 
-```java
-ewmaSmoother.resetAllStates();
+## 6. Cách diễn giải trong luận văn
+
+Nên viết:
+
+```text
+EWMA được dùng để cân bằng giữa độ nhạy và độ ổn định của tín hiệu latency. Khi latency thay đổi mạnh, hệ số làm mượt phản ứng nhanh hơn; khi latency ổn định, bộ lọc làm mượt mạnh hơn để giảm nhiễu.
 ```
 
-Lệnh này xóa toàn bộ state EWMA. Lần poll tiếp theo sẽ khởi tạo lại bằng fallback P50.
+Không nên viết:
+
+```text
+EWMA làm latency chính xác hơn tuyệt đối.
+```
+
+EWMA không làm metric “đúng hơn”, mà làm tín hiệu điều khiển ổn định hơn.

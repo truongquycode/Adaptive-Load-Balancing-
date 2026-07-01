@@ -2,15 +2,15 @@
 
 ## 1. Vai trò
 
-`DynamicWeightEngine` tính trọng số động cho ba tiêu chí trong mô hình MCDM:
+`DynamicWeightEngine` tính trọng số cho ba tiêu chí MCDM trong `ScoreCalculator`:
 
 ```text
-latency
-queue
-cpu
+latency weight = alpha
+queue weight   = beta
+cpu weight     = gamma
 ```
 
-Score nền của backend được tính theo công thức:
+Base score:
 
 ```text
 baseScore = alpha * normLatency
@@ -18,291 +18,157 @@ baseScore = alpha * normLatency
           + gamma * normCpu
 ```
 
-Trong đó:
-
-- `alpha` là trọng số latency.
-- `beta` là trọng số queue.
-- `gamma` là trọng số CPU.
-- Tổng ba trọng số luôn được chuẩn hóa về `1.0`.
-
-`DynamicWeightEngine` không trực tiếp chọn backend. Nó chỉ cung cấp trọng số cho `ScoreCalculator`.
-
 ---
 
-## 2. Vị trí trong pipeline
+## 2. AHP prior
+
+Trọng số mặc định trong code:
 
 ```text
-MetricsPoller
-    |
-    v
-ScoreCalculator
-    |
-    | lấy normLatency, normQueue, normCpu
-    | lấy alpha, beta, gamma từ DynamicWeightEngine
-    v
-baseScore
-    |
-    v
-PID penalty
-    |
-    v
-finalScore
+latency = 0.648
+queue   = 0.230
+cpu     = 0.122
 ```
 
-`DynamicWeightEngine` đọc dữ liệu đã chuẩn hóa từ `ScoreBreakdown` trong `MetricsCache`, không đọc raw latency/queue/cpu trực tiếp.
+Ý nghĩa thiết kế:
+
+- latency là mục tiêu chính vì phản ánh trải nghiệm request;
+- queue là tín hiệu sớm của quá tải;
+- CPU là tín hiệu tài nguyên, đặc biệt hữu ích khi có hidden degradation.
+
+Giới hạn: hiện tại đây là prior thiết kế/thực nghiệm. Nếu trình bày là AHP đầy đủ thì cần bổ sung ma trận so sánh cặp và consistency ratio trong luận văn.
 
 ---
 
-## 3. Tần suất cập nhật
+## 3. EWM trên normalized criteria
 
-Trọng số MCDM được cập nhật theo lịch:
+Engine không tính entropy trên raw latency/queue/cpu. Nó dùng:
 
-```java
-@Scheduled(fixedRateString = "${alb.weights.update-interval:5000}")
+```text
+normLatency, normQueue, normCpu
 ```
 
-Cấu hình trong `application.yml`:
+đã được `ScoreCalculator` chuẩn hóa về [0,1]. Điều này giúp EWM nhìn đúng không gian dữ liệu mà base score sử dụng.
+
+Entropy Weight Method được dùng theo ý tưởng:
+
+```text
+Tiêu chí nào phân biệt backend rõ hơn -> diversity cao hơn -> weight cao hơn.
+```
+
+Sau khi có EWM weights, code blend với AHP prior:
+
+```text
+target = 0.70 * EWM + 0.30 * AHP
+```
+
+Sau đó áp EMA để weight không nhảy quá nhanh.
+
+---
+
+## 4. Real-traffic gate
+
+Một điểm quan trọng của phiên bản hiện tại: Dynamic MCDM chỉ cập nhật khi có đủ traffic nghiệp vụ thật.
+
+Cấu hình:
 
 ```yaml
 alb:
   weights:
     update-interval: 5000
+    min-completed-requests: 20
+    min-actual-rps: 5.0
+    reset-to-ahp-when-idle: true
 ```
 
-Nghĩa là cứ 5 giây hệ thống tính lại bộ trọng số một lần.
+Cơ chế:
+
+```text
+MetricsPoller tính deltaCount từ Micrometer timer.
+Nếu deltaCount > 0 -> ghi nhận completed request thật.
+DynamicWeightEngine mỗi 5s đọc số completed request thật.
+Nếu không đủ request/RPS -> không chạy EWM.
+Nếu reset-to-ahp-when-idle=true -> quay về AHP prior.
+```
+
+Mục đích là tránh tình trạng weights thay đổi khi hệ thống idle chỉ vì Gateway vẫn poll `/api/alb-metrics`, Prometheus vẫn scrape, JVM vẫn có CPU nền.
 
 ---
 
-## 4. AHP prior
+## 5. Stable cluster guard
 
-Mã nguồn hiện tại dùng bộ trọng số nền từ AHP:
-
-```java
-private static final double[] AHP_WEIGHTS = { 0.648, 0.230, 0.122 };
-```
-
-| Tiêu chí | Ký hiệu | Trọng số AHP |
-|---|---:|---:|
-| Latency | `alpha` | `0.648` |
-| Queue | `beta` | `0.230` |
-| CPU | `gamma` | `0.122` |
-
-Ý nghĩa:
-
-- Latency được ưu tiên cao nhất vì phản ánh trực tiếp trải nghiệm người dùng.
-- Queue là tín hiệu sớm của quá tải.
-- CPU có trọng số thấp hơn nhưng vẫn cần thiết để phát hiện suy giảm tài nguyên hoặc noisy neighbor.
-
-AHP prior đóng vai trò neo ổn định, tránh để trọng số động dao động quá mạnh theo dữ liệu nhiễu.
-
----
-
-## 5. Điều kiện giữ AHP khi hệ thống ổn định
-
-Nếu cụm backend đang ổn định, engine không áp EWM mà quay về AHP prior.
-
-Điều kiện trong mã nguồn:
+Ngay cả khi có traffic thật, nếu cụm rất ổn định:
 
 ```text
 avgQueue < 0.08
 avgCpu < 0.08
-maxNormLatency - minNormLatency < 0.12
+latencySpread < 0.12
 ```
 
-Khi thỏa điều kiện này:
-
-```java
-this.weights = new McdmWeights(AHP_WEIGHTS[0], AHP_WEIGHTS[1], AHP_WEIGHTS[2]);
-```
-
-Mục đích:
-
-- Tránh phóng đại nhiễu rất nhỏ ở low load.
-- Giữ trọng số dễ giải thích khi các backend gần như giống nhau.
-- Không làm adaptive tự tạo dao động trong điều kiện bình thường.
+engine giữ AHP prior thay vì cập nhật EWM. Điều này tránh khuếch đại nhiễu nhỏ thành thay đổi trọng số lớn.
 
 ---
 
-## 6. Entropy Weight Method
+## 6. Bound và smoothing
 
-Khi hệ thống có khác biệt đủ rõ, engine dùng Entropy Weight Method để tính trọng số theo độ phân tán dữ liệu.
+Sau khi tính target weight, code dùng:
 
-Dữ liệu đầu vào là ma trận `badness`:
+- EMA alpha động từ 0.08 đến 0.22;
+- clamp mềm:
+  - `gamma` trong [0.08, 0.35];
+  - `beta` trong [0.08, 0.45];
+  - `alpha` trong [0.15, 0.70];
+- normalize lại tổng weights = 1.
 
-```text
-data[i][0] = normLatency của backend i
-data[i][1] = normQueue của backend i
-data[i][2] = normCpu của backend i
-```
-
-Các giá trị đều nằm trong `[0, 1]` và càng lớn nghĩa là càng xấu.
-
-Nguyên tắc của EWM:
-
-- Tiêu chí nào phân biệt backend rõ hơn thì nhận trọng số cao hơn.
-- Tiêu chí nào gần như giống nhau giữa các backend thì nhận trọng số thấp hơn.
-
-Ví dụ:
-
-- Nếu latency của 3 backend rất khác nhau nhưng CPU gần như bằng nhau, trọng số latency sẽ tăng.
-- Nếu CPU của một backend tăng mạnh trong khi latency chưa tăng nhiều, trọng số CPU có thể tăng để phản ánh suy giảm tài nguyên.
+Những bound này giúp một tiêu chí không triệt tiêu hoàn toàn hoặc thống trị tuyệt đối.
 
 ---
 
-## 7. Công thức entropy
+## 7. Ablation
 
-Với mỗi tiêu chí `j`, engine tính xác suất tương đối:
+Variant liên quan:
 
-```text
-p_ij = data_ij / sum(data_j)
-```
+| Variant | Ảnh hưởng |
+|---|---|
+| `full` | Dùng Dynamic MCDM bình thường |
+| `fixed-weights` | Reset về AHP/fixed weights, không dùng EWM |
 
-Entropy:
-
-```text
-entropy_j = -k * sum(p_ij * ln(p_ij))
-```
-
-Trong đó:
-
-```text
-k = 1 / ln(n)
-```
-
-`n` là số backend có score.
-
-Độ đa dạng thông tin:
-
-```text
-diversity_j = 1 - entropy_j
-```
-
-Trọng số EWM:
-
-```text
-ewm_j = diversity_j / sum(diversity)
-```
-
-Nếu tổng diversity quá nhỏ, engine quay về AHP prior.
+Ablation này dùng để trả lời câu hỏi: dynamic weight có cải thiện kết quả so với fixed weight hay không.
 
 ---
 
-## 8. Kết hợp EWM và AHP
+## 8. Metrics Prometheus
 
-Mã nguồn không dùng EWM trực tiếp. EWM được trộn với AHP:
-
-```java
-private static final double BLEND_FACTOR = 0.70;
-```
-
-Công thức:
-
-```text
-targetWeight = 0.70 * ewmWeight + 0.30 * ahpWeight
-```
-
-Sau đó các trọng số được chuẩn hóa lại để tổng bằng `1.0`.
-
-Cách này giúp trọng số vừa phản ứng theo dữ liệu thực tế, vừa không rời khỏi cấu trúc ưu tiên ban đầu của bài toán.
+| Metric | Giá trị |
+|---|---|
+| `alb_mcdm_weight{criterion="latency"}` | alpha |
+| `alb_mcdm_weight{criterion="queue"}` | beta |
+| `alb_mcdm_weight{criterion="cpu"}` | gamma |
+| `alb_mcdm_update_mode` | 0=frozen/idle/stable, 1=dynamic real traffic, 2=fixed-weights ablation |
+| `alb_mcdm_recent_completed_requests` | completed requests trong cửa sổ MCDM gần nhất |
+| `alb_mcdm_recent_actual_rps` | actual RPS trong cửa sổ MCDM gần nhất |
 
 ---
 
-## 9. EMA cho trọng số
+## 9. Cách diễn giải khi bảo vệ
 
-Sau khi có target weight, engine không cập nhật ngay lập tức mà áp EMA.
-
-Mã nguồn hiện tại:
+Nên nói:
 
 ```text
-WEIGHT_EMA_ALPHA_MIN = 0.08
-WEIGHT_EMA_ALPHA_MAX = 0.22
+MCDM weights gồm AHP prior và EWM adaptation. EWM chỉ cập nhật khi có đủ traffic thật để tránh học từ nhiễu idle. Vì chỉ có 3 backend, EWM được dùng như tín hiệu thích nghi nhẹ, có blend/clamp/EMA để hạn chế dao động.
 ```
 
-EMA alpha được tính theo mức thay đổi giữa trọng số mục tiêu và trọng số hiện tại:
+Không nên nói:
 
 ```text
-delta = average(|target - current|)
-emaAlpha = 0.08 + (0.22 - 0.08) * clamp(delta * 3.0, 0, 1)
+EWM chứng minh tiêu chí tối ưu hoặc tạo ra trọng số đúng tuyệt đối.
 ```
-
-Nếu target thay đổi ít, cập nhật chậm. Nếu target thay đổi nhiều, cập nhật nhanh hơn.
 
 ---
 
-## 10. Giới hạn mềm cho trọng số
+## 10. Rủi ro còn lại
 
-Trước khi lưu trọng số mới, engine clamp từng tiêu chí:
-
-```text
-gamma ∈ [0.08, 0.35]
-beta  ∈ [0.08, 0.45]
-alpha ∈ [0.15, 0.70]
-```
-
-Sau đó chuẩn hóa lại tổng bằng `1.0`.
-
-Mục đích:
-
-- Không cho một tiêu chí bị triệt tiêu hoàn toàn.
-- Không cho một tiêu chí thống trị tuyệt đối.
-- Giữ công thức MCDM ổn định và dễ giải thích.
-
----
-
-## 11. Metric Prometheus
-
-`DynamicWeightEngine` export ba gauge:
-
-```text
-alb_mcdm_weight{criterion="latency"}
-alb_mcdm_weight{criterion="queue"}
-alb_mcdm_weight{criterion="cpu"}
-```
-
-Dashboard dùng các PromQL:
-
-```promql
-alb_mcdm_weight{criterion="latency"}
-```
-
-```promql
-alb_mcdm_weight{criterion="queue"}
-```
-
-```promql
-alb_mcdm_weight{criterion="cpu"}
-```
-
-Và dùng biểu thức kiểm tra tổng:
-
-```promql
-alb_mcdm_weight{criterion="latency"}
-+ alb_mcdm_weight{criterion="queue"}
-+ alb_mcdm_weight{criterion="cpu"}
-```
-
-Kết quả kỳ vọng của tổng là `1.0`.
-
----
-
-## 12. Reset
-
-Khi gọi:
-
-```text
-POST /actuator/alb/reset
-```
-
-`AdminController` gọi:
-
-```java
-weightEngine.resetWeights();
-```
-
-Sau reset, trọng số quay lại AHP prior:
-
-```text
-alpha = 0.648
-beta  = 0.230
-gamma = 0.122
-```
+- Chỉ có 3 backend nên entropy weight nhạy với outlier.
+- AHP prior chưa có ma trận AHP chính thức trong tài liệu luận văn.
+- Các bound và blend factor vẫn là tham số thực nghiệm.
+- Cần ablation và sensitivity analysis để chứng minh dynamic weight thật sự có ích.

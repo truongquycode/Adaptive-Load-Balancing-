@@ -2,257 +2,110 @@
 
 ## 1. Vai trò
 
-`ScoreCalculator` tính health score cho từng backend dựa trên metrics vừa được `MetricsPoller` thu thập.
-
-Đầu vào:
+`ScoreCalculator` tính health score cho từng backend dựa trên metrics runtime:
 
 ```text
-InstanceMetrics:
-    - latency
-    - queueLength
-    - cpu
-```
-
-Đầu ra:
-
-```text
-ScoreBreakdown:
-    - ewmaLatency
-    - normLatency
-    - normQueue
-    - normCpu
-    - baseScore
-    - pidPenalty
-    - finalScore
-    - updatedAtMs
-```
-
-`finalScore` càng thấp thì backend càng tốt.
-
----
-
-## 2. Vị trí trong pipeline
-
-```text
-MetricsPoller
-    |
-    | InstanceMetrics
-    v
-ScoreCalculator
-    |
-    | EWMA
-    | normalization
-    | Dynamic MCDM
-    | PID
-    v
-ScoreBreakdown
+latency + queue + CPU
     |
     v
-MetricsCache
+normalized latency / normalized queue / normalized CPU
     |
     v
-RoutingCostCalculator
+MCDM base score
+    |
+    v
+PID-inspired latency penalty
+    |
+    v
+final health score
 ```
 
-`ScoreCalculator` không trực tiếp route request. Kết quả của nó được lưu vào `MetricsCache` để Adaptive Load Balancer dùng ở tầng data-plane.
+Score càng thấp thì backend càng tốt. Score này chưa phải quyết định routing cuối cùng; `RoutingCostCalculator` sẽ kết hợp thêm inflight/capacity/stale để tạo final routing cost.
 
 ---
 
-## 3. Xử lý trường hợp không có metrics
+## 2. Đầu vào
 
-Nếu `InstanceMetrics current == null`, `ScoreCalculator` trả về score rất xấu:
-
-```text
-SCORE_NULL_INSTANCE = 20.0
-```
-
-Score này cao hơn nhiều so với score bình thường, giúp Adaptive gần như không chọn backend không có metrics.
-
----
-
-## 4. Lấy percentile snapshot
-
-Đầu tiên, `ScoreCalculator` lấy snapshot theo instance:
-
-```java
-PercentileSnapshot snap = windowManager.getSnapshot(instanceId);
-```
-
-Snapshot gồm:
-
-```text
-p5
-p50
-p95
-qP99
-```
-
-Trong đó:
-
-- `p50` dùng làm fallback khi khởi tạo EWMA.
-- `qP99` dùng làm ngưỡng chuẩn hóa queue.
-- `p5`, `p95` theo instance vẫn được lưu trong snapshot, nhưng latency normalization chính hiện dùng system-wide snapshot.
-
-Sau đó lấy system-wide snapshot:
-
-```java
-SlidingWindowManager.SystemSnapshot sysSs = windowManager.getSystemSnapshot();
-```
-
-System snapshot gồm:
-
-```text
-systemP5
-systemP75
-systemP95
-```
+| Đầu vào | Nguồn | Ý nghĩa |
+|---|---|---|
+| `latency` | `MetricsPoller` | delta-average latency trong cửa sổ poll |
+| `queueLength` | backend gauge hoặc `InflightTracker` fallback | request đang xử lý/chờ |
+| `cpu` | `/api/alb-metrics` | CPU đã chuẩn hóa theo capacity |
+| Percentile snapshot | `SlidingWindowManager` | p50/p75/p99 của instance |
+| System snapshot | `SlidingWindowManager` | p5/p75/p95 toàn cụm |
+| MCDM weights | `DynamicWeightEngine` | trọng số latency/queue/CPU |
+| PID state | `PIDController` | penalty khi latency xấu kéo dài |
 
 ---
 
-## 5. EWMA latency
+## 3. Latency EWMA
 
-Latency thô được xác định:
-
-```text
-lRaw = current.latency > 0 ? current.latency : p50
-```
-
-Sau đó gọi:
-
-```java
-ewmaSmoother.smooth(instanceId, lRaw, tauMin, tauMax, k, p50)
-```
-
-Cấu hình hiện tại:
-
-```yaml
-alb:
-    ewma:
-        tau-min: 200.0
-        tau-max: 2000.0
-        k: 3.0
-```
-
-Kết quả là:
+Latency thô có thể nhiễu hoặc có outlier. Vì vậy score dùng `EwmaSmoother`:
 
 ```text
-ewmaLatency
+ewmaLatency = adaptiveEwma(instanceId, rawLatency)
 ```
 
-Đây là latency đã được làm mượt, dùng cho bước chuẩn hóa.
+Ablation `no-ewma-latency` dùng latency thô để kiểm tra EWMA có giúp giảm flapping hay không.
 
 ---
 
-## 6. Fallback system percentile
+## 4. Chuẩn hóa latency
 
-Nếu system snapshot chưa hợp lệ:
-
-```text
-sysP95 <= sysP5
-sysP5 < 1.0
-```
-
-ScoreCalculator dùng fallback:
+Latency được chuẩn hóa theo snapshot toàn hệ thống:
 
 ```text
-SYSTEM_P5_FALLBACK = 30.0ms
-SYSTEM_P95_FALLBACK = 300.0ms
+normLatency = (ewmaLatency - sysP5) / (sysP95 - sysP5)
+clamp vào [0, 1]
 ```
 
-Sau đó kiểm tra độ rộng dải latency:
+Nếu dải `sysP95 - sysP5` quá hẹp, code mở rộng dải tối thiểu để tránh phóng đại nhiễu nhỏ ở low load.
 
-```text
-latencyRange = sysP95 - sysP5
-```
+Giới hạn cần ghi rõ:
 
-Nếu dải nhỏ hơn:
-
-```text
-MIN_SYSTEM_LATENCY_RANGE_MS = 80.0
-```
-
-thì dải được mở rộng tối thiểu thành 80ms. Mục đích là tránh khuếch đại nhiễu nhỏ ở low load.
+- đây là chuẩn hóa tương đối trong cụm;
+- nếu tất cả backend cùng chậm, chuẩn hóa tương đối có thể che bớt tình trạng toàn cụm xấu;
+- `RoutingCostCalculator` bổ sung absolute health penalty để giảm rủi ro này.
 
 ---
 
-## 7. Chuẩn hóa latency
+## 5. Chuẩn hóa queue
 
-Latency được chuẩn hóa theo min-max trên system-wide P5/P95:
+Queue được chuẩn hóa bằng log-scale so với p99 queue của instance:
 
 ```text
-normLatency = clamp((ewmaLatency - sysP5) / (sysP95 - sysP5), 0, 1)
+normQueue = normalizeQueue(currentQueue, instanceQueueP99)
 ```
 
-Ý nghĩa:
+Lý do dùng log-scale:
 
-- `0`: latency tốt gần system P5.
-- `1`: latency xấu gần system P95.
-- Giá trị nằm giữa phản ánh vị trí tương đối của backend trong cụm.
+- queue nhỏ tăng từ 0 lên vài request cần phản ứng rõ;
+- queue cực lớn không nên làm score nổ vô hạn;
+- phù hợp với phân phối right-skewed của queue/inflight.
 
 ---
 
-## 8. Chuẩn hóa queue
+## 6. Chuẩn hóa CPU
 
-Queue dùng log scaling:
-
-```text
-qMax = max(qP99, 40.0)
-
-logScore = log1p(qRaw) / log1p(qMax)
-linearScore = min(1.0, qRaw / (qMax * 2.0))
-
-normQueue = min(1.0, 0.6 * logScore + 0.4 * linearScore)
-```
-
-Lý do dùng log scaling:
-
-- Queue thường tăng theo phân phối lệch phải.
-- Chênh lệch từ 0 lên 5 request quan trọng hơn chênh lệch từ 100 lên 105.
-- Log scaling giúp thuật toán nhạy với queue nhỏ nhưng không bị sốc khi queue spike lớn.
-
-Nếu `qRaw <= 0`:
+CPU được clamp về [0,1]:
 
 ```text
-normQueue = 0
+normCpu = clamp(cpu, 0, 1)
 ```
+
+Trong backend, `cpu` đã được chuẩn hóa theo capacity weight:
+
+```text
+cpu = rawCpu / capacityWeight
+```
+
+Cần kiểm tra thực nghiệm khi dùng container vì `process.cpu.usage` phụ thuộc cách JVM/Micrometer báo cáo CPU.
 
 ---
 
-## 9. Chuẩn hóa CPU
+## 7. MCDM base score
 
-CPU được chuẩn hóa đơn giản:
-
-```text
-normCpu = clamp(cpuRaw, 0, 1)
-```
-
-Nếu giá trị CPU là NaN hoặc âm:
-
-```text
-normCpu = 0.5
-```
-
-Ở backend, `cpu` đã được chuẩn hóa theo CPU quota container trước khi trả về `/api/alb-metrics`.
-
----
-
-## 10. MCDM base score
-
-Sau khi có ba giá trị chuẩn hóa:
-
-```text
-normLatency
-normQueue
-normCpu
-```
-
-ScoreCalculator gọi:
-
-```java
-weightEngine.computeBaseScore(nL, nQ, nC)
-```
-
-Công thức:
+Base score:
 
 ```text
 baseScore = alpha * normLatency
@@ -260,9 +113,7 @@ baseScore = alpha * normLatency
           + gamma * normCpu
 ```
 
-Với trọng số được `DynamicWeightEngine` cập nhật định kỳ.
-
-Khi hệ thống vừa reset hoặc ổn định, trọng số quay về AHP prior:
+Mặc định AHP prior:
 
 ```text
 alpha = 0.648
@@ -270,114 +121,53 @@ beta  = 0.230
 gamma = 0.122
 ```
 
----
+Khi có đủ real traffic, `DynamicWeightEngine` có thể cập nhật weights bằng EWM + AHP blend.
 
-## 11. PID penalty
-
-Setpoint của PID là system P75 đã chuẩn hóa cùng thang với latency:
-
-```text
-normalizedP75 = normalizeLatency(systemP75, sysP5, invRange)
-```
-
-Sau đó tính penalty:
-
-```java
-pidPenalty = pidController.calculatePenalty(
-    instanceId,
-    normLatency,
-    normalizedP75,
-    props.getPid()
-);
-```
-
-PID penalty tăng khi backend chậm hơn P75 toàn hệ thống trong thời gian đủ dài.
+Ablation `fixed-weights` bỏ dynamic EWM và dùng fixed weights.
 
 ---
 
-## 12. Final score
+## 8. PID-inspired penalty
 
-Công thức cuối:
+Sau base score, code thêm penalty từ `PIDController`:
 
 ```text
 finalScore = baseScore + pidPenalty
 ```
 
-Trong đó:
+Setpoint của PID-inspired controller dựa trên latency P75 toàn hệ thống đã chuẩn hóa. Nếu một instance chậm hơn setpoint trong thời gian dài, penalty tăng.
 
-- `baseScore` thường nằm trong `[0,1]`.
-- `pidPenalty` nằm trong `[0, lambda]`, với cấu hình hiện tại `lambda = 0.8`.
-
-Vì vậy score thực tế thường nằm khoảng:
+Không nên gọi đây là PID controller đầy đủ trong điều khiển học. Trong luận văn nên dùng thuật ngữ:
 
 ```text
-0.0 đến 1.8
+PID-inspired latency penalty
 ```
 
-Nếu poll failure hoặc null metrics, score có thể cao hơn nhiều do cơ chế penalty của `MetricsPoller`.
+Ablation `no-pid` đặt penalty bằng 0.
 
 ---
 
-## 13. ScoreBreakdown
+## 9. Đầu ra `ScoreBreakdown`
 
-Kết quả trả về:
+`ScoreCalculator` trả `ScoreBreakdown` gồm:
 
-```java
-new ScoreBreakdown(
-    instanceId,
-    ewmaLatency,
-    normLatency,
-    normQueue,
-    normCpu,
-    baseScore,
-    pidPenalty,
-    finalScore,
-    updatedAtMs
-)
-```
+- instance id;
+- EWMA latency;
+- normalized latency;
+- normalized queue;
+- normalized CPU;
+- base score;
+- PID penalty;
+- final score;
+- timestamp.
 
-Các trường này giúp:
-
-- Gateway định tuyến bằng `finalScore`.
-- Grafana hiển thị health score.
-- Debug được vì sao một backend bị giảm traffic.
+Các giá trị này giúp Grafana phân tích vì sao một backend bị tăng cost.
 
 ---
 
-## 14. Quan hệ với MetricsPoller
+## 10. Giới hạn khoa học
 
-`ScoreCalculator` trả `finalScore` thô. Sau đó `MetricsPoller` áp thêm EMA bất đối xứng:
-
-```text
-raw finalScore
-    |
-    v
-MetricsPoller.applyScoreEma()
-    |
-    v
-smoothed finalScore
-    |
-    v
-MetricsCache.putScore()
-```
-
-Do đó `alb_final_score` trên Prometheus là score đã qua bước smoothing cuối trong `MetricsPoller`.
-
----
-
-## 15. Reset
-
-`ScoreCalculator` không có state riêng cần reset. Các state ảnh hưởng đến kết quả của nó nằm ở:
-
-- `EwmaSmoother`
-- `PIDController`
-- `SlidingWindowManager`
-- `DynamicWeightEngine`
-- `MetricsCache`
-- `MetricsPoller`
-
-Tất cả được reset thông qua:
-
-```text
-POST /actuator/alb/reset
-```
+- Latency đầu vào là delta-average theo poll window, không phải p95/p99 raw từng request.
+- Percentile từ `SlidingWindowManager` được xây từ sample metrics polling, không phải từ từng request riêng lẻ.
+- Weight và ngưỡng vẫn là heuristic, cần ablation và sensitivity analysis để bảo vệ.
+- Score thấp không tự động đảm bảo backend tốt nhất trong mọi hoàn cảnh; quyết định cuối còn phụ thuộc inflight, capacity và stale penalty.
