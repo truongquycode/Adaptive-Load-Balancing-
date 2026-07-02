@@ -125,23 +125,47 @@ exit /b 1
 
 :BUILD_RUN_ORDER
 set "ORDER="
+
 if /I not "%RANDOMIZE_ORDER%"=="true" (
     for /L %%I in (1,1,%ITEM_COUNT%) do set "ORDER=!ORDER! %%I"
     exit /b 0
 )
 
 set "TMP_ORDER_FILE=%TEMP%\alb_order_%RANDOM%%RANDOM%.txt"
-"%POWERSHELL_EXE%" -NoProfile -ExecutionPolicy Bypass -Command "$n=%ITEM_COUNT%; 1..$n ^| Sort-Object { Get-Random } ^| ForEach-Object { Write-Output $_ }" > "%TMP_ORDER_FILE%"
+
+"%POWERSHELL_EXE%" -NoProfile -ExecutionPolicy Bypass -Command ^
+"$ErrorActionPreference='Stop';" ^
+"$n=[int]'%ITEM_COUNT%';" ^
+"$items=New-Object System.Collections.Generic.List[int];" ^
+"for($i=1; $i -le $n; $i++){ $items.Add($i) };" ^
+"$out=New-Object System.Collections.Generic.List[string];" ^
+"while($items.Count -gt 0){" ^
+"  $idx=Get-Random -Minimum 0 -Maximum $items.Count;" ^
+"  $out.Add([string]$items[$idx]);" ^
+"  $items.RemoveAt($idx);" ^
+"};" ^
+"[System.IO.File]::WriteAllLines('%TMP_ORDER_FILE%', $out, [System.Text.Encoding]::ASCII);"
+
 if errorlevel 1 (
     echo [ERROR] Cannot build randomized order.
+    echo [ERROR] PowerShell randomization failed. Try: set RANDOMIZE_ORDER=false
     exit /b 1
 )
-for /f %%I in (%TMP_ORDER_FILE%) do set "ORDER=!ORDER! %%I"
+
+if not exist "%TMP_ORDER_FILE%" (
+    echo [ERROR] Randomized order file was not created: %TMP_ORDER_FILE%
+    exit /b 1
+)
+
+for /f %%I in ("%TMP_ORDER_FILE%") do set "ORDER=!ORDER! %%I"
+
 del /f /q "%TMP_ORDER_FILE%" >nul 2>nul
+
 if not defined ORDER (
     echo [ERROR] Randomized order is empty.
     exit /b 1
 )
+
 exit /b 0
 
 :RUN_ITEM
