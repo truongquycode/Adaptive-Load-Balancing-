@@ -1,4 +1,4 @@
-strategy=random
+strategy=adaptive
 ablation=full
-label=random
-timestamp=2026-07-02 15:08:51
+label=adaptive_full
+timestamp=2026-07-02 15:18:18
