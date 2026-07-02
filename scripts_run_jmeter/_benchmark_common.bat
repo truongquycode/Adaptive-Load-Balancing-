@@ -34,6 +34,7 @@ if not defined RANDOMIZE_ORDER set "RANDOMIZE_ORDER=true"
 if not defined STRICT_SERVER_STRATEGY_CHECK set "STRICT_SERVER_STRATEGY_CHECK=true"
 
 set "POWERSHELL_EXE=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
+set "UPDATE_CONFIG_PS1=%~dp0update_alb_config.ps1"
 
 for %%I in ("%~dp0..") do set "PROJECT_DIR=%%~fI"
 set "APP_YML=%PROJECT_DIR%\api-gateway-alb\src\main\resources\application.yml"
@@ -64,6 +65,10 @@ if not exist "%POWERSHELL_EXE%" (
     echo [ERROR] PowerShell not found: %POWERSHELL_EXE%
     exit /b 1
 )
+if not exist "%UPDATE_CONFIG_PS1%" (
+    echo [ERROR] Config updater not found: %UPDATE_CONFIG_PS1%
+    exit /b 1
+)
 
 call :CONFIGURE_ITEMS
 if errorlevel 1 exit /b 1
@@ -82,7 +87,18 @@ echo Strict   : %STRICT_SERVER_STRATEGY_CHECK%
 echo =============================================================
 
 if not exist "%RESULT_BASE%" mkdir "%RESULT_BASE%"
-call :WRITE_SCENARIO_METADATA
+set "SCENARIO_META=%RESULT_BASE%\scenario-metadata.txt"
+(
+    echo scenario=%SCENARIO_NAME%
+    echo mode=%MODE%
+    echo test_plan=%TEST_PLAN%
+    echo randomized_order=%RANDOMIZE_ORDER%
+    echo order=!ORDER!
+    echo server_base_url=%SERVER_BASE_URL%
+    echo backend_ports=%BACKEND_PORTS%
+    echo runs_per_item=%RUNS_PER_ITEM%
+    echo created_at=%DATE% %TIME%
+) > "%SCENARIO_META%"
 
 for %%I in (!ORDER!) do (
     call :RUN_ITEM %%I
@@ -200,14 +216,8 @@ if errorlevel 1 (
     exit /b 1
 )
 
-call :UPDATE_APPLICATION_YML "%TARGET_STRATEGY%" "%TARGET_ABLATION%"
+call :UPDATE_APPLICATION_YML "%TARGET_STRATEGY%" "%TARGET_ABLATION%" "%TARGET_LABEL%"
 if errorlevel 1 exit /b 1
-
-"%POWERSHELL_EXE%" -NoProfile -ExecutionPolicy Bypass -Command "$p='%DEPLOY_MARKER%'; $enc=New-Object System.Text.UTF8Encoding($false); $content=@('strategy=%TARGET_STRATEGY%','ablation=%TARGET_ABLATION%','label=%TARGET_LABEL%','timestamp='+(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')); [System.IO.File]::WriteAllText($p, (($content -join [Environment]::NewLine) + [Environment]::NewLine), $enc)"
-if errorlevel 1 (
-    echo [ERROR] Failed to update deploy marker.
-    exit /b 1
-)
 
 git add "%APP_YML%" "%DEPLOY_MARKER%"
 git diff --cached --quiet
@@ -233,8 +243,15 @@ exit /b 0
 :UPDATE_APPLICATION_YML
 set "NEW_STRATEGY=%~1"
 set "NEW_ABLATION=%~2"
-"%POWERSHELL_EXE%" -NoProfile -ExecutionPolicy Bypass -Command ^
-"$p='%APP_YML%'; $strategy='%NEW_STRATEGY%'; $ablation='%NEW_ABLATION%'; $enc=New-Object System.Text.UTF8Encoding($false); $lines=[System.IO.File]::ReadAllLines($p,$enc); $insideAlb=$false; $insideAblation=$false; $strategyDone=$false; $ablationDone=$false; for($i=0; $i -lt $lines.Length; $i++){ if($lines[$i] -match '^alb:\s*$'){ $insideAlb=$true; $insideAblation=$false; continue }; if($insideAlb -and $lines[$i] -match '^\S'){ $insideAlb=$false; $insideAblation=$false }; if($insideAlb -and $lines[$i] -match '^\s*strategy:\s*'){ $lines[$i]='    strategy: '+$strategy; $strategyDone=$true; continue }; if($insideAlb -and $lines[$i] -match '^\s*ablation:\s*$'){ $insideAblation=$true; continue }; if($insideAblation -and $lines[$i] -match '^\s*variant:\s*'){ $lines[$i]='        variant: '+$ablation; $ablationDone=$true; continue }; if($insideAblation -and $lines[$i] -match '^    \S' -and $lines[$i] -notmatch '^\s*variant:\s*'){ $insideAblation=$false } }; if(-not $strategyDone){ Write-Error 'Cannot find alb.strategy'; exit 2 }; if(-not $ablationDone){ Write-Error 'Cannot find alb.ablation.variant'; exit 3 }; [System.IO.File]::WriteAllText($p, (($lines -join [Environment]::NewLine) + [Environment]::NewLine), $enc)"
+set "NEW_LABEL=%~3"
+
+"%POWERSHELL_EXE%" -NoProfile -ExecutionPolicy Bypass -File "%UPDATE_CONFIG_PS1%" ^
+    -ApplicationYml "%APP_YML%" ^
+    -DeployMarker "%DEPLOY_MARKER%" ^
+    -Strategy "%NEW_STRATEGY%" ^
+    -Ablation "%NEW_ABLATION%" ^
+    -Label "%NEW_LABEL%"
+
 if errorlevel 1 (
     echo [ERROR] Failed to update strategy or ablation variant in application.yml.
     exit /b 1
@@ -319,21 +336,6 @@ if errorlevel 1 (
     echo [ERROR] Reset ALB/chaos failed. Benchmark stopped to avoid contaminated results.
     exit /b 1
 )
-exit /b 0
-
-:WRITE_SCENARIO_METADATA
-set "SCENARIO_META=%RESULT_BASE%\scenario-metadata.txt"
-(
-    echo scenario=%SCENARIO_NAME%
-    echo mode=%MODE%
-    echo test_plan=%TEST_PLAN%
-    echo randomized_order=%RANDOMIZE_ORDER%
-    echo order=!ORDER!
-    echo server_base_url=%SERVER_BASE_URL%
-    echo backend_ports=%BACKEND_PORTS%
-    echo runs_per_item=%RUNS_PER_ITEM%
-    echo created_at=%DATE% %TIME%
-) > "%SCENARIO_META%"
 exit /b 0
 
 :WRITE_RUN_METADATA
