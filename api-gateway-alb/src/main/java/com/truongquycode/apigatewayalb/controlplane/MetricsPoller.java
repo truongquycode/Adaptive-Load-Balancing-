@@ -50,16 +50,8 @@ public class MetricsPoller {
 	private Set<String> lastActiveIds = Set.of(); // Snapshot topology lần poll trước — dùng để phát hiện instance
 													// mới/down
 
-	// ── Hệ số EMA bất đối xứng cho việc smooth finalScore ──────────────────
-	// Mục đích: phát hiện degradation nhanh, nhưng phục hồi chậm để tránh flapping
-	private static final double EMA_ALPHA_SPIKE = 0.60; // Score tăng đột biến (>30%) → react rất nhanh
-	private static final double EMA_ALPHA_RISE = 0.35; // Score tăng nhẹ → react vừa
-	private static final double EMA_ALPHA_RECOVER = 0.25; // Score giảm (instance đang hồi phục) → react chậm, tránh
-															// flap
-	private static final double EMA_SPIKE_THRESHOLD = 0.30; // Ngưỡng delta để phân loại "spike" vs "tăng nhẹ"
-	private static final double IDLE_LATENCY_BASELINE_MS = 65.0;
-	private static final double IDLE_DECAY_ALPHA = 0.20;
-	private static final long METRICS_POLL_TIMEOUT_MS = 800;
+	// Các hệ số EMA score, timeout và idle baseline được đọc từ AlbProperties.Polling.
+	// Việc đưa ra cấu hình giúp sensitivity analysis lặp lại được và tránh hard-code.
 
 	// ── Backing maps cho Prometheus Gauges ──────────────────────────────────
 	// Các map này là nguồn dữ liệu trực tiếp cho Gauge.builder().
@@ -96,7 +88,7 @@ public class MetricsPoller {
 	private record TrafficState(double count, double totalTimeSec, double lastLatency) {
 	}
 
-	private record LatencySample(double latencyMs, double completedRequests) {
+	private record LatencySample(double latencyMs, double completedRequests, boolean realLatencySample) {
 	}
 
 	@PostConstruct
@@ -153,7 +145,7 @@ public class MetricsPoller {
 		// Xem AlbMetricsController.java trong registration-service-alb
 		String url = instance.getUri().toString() + "/api/alb-metrics";
 
-		return webClient.get().uri(url).retrieve().bodyToMono(JsonNode.class).timeout(Duration.ofMillis(METRICS_POLL_TIMEOUT_MS))
+		return webClient.get().uri(url).retrieve().bodyToMono(JsonNode.class).timeout(Duration.ofMillis(albProperties.getPolling().getMetricsTimeoutMs()))
 				// ── Happy path: nhận được metrics ────────────────────────────
 				.doOnNext(node -> {
 					consecutiveFailures.put(instanceId, 0); // Reset failure counter vì poll thành công
@@ -181,6 +173,10 @@ public class MetricsPoller {
 							smoothed, // finalScore (đã qua EMA)
 							System.currentTimeMillis());
 					metricsCache.putScore(instanceId, penaltyBreakdown);
+					latencyValues.putIfAbsent(instanceId, 0.0);
+					queueValues.putIfAbsent(instanceId, 0.0);
+					scoreValues.put(instanceId, smoothed);
+					registerPrometheusGauges(instanceId);
 
 					log.warn("Poll failed for {} (attempt #{}), smoothedScore={}", instanceId, failures, smoothed);
 					return Mono.empty(); // Không propagate lỗi lên Mono.when() để các instance khác vẫn chạy
@@ -205,66 +201,87 @@ public class MetricsPoller {
 		try {
 			// Parse 4 trường từ JSON trả về bởi AlbMetricsController:
 			double cpu = node.path("cpu").asDouble(0.0);
-			// cpu: process.cpu.usage từ Micrometer, giá trị trong [0.0, 1.0]
-
 			double currentCount = node.path("count").asDouble(0.0);
 			double currentTotalTime = node.path("totalTime").asDouble(0.0);
-			// count + totalTime: tổng tích lũy từ Micrometer Timer (http.server.requests).
-			// Dùng để tính DELTA latency qua calculateDeltaLatency().
-			// Không lấy trực tiếp latency vì Micrometer chỉ expose cumulative counter.
-
 			double reportedQueue = node.path("queue").asDouble(-1.0);
-			// queue: số request đang xử lý (http.server.requests.inflight gauge).
-			// -1.0 là sentinel value khi instance chưa có gauge này.
-			
+
 			double capacityWeight = node.path("capacityWeight").asDouble(1.0);
 			metricsCache.putCapacityWeight(instanceId, capacityWeight);
 
-			// Tính latency trung bình trong window vừa qua (delta/delta logic).
-			// completedRequests chỉ > 0 khi có request nghiệp vụ thật hoàn thành.
-			// DynamicWeightEngine dùng tín hiệu này để không học MCDM từ nhiễu idle.
 			LatencySample latencySample = calculateDeltaLatency(instanceId, currentCount, currentTotalTime);
-			double latency = latencySample.latencyMs();
-			metricsCache.recordCompletedRequestsForMcdm(latencySample.completedRequests());
+			if (latencySample.completedRequests() > 0.0) {
+				metricsCache.recordCompletedRequestsForMcdm(latencySample.completedRequests());
+			}
 
-			// Fallback: nếu instance chưa có gauge inflight, dùng InflightTracker
-			// (được tracking từ phía gateway, không phụ thuộc vào instance báo cáo)
+			// Fallback: nếu instance chưa có gauge inflight, dùng InflightTracker phía gateway.
 			double realQueue = reportedQueue >= 0 ? reportedQueue : inflightTracker.getInflight(instanceId);
 
-			// Tạo InstanceMetrics object để đưa vào pipeline tính score
-			InstanceMetrics metrics = new InstanceMetrics(instanceId, latency, realQueue, cpu);
+			ScoreBreakdown previousScore = metricsCache.getScore(instanceId);
+			boolean hasRealLatencySample = latencySample.realLatencySample();
+			boolean hasActiveWorkWithoutCompletedSample = !hasRealLatencySample && realQueue > 0.0;
+			long now = System.currentTimeMillis();
 
-			// Lưu raw metrics vào cache (dùng cho DynamicWeightEngine tính MCDM weights)
-			metricsCache.putMetrics(instanceId, metrics);
+			// Luôn lưu raw metrics gần nhất để các thành phần khác còn biết backend đang sống.
+			metricsCache.putMetrics(instanceId, new InstanceMetrics(instanceId, latencySample.latencyMs(), realQueue, cpu));
 
-			// Cập nhật HDR Histogram (dùng cho ScoreCalculator lấy percentile làm setpoint
-			// PID)
-			windowManager.addMetrics(instanceId, latency, realQueue);
+			if (hasRealLatencySample) {
+				// Chỉ latency sample phát sinh từ request hoàn thành thật mới được đưa vào histogram.
+				// Điều này ngăn idle latency làm lệch p5/p75/p95 và PID setpoint.
+				windowManager.addMetrics(instanceId, latencySample.latencyMs(), realQueue);
 
-			// Tính score đầy đủ: EWMA latency → normalize (p5-p95) → MCDM baseScore → PID
-			// penalty
-			ScoreBreakdown rawBreakdown = scoreCalculator.calculateScore(instanceId, metrics);
+				InstanceMetrics metrics = new InstanceMetrics(instanceId, latencySample.latencyMs(), realQueue, cpu);
+				ScoreBreakdown rawBreakdown = scoreCalculator.calculateScore(instanceId, metrics);
+				double smoothedFinalScore = applyScoreEma(instanceId, rawBreakdown.finalScore());
+				ScoreBreakdown finalBreakdown = rawBreakdown.withFinalScore(smoothedFinalScore);
 
-			// Áp EMA bất đối xứng lên finalScore để:
-			// - Tăng nhanh khi instance có dấu hiệu xấu (bảo vệ user)
-			// - Giảm chậm khi instance hồi phục (tránh route quá sớm khi chưa ổn định)
-			double smoothedFinalScore = applyScoreEma(instanceId, rawBreakdown.finalScore());
+				metricsCache.putScore(instanceId, finalBreakdown);
+				latencyValues.put(instanceId, finalBreakdown.ewmaLatency());
+				queueValues.put(instanceId, realQueue);
+				scoreValues.put(instanceId, smoothedFinalScore);
+				registerPrometheusGauges(instanceId);
+				return;
+			}
 
-			// Lưu score vào cache với finalScore đã qua EMA
-			// AdaptiveLoadBalancer sẽ đọc từ đây để chọn instance
-			metricsCache.putScore(instanceId, rawBreakdown.withFinalScore(smoothedFinalScore));
+			if (hasActiveWorkWithoutCompletedSample && previousScore != null) {
+				// Có request đang bay nhưng chưa hoàn thành trong window poll hiện tại.
+				// Không tạo latency giả; giữ latency theo EWMA gần nhất, nhưng vẫn cập nhật queue/cpu
+				// để routing tránh node đang tích inflight dài.
+				InstanceMetrics metrics = new InstanceMetrics(instanceId, previousScore.ewmaLatency(), realQueue, cpu);
+				ScoreBreakdown rawBreakdown = scoreCalculator.calculateScore(instanceId, metrics);
+				double smoothedFinalScore = applyScoreEma(instanceId, rawBreakdown.finalScore());
+				ScoreBreakdown finalBreakdown = rawBreakdown.withFinalScore(smoothedFinalScore);
 
-			// Cập nhật backing maps cho Prometheus Gauges
-			latencyValues.put(instanceId, rawBreakdown.ewmaLatency());
+				metricsCache.putScore(instanceId, finalBreakdown);
+				latencyValues.put(instanceId, finalBreakdown.ewmaLatency());
+				queueValues.put(instanceId, realQueue);
+				scoreValues.put(instanceId, smoothedFinalScore);
+				registerPrometheusGauges(instanceId);
+				return;
+			}
+
+			// Idle thật: không cập nhật histogram, không cập nhật EWMA/score từ latency giả.
+			// Chỉ refresh timestamp để score không bị stale vì hệ thống không có traffic.
+			ScoreBreakdown refreshed = previousScore != null
+					? previousScore.withUpdatedAt(now)
+					: neutralIdleScore(instanceId, latencySample.latencyMs(), realQueue, cpu, now);
+			metricsCache.putScore(instanceId, refreshed);
+			latencyValues.put(instanceId, refreshed.ewmaLatency());
 			queueValues.put(instanceId, realQueue);
-			scoreValues.put(instanceId, smoothedFinalScore);
-
-			// Đăng ký Prometheus Gauge lần đầu (idempotent nhờ registeredGauges set)
+			scoreValues.put(instanceId, refreshed.finalScore());
 			registerPrometheusGauges(instanceId);
 
 		} catch (Exception e) {
 			log.warn("Lỗi parse metric cho {}: {}", instanceId, e.getMessage());
 		}
+	}
+
+	private ScoreBreakdown neutralIdleScore(String instanceId, double latencyMs, double queue, double cpu, long now) {
+		double safeLatency = clamp(latencyMs, 1.0, 3000.0);
+		double normCpu = (Double.isNaN(cpu) || Double.isInfinite(cpu) || cpu < 0.0) ? 0.5 : clamp(cpu, 0.0, 1.0);
+		double normQueue = queue > 0.0 ? 0.25 : 0.0;
+		// Neutral score dùng để backend xuất hiện trên dashboard và không bị NO_METRICS trong warmup.
+		// Nó không được đưa vào histogram/MCDM nên không làm lệch dữ liệu benchmark.
+		return new ScoreBreakdown(instanceId, safeLatency, 0.5, normQueue, normCpu, 0.5, 0.0, 0.5, now);
 	}
 
 	private double applyScoreEma(String instanceId, double rawScore) {
@@ -285,20 +302,21 @@ public class MetricsPoller {
 		double delta = rawScore - prev; // Dương = score tăng (xấu hơn), âm = score giảm (tốt hơn)
 
 		// Chọn alpha dựa vào chiều và độ lớn của delta:
+		AlbProperties.Polling pollingCfg = albProperties.getPolling();
 		double alpha;
-		if (delta > EMA_SPIKE_THRESHOLD) {
+		if (delta > pollingCfg.getScoreEmaSpikeThreshold()) {
 			// Score tăng đột biến >30% → phản ứng rất nhanh (alpha=0.60)
 			// Mục đích: phát hiện degradation ngay lập tức, tránh gửi traffic đến instance
 			// đang chết
-			alpha = EMA_ALPHA_SPIKE;
+			alpha = pollingCfg.getScoreEmaAlphaSpike();
 		} else if (delta > 0.0) {
 			// Score tăng nhẹ → phản ứng vừa (alpha=0.35)
-			alpha = EMA_ALPHA_RISE;
+			alpha = pollingCfg.getScoreEmaAlphaRise();
 		} else {
 			// Score giảm (instance đang hồi phục) → phản ứng chậm (alpha=0.25)
 			// Mục đích: tránh flapping — không vội route lại traffic khi instance mới
 			// "xanh" vài giây
-			alpha = EMA_ALPHA_RECOVER;
+			alpha = pollingCfg.getScoreEmaAlphaRecover();
 		}
 
 		// Công thức EMA: smoothed = prev + alpha * (rawScore - prev)
@@ -321,7 +339,7 @@ public class MetricsPoller {
 			log.debug("[MetricsPoller] Baseline established for {}: count={}, initLatency={}ms", id, currentCount,
 					initLatency);
 
-			return new LatencySample(initLatency, 0.0);
+			return new LatencySample(initLatency, 0.0, false);
 		}
 
 		// Tính delta giữa 2 lần poll liên tiếp.
@@ -330,12 +348,14 @@ public class MetricsPoller {
 
 		double currentLatency;
 		double completedRequests = 0.0;
+		boolean realLatencySample = false;
 
 		if (deltaCount > 0 && deltaTotal >= 0) {
 			// Có request nghiệp vụ hoàn thành trong window vừa qua.
 			// totalTime là giây, nên nhân 1000 để đổi sang millisecond.
 			currentLatency = (deltaTotal / deltaCount) * 1000.0;
 			completedRequests = deltaCount;
+			realLatencySample = true;
 
 		} else if (deltaCount < 0 || deltaTotal < 0) {
 			// Trường hợp backend container/JVM restart làm counter Micrometer reset về 0.
@@ -350,7 +370,8 @@ public class MetricsPoller {
 			// Vẫn giữ latency idle cho routing/cache, nhưng KHÔNG ghi nhận completedRequests.
 			// Nhờ vậy DynamicWeightEngine sẽ không cập nhật EWM từ nhiễu idle.
 			double idleTarget = idleLatencyBaselineFor(id);
-			currentLatency = prev.lastLatency() + IDLE_DECAY_ALPHA * (idleTarget - prev.lastLatency());
+			double idleAlpha = clamp(albProperties.getPolling().getIdleDecayAlpha(), 0.0, 1.0);
+			currentLatency = prev.lastLatency() + idleAlpha * (idleTarget - prev.lastLatency());
 		}
 
 		// Clamp vào [1ms, 3000ms] để tránh outlier.
@@ -358,9 +379,13 @@ public class MetricsPoller {
 
 		trafficStates.put(id, new TrafficState(currentCount, currentTotalTime, currentLatency));
 
-		return new LatencySample(currentLatency, completedRequests);
+		return new LatencySample(currentLatency, completedRequests, realLatencySample);
 	}
 	
+	private double clamp(double value, double min, double max) {
+		return Math.max(min, Math.min(max, value));
+	}
+
 	private double initialLatencyFor(String id) {
 	    return idleLatencyBaselineFor(id);
 	}
@@ -387,7 +412,7 @@ public class MetricsPoller {
 	        return Math.min(Math.max(1.0, p50), 3000.0);
 	    }
 
-	    return IDLE_LATENCY_BASELINE_MS;
+	    return albProperties.getPolling().getIdleLatencyBaselineMs();
 	}
 
 	public void resetAllStates() {
@@ -446,6 +471,11 @@ public class MetricsPoller {
 				Gauge.builder("alb.routing.load.raw", this, self -> {
 					RoutingCost cost = self.routingCostCalculator.getLastCost(id);
 					return cost != null ? cost.loadCostRaw() : 0.0;
+				}).tag("backend", id).register(registry);
+
+				Gauge.builder("alb.routing.absolute.latency.cost", this, self -> {
+					RoutingCost cost = self.routingCostCalculator.getLastCost(id);
+					return cost != null ? cost.absoluteLatencyCost() : 0.0;
 				}).tag("backend", id).register(registry);
 
 				Gauge.builder("alb.routing.capacity.weight", this, self -> {

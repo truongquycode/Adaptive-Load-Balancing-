@@ -96,6 +96,7 @@ Adaptive-Load-Balancing--main/
 ├── docs/
 │   ├── architecture/
 │   ├── adaptive-ablation-study.md
+│   ├── algorithm-tuning-log.md
 │   ├── benchmark-methodology.md
 │   ├── parameter-rationale.md
 │   ├── routing-cost-calculator.md
@@ -210,12 +211,15 @@ Backend /api/alb-metrics
 MetricsPoller
       |
       | delta request count/total time
-      | latency sample
+      | real latency sample only when deltaCount > 0
       | queue/inflight
       | CPU normalized by capacity
       | capacityWeight
       v
 SlidingWindowManager + MetricsCache
+      |
+      | idle polling refreshes cache but does not update latency histogram/score
+      v
       |
       v
 ScoreCalculator
@@ -233,6 +237,7 @@ RoutingCostCalculator
       | health cost
       | capacity-normalized load cost
       | stale penalty
+      | absolute latency cost
       | hard exclusion
       | dynamic health/load weights
       v
@@ -247,6 +252,11 @@ Selected backend
 ```
 
 Adaptive được gọi là “thích nghi” vì quyết định routing thay đổi theo trạng thái runtime của backend. Tuy nhiên, đây là mô hình heuristic thực nghiệm, không phải thuật toán tối ưu toàn cục có chứng minh toán học.
+
+Hai chỉnh sửa quan trọng ở tầng thuật toán hiện tại:
+
+- `MetricsPoller` chỉ đưa latency sample thật (`deltaCount > 0`) vào `SlidingWindowManager`; khi idle, Gateway vẫn refresh cache để backend không bị stale nhưng không để latency giả làm lệch histogram/PID/MCDM.
+- `RoutingCostCalculator` bổ sung `absoluteLatencyCost` theo ngưỡng SLA (`target-ms`, `critical-ms`) để tránh trường hợp toàn cụm cùng chậm nhưng min-max tương đối che mất tín hiệu quá tải tuyệt đối.
 
 ---
 

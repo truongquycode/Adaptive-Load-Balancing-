@@ -29,6 +29,13 @@ alb:
         variant: ${ALB_ABLATION_VARIANT:full}
     polling:
         interval: 200
+        metrics-timeout-ms: 800
+        score-ema-alpha-spike: 0.60
+        score-ema-alpha-rise: 0.35
+        score-ema-alpha-recover: 0.25
+        score-ema-spike-threshold: 0.30
+        idle-latency-baseline-ms: 65.0
+        idle-decay-alpha: 0.20
 
     ewma:
         # tau-min nhỏ hơn: phản ứng nhanh khi spike (chaos event hoặc overload)
@@ -59,6 +66,20 @@ alb:
         min-completed-requests: 20
         min-actual-rps: 5.0
         reset-to-ahp-when-idle: true
+        # Các tham số dưới đây giữ nguyên hành vi hiện tại nhưng được đưa ra config
+        # để sensitivity analysis không cần sửa code.
+        blend-factor: 0.70
+        ema-alpha-min: 0.08
+        ema-alpha-max: 0.22
+        stable-queue-threshold: 0.08
+        stable-cpu-threshold: 0.08
+        stable-latency-spread: 0.12
+        alpha-min: 0.15
+        alpha-max: 0.70
+        beta-min: 0.08
+        beta-max: 0.45
+        gamma-min: 0.08
+        gamma-max: 0.35
 
     routing:
         warmup-ms: 5000
@@ -75,6 +96,31 @@ alb:
         hard-inflight-cap: 220
         probe-interval-ms: 3000
         probe-probability: 0.005
+        # RoutingCostCalculator tuning parameters.
+        min-routing-norm-range: 0.12
+        routing-weight-ema-alpha: 0.18
+        dominant-threshold: 0.70
+        overload-penalty-weight: 0.30
+        cap-pressure-penalty-weight: 0.20
+        absolute-health-penalty-weight: 0.12
+        # Absolute latency signal: không để toàn cụm cùng chậm bị che bởi min-max tương đối.
+        absolute-latency-penalty-weight: 0.12
+        absolute-latency-target-ms: 300.0
+        absolute-latency-critical-ms: 1500.0
+        overload-start-ratio: 0.95
+        overload-full-ratio: 1.40
+        cap-pressure-start-ratio: 0.70
+        cap-pressure-full-ratio: 1.00
+        absolute-health-start: 0.75
+        absolute-health-full: 1.50
+        hard-inflight-cap-min: 40
+        capacity-cap-factor-min: 0.70
+        capacity-cap-factor-max: 1.50
+        # Probe recovery chỉ chạy khi cụm chưa căng để không làm xấu p99.
+        probe-max-total-inflight-ratio: 0.70
+        probe-max-load-raw: 1.10
+        probe-max-absolute-latency-cost: 0.80
+        probe-max-final-cost: 1.50
 
 management:
   endpoints:

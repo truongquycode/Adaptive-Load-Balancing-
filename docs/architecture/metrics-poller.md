@@ -61,7 +61,7 @@ Nếu counter reset do backend restart, poller re-baseline và không tính đó
 
 ---
 
-## 4. Idle latency và real traffic gate
+## 4. Idle latency, real traffic gate và histogram gate
 
 Khi không có request mới:
 
@@ -69,22 +69,39 @@ Khi không có request mới:
 deltaCount = 0
 ```
 
-Poller vẫn giữ một latency idle để cache/routing không bị rỗng dữ liệu. Tuy nhiên idle sample **không được ghi nhận là traffic thật** cho Dynamic MCDM.
+Poller vẫn giữ một latency idle để cache không bị rỗng, nhưng **không còn đưa idle latency vào `SlidingWindowManager`**. Điều này quan trọng vì histogram system-wide là nền cho:
 
-Điểm quan trọng:
+- latency normalization;
+- PID setpoint;
+- EWMA fallback;
+- p5/p75/p95 trên dashboard.
+
+Luồng hiện tại:
 
 ```text
-Idle metrics vẫn có thể phục vụ routing/cache.
-DynamicWeightEngine chỉ học trọng số khi có đủ request nghiệp vụ thật.
+deltaCount > 0
+    -> realLatencySample = true
+    -> addMetrics() vào histogram
+    -> calculateScore() bằng latency thật
+    -> recordCompletedRequestsForMcdm()
+
+deltaCount = 0 và queue = 0
+    -> không add histogram
+    -> không tính lại EWMA/score từ latency giả
+    -> chỉ refresh timestamp của score cũ để backend không bị stale khi idle
+
+deltaCount = 0 nhưng queue > 0
+    -> không add histogram
+    -> dùng EWMA latency gần nhất, nhưng cập nhật queue/CPU để tránh node đang giữ inflight dài
 ```
 
-Poller gọi:
+Nhờ vậy, khi chưa chạy JMeter, histogram không bị kéo về idle baseline và Dynamic MCDM không học từ nhiễu nền.
+
+Poller chỉ gọi MCDM traffic counter khi `completedRequests > 0`:
 
 ```java
 metricsCache.recordCompletedRequestsForMcdm(latencySample.completedRequests())
 ```
-
-Trong đó `completedRequests` chỉ lớn hơn 0 khi `deltaCount > 0`.
 
 ---
 
@@ -134,6 +151,7 @@ Poller áp EMA bất đối xứng lên final score:
 | `alb_routing_health_cost` | health cost đã chuẩn hóa |
 | `alb_routing_load_cost` | load cost đã chuẩn hóa |
 | `alb_routing_load_raw` | capacity-normalized load ratio thô |
+| `alb_routing_absolute_latency_cost` | latency cost tuyệt đối theo target/critical SLA |
 | `alb_routing_capacity_weight` | capacity weight theo backend |
 
 Tên Micrometer dạng dotted sẽ hiển thị trong Prometheus dạng underscore, ví dụ `alb.final.score` thành `alb_final_score`.
@@ -144,7 +162,7 @@ Tên Micrometer dạng dotted sẽ hiển thị trong Prometheus dạng undersco
 
 - Latency từ Poller là delta-average giữa hai lần poll, không phải p95/p99 raw per request.
 - Poll interval 200 ms có thể bỏ lỡ spike rất ngắn.
-- Nếu backend không phản hồi `/api/alb-metrics`, metric của backend đó có thể thiếu hoặc stale.
+- Nếu backend không phản hồi `/api/alb-metrics`, poller gán penalty score và vẫn đăng ký gauge để dashboard không mất backend ngay từ lần lỗi đầu.
 - CPU từ `process.cpu.usage` phụ thuộc semantics của Micrometer/JVM/container.
 - Poller chạy nền ngay cả khi không có JMeter; vì vậy Dynamic MCDM phải có real-traffic gate để không học từ idle noise.
 

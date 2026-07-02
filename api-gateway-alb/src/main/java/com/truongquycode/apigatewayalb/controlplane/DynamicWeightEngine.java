@@ -35,13 +35,8 @@ public class DynamicWeightEngine {
     // AHP prior: latency quan trọng nhất, queue là tín hiệu sớm, CPU hỗ trợ hidden degradation.
     private static final double[] AHP_WEIGHTS = { 0.648, 0.230, 0.122 };
 
-    // V3: tăng nhẹ tốc độ thích nghi nhưng vẫn không nhảy quá mạnh.
-    private static final double WEIGHT_EMA_ALPHA_MIN = 0.08;
-    private static final double WEIGHT_EMA_ALPHA_MAX = 0.22;
-
-    // EWM vẫn là dữ liệu thực, AHP vẫn là neo chuyên gia.
-    private static final double BLEND_FACTOR = 0.70;
-    private static final double ONE_MINUS_BLEND = 1.0 - BLEND_FACTOR;
+    // Các tham số blend/EMA/bounds được cấu hình trong AlbProperties.Weights
+    // để sensitivity analysis có thể lặp lại mà không cần sửa code.
 
     private record McdmWeights(double alpha, double beta, double gamma) {}
 
@@ -104,7 +99,10 @@ public class DynamicWeightEngine {
         avgCpu /= n;
 
         // Khi có traffic thật nhưng cụm vẫn rất ổn định, giữ AHP để tránh EWM khuếch đại nhiễu nhỏ.
-        if (avgQueue < 0.08 && avgCpu < 0.08 && (maxLat - minLat) < 0.12) {
+        AlbProperties.Weights cfg = props.getWeights();
+        if (avgQueue < cfg.getStableQueueThreshold()
+                && avgCpu < cfg.getStableCpuThreshold()
+                && (maxLat - minLat) < cfg.getStableLatencySpread()) {
             mcdmUpdateMode = 0.0;
             this.weights = new McdmWeights(AHP_WEIGHTS[0], AHP_WEIGHTS[1], AHP_WEIGHTS[2]);
             return;
@@ -172,10 +170,14 @@ public class DynamicWeightEngine {
     }
 
     private void blendAndApplyWeights(double[] ewm) {
+        AlbProperties.Weights cfg = props.getWeights();
+        double blendFactor = clamp(cfg.getBlendFactor(), 0.0, 1.0);
+        double oneMinusBlend = 1.0 - blendFactor;
+
         double[] target = new double[CRITERIA_COUNT];
         double sum = 0.0;
         for (int j = 0; j < CRITERIA_COUNT; j++) {
-            target[j] = BLEND_FACTOR * ewm[j] + ONE_MINUS_BLEND * AHP_WEIGHTS[j];
+            target[j] = blendFactor * ewm[j] + oneMinusBlend * AHP_WEIGHTS[j];
             sum += target[j];
         }
         for (int j = 0; j < CRITERIA_COUNT; j++) {
@@ -187,17 +189,18 @@ public class DynamicWeightEngine {
                 + Math.abs(target[1] - current.beta())
                 + Math.abs(target[2] - current.gamma())) / 3.0;
 
-        double emaAlpha = WEIGHT_EMA_ALPHA_MIN
-                + (WEIGHT_EMA_ALPHA_MAX - WEIGHT_EMA_ALPHA_MIN) * clamp01(delta * 3.0);
+        double emaMin = clamp(cfg.getEmaAlphaMin(), 0.0, 1.0);
+        double emaMax = clamp(cfg.getEmaAlphaMax(), emaMin, 1.0);
+        double emaAlpha = emaMin + (emaMax - emaMin) * clamp01(delta * 3.0);
 
         double newAlpha = emaAlpha * target[0] + (1.0 - emaAlpha) * current.alpha();
         double newBeta = emaAlpha * target[1] + (1.0 - emaAlpha) * current.beta();
         double newGamma = emaAlpha * target[2] + (1.0 - emaAlpha) * current.gamma();
 
         // Bounds mềm: không cho một tiêu chí triệt tiêu hoàn toàn hoặc thống trị tuyệt đối.
-        newGamma = clamp(newGamma, 0.08, 0.35);
-        newBeta = clamp(newBeta, 0.08, 0.45);
-        newAlpha = clamp(newAlpha, 0.15, 0.70);
+        newGamma = clamp(newGamma, cfg.getGammaMin(), cfg.getGammaMax());
+        newBeta = clamp(newBeta, cfg.getBetaMin(), cfg.getBetaMax());
+        newAlpha = clamp(newAlpha, cfg.getAlphaMin(), cfg.getAlphaMax());
 
         double s = newAlpha + newBeta + newGamma;
         this.weights = new McdmWeights(newAlpha / s, newBeta / s, newGamma / s);

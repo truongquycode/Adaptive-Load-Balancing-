@@ -45,7 +45,9 @@ public class LeastConnectionsLoadBalancer implements ReactorServiceInstanceLoadB
 		}
 
 		if (instances.size() == 1) {
-			return new DefaultResponse(instances.get(0));
+			ServiceInstance selected = instances.get(0);
+			emitMetric(selected);
+			return new DefaultResponse(selected);
 		}
 
 		int minInflight = Integer.MAX_VALUE;
@@ -74,9 +76,15 @@ public class LeastConnectionsLoadBalancer implements ReactorServiceInstanceLoadB
 		ServiceInstance selected = candidates.get(ThreadLocalRandom.current().nextInt(candidates.size()));
 
 		log.debug("LeastConnections selected: {} | inflight={}", selected.getInstanceId(), minInflight);
-		io.micrometer.core.instrument.Metrics.counter("alb.routing.selected", "backend", selected.getInstanceId(),
-				"port", String.valueOf(selected.getPort())).increment();
+		emitMetric(selected);
 
 		return new DefaultResponse(selected);
+	}
+
+	private void emitMetric(ServiceInstance selected) {
+		io.micrometer.core.instrument.Metrics.counter("alb.routing.selected",
+				"backend", selected.getInstanceId(),
+				"port", String.valueOf(selected.getPort()),
+				"reason", "BASELINE_LEAST_CONNECTIONS").increment();
 	}
 }

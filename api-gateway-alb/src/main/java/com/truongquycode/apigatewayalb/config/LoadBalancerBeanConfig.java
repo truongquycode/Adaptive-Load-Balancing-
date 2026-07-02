@@ -61,7 +61,7 @@ public class LoadBalancerBeanConfig {
         ObjectProvider<ServiceInstanceListSupplier> lazyProvider = loadBalancerClientFactory.getLazyProvider(name,
                 ServiceInstanceListSupplier.class);
 
-        return new MetricAwareLoadBalancer(new RoundRobinLoadBalancer(lazyProvider, name));
+        return new MetricAwareLoadBalancer(new RoundRobinLoadBalancer(lazyProvider, name), "BASELINE_ROUND_ROBIN");
     }
 
     // 3. Kích hoạt thuật toán RANDOM
@@ -75,7 +75,7 @@ public class LoadBalancerBeanConfig {
         ObjectProvider<ServiceInstanceListSupplier> lazyProvider = loadBalancerClientFactory.getLazyProvider(name,
                 ServiceInstanceListSupplier.class);
 
-        return new MetricAwareLoadBalancer(new RandomLoadBalancer(lazyProvider, name));
+        return new MetricAwareLoadBalancer(new RandomLoadBalancer(lazyProvider, name), "BASELINE_RANDOM");
     }
 
     // 4. Kích hoạt thuật toán LEAST CONNECTIONS

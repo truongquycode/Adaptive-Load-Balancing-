@@ -122,18 +122,23 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
     }
 
     private RoutingCost chooseByP2C(List<RoutingCost> candidates) {
-        if (candidates.size() == 1) {
+        int size = candidates.size();
+        if (size == 1) {
             return candidates.get(0);
         }
 
+        // Chọn đúng 2 ứng viên khác nhau. Bản cũ random lại tối đa 4 lần nên về
+        // lý thuyết vẫn có thể so sánh một node với chính nó; xác suất thấp nhưng
+        // làm P2C mất ý nghĩa trong một số lượt chọn.
         ThreadLocalRandom rnd = ThreadLocalRandom.current();
-        RoutingCost a = candidates.get(rnd.nextInt(candidates.size()));
-        RoutingCost b = candidates.get(rnd.nextInt(candidates.size()));
-
-        int guard = 0;
-        while (a.instanceId().equals(b.instanceId()) && guard++ < 4) {
-            b = candidates.get(rnd.nextInt(candidates.size()));
+        int firstIndex = rnd.nextInt(size);
+        int secondIndex = rnd.nextInt(size - 1);
+        if (secondIndex >= firstIndex) {
+            secondIndex++;
         }
+
+        RoutingCost a = candidates.get(firstIndex);
+        RoutingCost b = candidates.get(secondIndex);
         return routingCostCalculator.better(a, b);
     }
 
@@ -146,6 +151,19 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
 
         // Không probe trong vùng stress. Lúc này mục tiêu là giảm tail, không phải khám phá.
         if ("LOAD_DOMINANT".equals(ctx.mode()) || "ALL_HARD_EXCLUDED_FALLBACK".equals(ctx.mode())) {
+            return null;
+        }
+
+        int totalInflight = ctx.all().stream().mapToInt(RoutingCost::inflight).sum();
+        double maxLoadRaw = ctx.all().stream().mapToDouble(RoutingCost::loadCostRaw).max().orElse(0.0);
+        double maxAbsLatencyCost = ctx.all().stream().mapToDouble(RoutingCost::absoluteLatencyCost).max().orElse(0.0);
+
+        // Guard phục hồi: nếu toàn cụm đang căng hoặc latency tuyệt đối đang xấu,
+        // probe có thể làm p99 tệ hơn. Lúc đó ưu tiên bảo vệ tail latency.
+        if (maxLoadRaw > cfg.getProbeMaxLoadRaw()
+                || maxAbsLatencyCost > cfg.getProbeMaxAbsoluteLatencyCost()
+                || totalInflight > Math.round(cfg.getHardInflightCap() * Math.max(1, ctx.all().size())
+                        * cfg.getProbeMaxTotalInflightRatio())) {
             return null;
         }
 
@@ -162,6 +180,12 @@ public class AdaptiveLoadBalancer implements ReactorServiceInstanceLoadBalancer 
                 continue;
             }
             if (cost.inflight() >= cfg.getHardInflightCap()) {
+                continue;
+            }
+            if (cost.finalCost() > cfg.getProbeMaxFinalCost()) {
+                continue;
+            }
+            if (cost.absoluteLatencyCost() > cfg.getProbeMaxAbsoluteLatencyCost()) {
                 continue;
             }
             long last = lastSelectedMs.getOrDefault(cost.instanceId(), 0L);

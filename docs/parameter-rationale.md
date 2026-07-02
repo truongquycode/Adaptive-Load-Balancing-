@@ -30,11 +30,21 @@ alb:
 alb:
   polling:
     interval: 200
+    metrics-timeout-ms: 800
+    score-ema-alpha-spike: 0.60
+    score-ema-alpha-rise: 0.35
+    score-ema-alpha-recover: 0.25
+    score-ema-spike-threshold: 0.30
+    idle-latency-baseline-ms: 65.0
+    idle-decay-alpha: 0.20
 ```
 
-| Giá trị | Lý do |
+| Tham số | Lý do |
 |---|---|
-| 200 ms | Đủ nhanh để Gateway nhận biến động backend gần thời gian thực, nhưng không poll quá dày như per-request |
+| `interval=200` | Đủ nhanh để Gateway nhận biến động backend gần thời gian thực, nhưng không poll quá dày như per-request |
+| `metrics-timeout-ms=800` | Tránh poll treo làm backlog control-plane |
+| `score-ema-alpha-*` | Score xấu đi phản ứng nhanh hơn score hồi phục để giảm flapping |
+| `idle-*` | Chỉ dùng làm baseline/cache khi không có traffic thật; không đưa vào histogram/PID/MCDM |
 
 Rủi ro:
 
@@ -100,6 +110,18 @@ alb:
     min-completed-requests: 20
     min-actual-rps: 5.0
     reset-to-ahp-when-idle: true
+    blend-factor: 0.70
+    ema-alpha-min: 0.08
+    ema-alpha-max: 0.22
+    stable-queue-threshold: 0.08
+    stable-cpu-threshold: 0.08
+    stable-latency-spread: 0.12
+    alpha-min: 0.15
+    alpha-max: 0.70
+    beta-min: 0.08
+    beta-max: 0.45
+    gamma-min: 0.08
+    gamma-max: 0.35
 ```
 
 | Tham số | Ý nghĩa |
@@ -108,6 +130,10 @@ alb:
 | `min-completed-requests=20` | tránh học từ quá ít request |
 | `min-actual-rps=5.0` | tránh học từ idle/noise |
 | `reset-to-ahp-when-idle=true` | khi idle quay về AHP prior |
+| `blend-factor=0.70` | EWM là tín hiệu runtime, AHP là neo lý thuyết |
+| `ema-alpha-min/max` | làm mượt trọng số động để tránh dao động |
+| `stable-*` | giữ AHP khi có traffic thật nhưng cụm vẫn quá ổn định |
+| `alpha/beta/gamma min/max` | không cho một tiêu chí triệt tiêu hoàn toàn các tiêu chí khác |
 
 AHP prior:
 
@@ -156,6 +182,19 @@ alb:
     hard-inflight-cap: 220
     probe-interval-ms: 3000
     probe-probability: 0.005
+    min-routing-norm-range: 0.12
+    routing-weight-ema-alpha: 0.18
+    dominant-threshold: 0.70
+    overload-penalty-weight: 0.30
+    cap-pressure-penalty-weight: 0.20
+    absolute-health-penalty-weight: 0.12
+    absolute-latency-penalty-weight: 0.12
+    absolute-latency-target-ms: 300.0
+    absolute-latency-critical-ms: 1500.0
+    probe-max-total-inflight-ratio: 0.70
+    probe-max-load-raw: 1.10
+    probe-max-absolute-latency-cost: 0.80
+    probe-max-final-cost: 1.50
 ```
 
 | Tham số | Ý nghĩa |
@@ -168,6 +207,9 @@ alb:
 | `unhealthy-score-cutoff` | loại backend có score quá xấu |
 | `hard-inflight-cap` | chặn backend nhận quá nhiều inflight |
 | `probe-*` | cho backend hồi phục cơ hội nhận traffic nhỏ |
+| `absolute-latency-*` | thêm tín hiệu latency tuyệt đối khi toàn cụm cùng chậm |
+| `overload/cap-pressure/absolute-health` | penalty tuyệt đối bổ sung cho min-max tương đối |
+| `probe-max-*` | chặn probe khi cluster đang căng để không làm xấu p99 |
 
 Lưu ý: giá trị trong `application.yml` là nguồn chính. Nếu code default trong `AlbProperties` khác YAML, khi chạy thực tế Spring sẽ bind theo YAML.
 
@@ -209,7 +251,9 @@ Nên thử thay đổi có kiểm soát:
 | PID | `kp`, `ki`, `kd`, `lambda` |
 | EWMA | `tau-min`, `tau-max`, `k` |
 | Capacity/load | `min-expected-inflight`, `hard-inflight-cap` |
-| MCDM | `min-completed-requests`, `min-actual-rps`, blend/bounds trong code |
+| MCDM | `min-completed-requests`, `min-actual-rps`, `blend-factor`, bounds alpha/beta/gamma |
+| Absolute latency | `absolute-latency-target-ms`, `absolute-latency-critical-ms`, `absolute-latency-penalty-weight` |
+| Probe guard | `probe-max-load-raw`, `probe-max-absolute-latency-cost`, `probe-max-final-cost` |
 
 Mục tiêu không phải tìm số đẹp nhất, mà chứng minh kết quả không quá phụ thuộc một bộ tham số duy nhất.
 

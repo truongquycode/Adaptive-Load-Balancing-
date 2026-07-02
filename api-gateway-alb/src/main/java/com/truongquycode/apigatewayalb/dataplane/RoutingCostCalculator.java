@@ -21,11 +21,12 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * RoutingCostCalculator — Adaptive v4.
  *
- * Bản này giữ pipeline cũ nhưng sửa lỗi quan trọng khi stress toàn cụm:
- * - Min-max normalization không còn là tín hiệu duy nhất, vì khi cả 3 backend đều quá tải
- *   thì min-max có thể trả về 0.5 và làm mất dấu hiệu overload tuyệt đối.
- * - Bổ sung absolute overload penalty dựa trên loadRaw và mức tiệm cận hard-cap.
- * - Hard cap vẫn theo capacity để 8081 được phép gánh nhiều hơn 8083.
+ * Vai trò: hợp nhất health score tương đối, load tức thời đã chuẩn hóa theo
+ * capacity, stale penalty và các penalty tuyệt đối thành final routing cost.
+ *
+ * Bản cập nhật này thêm absoluteLatencyCost theo SLA để khắc phục trường hợp
+ * toàn cụm cùng chậm: min-max tương đối vẫn có thể cho điểm "không quá xấu",
+ * nhưng latency tuyệt đối cao phải được phản ánh trên routing score/Grafana.
  */
 @Component
 @RequiredArgsConstructor
@@ -33,15 +34,6 @@ public class RoutingCostCalculator {
 
     private static final double EPS = 1e-9;
     private static final double DEFAULT_HEALTH_SCORE = 0.50;
-
-    private static final double MIN_ROUTING_NORM_RANGE = 0.12;
-    private static final double ROUTING_WEIGHT_EMA_ALPHA = 0.18;
-    private static final double DOMINANT_THRESHOLD = 0.70;
-
-    // Penalty tuyệt đối để Adaptive không mất tín hiệu khi tất cả backend đều gần quá tải.
-    private static final double OVERLOAD_PENALTY_WEIGHT = 0.30;
-    private static final double CAP_PRESSURE_PENALTY_WEIGHT = 0.20;
-    private static final double ABSOLUTE_HEALTH_PENALTY_WEIGHT = 0.12;
 
     private final MetricsCache cache;
     private final InflightTracker inflightTracker;
@@ -82,6 +74,7 @@ public class RoutingCostCalculator {
             ScoreBreakdown bd = cache.getScore(id);
 
             double healthRaw = bd != null ? Math.max(0.0, bd.finalScore()) : DEFAULT_HEALTH_SCORE;
+            double ewmaLatencyMs = bd != null ? Math.max(0.0, bd.ewmaLatency()) : 0.0;
             long ageMs = bd != null ? Math.max(0L, now - bd.updatedAtMs()) : Long.MAX_VALUE;
 
             double cap = capacityWeightOf(inst);
@@ -90,6 +83,7 @@ public class RoutingCostCalculator {
             int inflight = inflightTracker.getInflight(id);
             double loadRaw = inflight / Math.max(expected, EPS);
             int hardInflightCap = capacityAwareHardInflightCap(cap, avgCapacity, cfg);
+            double absoluteLatencyCost = absoluteLatencyCost(ewmaLatencyMs, cfg);
 
             boolean hardExcluded = false;
             String reason = "NORMAL";
@@ -108,7 +102,7 @@ public class RoutingCostCalculator {
             }
 
             double stalePenalty = stalePenalty(ageMs, cfg);
-            rawNodes.add(new RawNode(id, healthRaw, loadRaw, stalePenalty, cap, capShare,
+            rawNodes.add(new RawNode(id, healthRaw, loadRaw, absoluteLatencyCost, stalePenalty, cap, capShare,
                     expected, inflight, hardInflightCap, hardExcluded, reason, now));
         }
 
@@ -123,7 +117,7 @@ public class RoutingCostCalculator {
         double targetHealthWeight = healthSpread / (healthSpread + loadSpread + EPS);
         targetHealthWeight = clamp(targetHealthWeight, cfg.getMinHealthWeight(), cfg.getMaxHealthWeight());
 
-        double healthWeight = smoothRoutingWeight(lastHealthWeight, targetHealthWeight);
+        double healthWeight = smoothRoutingWeight(lastHealthWeight, targetHealthWeight, cfg);
         double loadWeight = 1.0 - healthWeight;
 
         String mode = "NORMAL_P2C";
@@ -131,33 +125,37 @@ public class RoutingCostCalculator {
             mode = "LOW_LOAD_RR";
         } else if (rawNodes.stream().noneMatch(n -> !n.hardExcluded())) {
             mode = "ALL_HARD_EXCLUDED_FALLBACK";
-        } else if (healthWeight >= DOMINANT_THRESHOLD) {
+        } else if (healthWeight >= cfg.getDominantThreshold()) {
             mode = "HEALTH_DOMINANT";
-        } else if (loadWeight >= DOMINANT_THRESHOLD) {
+        } else if (loadWeight >= cfg.getDominantThreshold()) {
             mode = "LOAD_DOMINANT";
         }
 
         List<RoutingCost> all = new ArrayList<>(rawNodes.size());
         List<RoutingCost> eligible = new ArrayList<>(rawNodes.size());
         for (RawNode node : rawNodes) {
-            double healthCost = normalize(node.healthRaw(), minHealth, maxHealth);
-            double loadCost = normalize(node.loadRaw(), minLoad, maxLoad);
+            double healthCost = normalize(node.healthRaw(), minHealth, maxHealth, cfg.getMinRoutingNormRange());
+            double loadCost = normalize(node.loadRaw(), minLoad, maxLoad, cfg.getMinRoutingNormRange());
 
-            double overloadPenalty = OVERLOAD_PENALTY_WEIGHT * overloadPenalty(node.loadRaw());
-            double capPressurePenalty = CAP_PRESSURE_PENALTY_WEIGHT * capPressurePenalty(node.inflight(), node.hardInflightCap());
-            double absoluteHealthPenalty = ABSOLUTE_HEALTH_PENALTY_WEIGHT * absoluteHealthPenalty(node.healthRaw());
+            double overloadPenalty = cfg.getOverloadPenaltyWeight() * overloadPenalty(node.loadRaw(), cfg);
+            double capPressurePenalty = cfg.getCapPressurePenaltyWeight()
+                    * capPressurePenalty(node.inflight(), node.hardInflightCap(), cfg);
+            double absoluteHealthPenalty = cfg.getAbsoluteHealthPenaltyWeight()
+                    * absoluteHealthPenalty(node.healthRaw(), cfg);
+            double absoluteLatencyPenalty = cfg.getAbsoluteLatencyPenaltyWeight() * node.absoluteLatencyCost();
 
             double finalCost = healthWeight * healthCost
                     + loadWeight * loadCost
                     + overloadPenalty
                     + capPressurePenalty
                     + absoluteHealthPenalty
+                    + absoluteLatencyPenalty
                     + node.stalePenalty();
 
             RoutingCost cost = new RoutingCost(
                     node.instanceId(), node.healthRaw(), node.loadRaw(), healthCost, loadCost,
-                    finalCost, node.capacityWeight(), node.capacityShare(), node.expectedInflight(),
-                    node.inflight(), node.hardExcluded(), node.reason(), node.updatedAtMs());
+                    node.absoluteLatencyCost(), finalCost, node.capacityWeight(), node.capacityShare(),
+                    node.expectedInflight(), node.inflight(), node.hardExcluded(), node.reason(), node.updatedAtMs());
             all.add(cost);
             lastCosts.put(node.instanceId(), cost);
             if (!node.hardExcluded()) {
@@ -225,37 +223,47 @@ public class RoutingCostCalculator {
                 && loadSpread <= cfg.getLowLoadLoadSpread();
     }
 
-    private double normalize(double value, double min, double max) {
+    private double normalize(double value, double min, double max, double minRange) {
         double range = max - min;
-        if (range <= MIN_ROUTING_NORM_RANGE) return 0.5;
+        if (range <= minRange) return 0.5;
         return clamp((value - min) / range, 0.0, 1.0);
     }
 
-    private double smoothRoutingWeight(double previous, double target) {
-        return clamp(previous + ROUTING_WEIGHT_EMA_ALPHA * (target - previous),
-                props.getRouting().getMinHealthWeight(), props.getRouting().getMaxHealthWeight());
+    private double smoothRoutingWeight(double previous, double target, AlbProperties.Routing cfg) {
+        double alpha = clamp(cfg.getRoutingWeightEmaAlpha(), 0.0, 1.0);
+        return clamp(previous + alpha * (target - previous),
+                cfg.getMinHealthWeight(), cfg.getMaxHealthWeight());
     }
 
     private int capacityAwareHardInflightCap(double capacityWeight, double avgCapacity, AlbProperties.Routing cfg) {
         double factor = capacityWeight / Math.max(avgCapacity, EPS);
-        factor = clamp(factor, 0.70, 1.50);
-        return Math.max(40, (int) Math.round(cfg.getHardInflightCap() * factor));
+        factor = clamp(factor, cfg.getCapacityCapFactorMin(), cfg.getCapacityCapFactorMax());
+        return Math.max(cfg.getHardInflightCapMin(), (int) Math.round(cfg.getHardInflightCap() * factor));
     }
 
-    private double overloadPenalty(double loadRaw) {
+    private double overloadPenalty(double loadRaw, AlbProperties.Routing cfg) {
         // loadRaw=1 nghĩa là backend nhận đúng phần tải theo capacity.
-        // Trên 0.95 bắt đầu penalty mềm để tránh đợi tới hard-cap mới né.
-        return clamp((loadRaw - 0.95) / 0.45, 0.0, 1.0);
+        return ratioCost(loadRaw, cfg.getOverloadStartRatio(), cfg.getOverloadFullRatio());
     }
 
-    private double capPressurePenalty(int inflight, int hardCap) {
+    private double capPressurePenalty(int inflight, int hardCap, AlbProperties.Routing cfg) {
         double ratio = inflight / Math.max(1.0, hardCap);
-        return clamp((ratio - 0.70) / 0.30, 0.0, 1.0);
+        return ratioCost(ratio, cfg.getCapPressureStartRatio(), cfg.getCapPressureFullRatio());
     }
 
-    private double absoluteHealthPenalty(double healthRaw) {
-        // finalScore thực tế thường khoảng 0..1.8. Trên 0.75 đã là node tương đối xấu.
-        return clamp((healthRaw - 0.75) / 0.75, 0.0, 1.0);
+    private double absoluteHealthPenalty(double healthRaw, AlbProperties.Routing cfg) {
+        return ratioCost(healthRaw, cfg.getAbsoluteHealthStart(), cfg.getAbsoluteHealthFull());
+    }
+
+    private double absoluteLatencyCost(double ewmaLatencyMs, AlbProperties.Routing cfg) {
+        double target = cfg.getAbsoluteLatencyTargetMs();
+        double critical = Math.max(target + 1.0, cfg.getAbsoluteLatencyCriticalMs());
+        return ratioCost(ewmaLatencyMs, target, critical);
+    }
+
+    private double ratioCost(double value, double start, double full) {
+        double span = Math.max(EPS, full - start);
+        return clamp((value - start) / span, 0.0, 1.0);
     }
 
     private double relativeSpread(double[] values) {
@@ -284,6 +292,7 @@ public class RoutingCostCalculator {
             String instanceId,
             double healthRaw,
             double loadRaw,
+            double absoluteLatencyCost,
             double stalePenalty,
             double capacityWeight,
             double capacityShare,

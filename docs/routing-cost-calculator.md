@@ -2,7 +2,7 @@
 
 ## 1. Vai trò
 
-`RoutingCostCalculator` là thành phần kết hợp health score từ control-plane với tải tức thời của data-plane để tạo final routing cost cho Adaptive Load Balancer.
+`RoutingCostCalculator` là thành phần hợp nhất health score từ control-plane với tải tức thời của data-plane để tạo `finalCost` cho Adaptive Load Balancer.
 
 Nó nằm giữa:
 
@@ -16,7 +16,7 @@ RoutingCostCalculator
 AdaptiveLoadBalancer
 ```
 
-Nếu `ScoreCalculator` trả lời câu hỏi “backend này đang khỏe hay yếu?”, thì `RoutingCostCalculator` trả lời câu hỏi “trong request hiện tại, backend nào có chi phí định tuyến thấp nhất?”.
+Nếu `ScoreCalculator` trả lời “backend này đang khỏe hay yếu so với cụm?”, thì `RoutingCostCalculator` trả lời “request hiện tại nên đi tới backend nào để chi phí định tuyến thấp nhất?”.
 
 ---
 
@@ -25,19 +25,17 @@ Nếu `ScoreCalculator` trả lời câu hỏi “backend này đang khỏe hay 
 | Đầu vào | Nguồn |
 |---|---|
 | Danh sách `ServiceInstance` | Eureka/Spring LoadBalancer supplier |
-| `finalScore` | `MetricsCache` |
+| `finalScore`, `ewmaLatency` | `MetricsCache` / `ScoreBreakdown` |
 | Inflight hiện tại | `InflightTracker` |
-| Capacity weight | `MetricsCache` từ `/api/alb-metrics` |
-| Staleness | timestamp trong `ScoreBreakdown` |
+| Capacity weight | `/api/alb-metrics` → `MetricsCache` |
+| Staleness | `ScoreBreakdown.updatedAtMs` |
 | Routing config | `alb.routing` trong `application.yml` |
 
 ---
 
 ## 3. Capacity-normalized load
 
-Adaptive không so sánh inflight thô một cách ngang bằng vì backend có CPU quota khác nhau.
-
-Công thức ý tưởng:
+Adaptive không so sánh inflight thô ngang bằng vì backend có CPU quota khác nhau.
 
 ```text
 capacityShare = capacityWeight / sumCapacity
@@ -55,7 +53,7 @@ Ablation `no-capacity` xem mọi backend có capacity = 1.0 để kiểm chứng
 
 ---
 
-## 4. Health cost
+## 4. Health cost tương đối
 
 Health raw lấy từ `ScoreBreakdown.finalScore()`:
 
@@ -73,15 +71,56 @@ Giá trị này đã gồm:
 - PID-inspired penalty;
 - score EMA ở `MetricsPoller`.
 
-Health càng thấp càng tốt.
+Sau đó `healthRaw` được min-max normalize trong cụm để tạo `healthCost`.
+
+Giới hạn: nếu toàn cụm cùng chậm, min-max tương đối có thể không phản ánh đầy đủ việc cả hệ thống đang vi phạm SLA. Vì vậy bản hiện tại bổ sung `absoluteLatencyCost`.
 
 ---
 
-## 5. Stale penalty
+## 5. Absolute latency cost
+
+`absoluteLatencyCost` là tín hiệu latency tuyệt đối, không phụ thuộc vào việc backend nhanh/chậm tương đối so với nhau.
+
+Công thức:
+
+```text
+absoluteLatencyCost = clamp(
+    (ewmaLatencyMs - absoluteLatencyTargetMs)
+    /
+    (absoluteLatencyCriticalMs - absoluteLatencyTargetMs),
+    0, 1
+)
+```
+
+Cấu hình mặc định:
+
+```yaml
+alb:
+  routing:
+    absolute-latency-penalty-weight: 0.12
+    absolute-latency-target-ms: 300.0
+    absolute-latency-critical-ms: 1500.0
+```
+
+Ý nghĩa:
+
+- dưới `300ms`: chưa cộng penalty tuyệt đối;
+- từ `300ms` đến `1500ms`: penalty tăng tuyến tính;
+- trên `1500ms`: penalty đạt mức tối đa.
+
+Mục tiêu khoa học: khi cả 3 backend đều tăng latency từ mức thấp lên rất cao, hệ thống vẫn nhìn thấy “cụm đang xấu tuyệt đối”, không bị che bởi chuẩn hóa tương đối.
+
+Prometheus metric:
+
+```text
+alb_routing_absolute_latency_cost{backend="..."}
+```
+
+---
+
+## 6. Stale penalty và hard exclusion
 
 Metrics có thể bị cũ nếu backend không phản hồi `/api/alb-metrics` hoặc Gateway poll lỗi.
-
-Cấu hình:
 
 ```yaml
 alb:
@@ -91,72 +130,52 @@ alb:
     stale-penalty-weight: 0.15
 ```
 
-Ý nghĩa:
-
 - dưới `stale-soft-ms`: không phạt;
 - từ soft đến hard: tăng penalty;
-- vượt `stale-hard-ms`: có thể hard exclude khỏi eligible list.
+- vượt `stale-hard-ms`: hard exclude khỏi eligible list.
 
-Stale penalty giúp tránh tiếp tục gửi traffic vào backend có dữ liệu quá cũ.
-
----
-
-## 6. Hard inflight cap
-
-Cấu hình:
-
-```yaml
-alb:
-  routing:
-    hard-inflight-cap: 220
-```
-
-Hard cap được điều chỉnh theo capacity. Instance mạnh có cap cao hơn, instance yếu có cap thấp hơn.
-
-Mục tiêu là tránh một backend nhận quá nhiều request đồng thời dù score tạm thời còn tốt.
+Hard exclusion cũng áp dụng khi score quá xấu hoặc inflight vượt hard cap.
 
 ---
 
-## 7. Health/load dynamic weight
+## 7. Final routing cost
 
-Routing cost không phải luôn ưu tiên health hoặc luôn ưu tiên load. Nó dùng hai thành phần:
+Công thức khái niệm:
 
 ```text
 finalCost = healthWeight * healthCost
           + loadWeight   * loadCost
+          + overloadPenalty
+          + capPressurePenalty
+          + absoluteHealthPenalty
+          + absoluteLatencyPenalty
           + stalePenalty
 ```
 
-`healthWeight` và `loadWeight` được điều chỉnh theo độ phân tán hiện tại:
-
-- nếu health khác biệt rõ, tăng vai trò health;
-- nếu load/inflight khác biệt rõ, tăng vai trò load;
-- nếu low-load ổn định, Adaptive có thể fallback về RR.
-
-Prometheus metric:
+Trong đó:
 
 ```text
-alb_routing_weight{component="health"}
-alb_routing_weight{component="load"}
+absoluteLatencyPenalty = absoluteLatencyPenaltyWeight * absoluteLatencyCost
 ```
+
+`healthWeight` và `loadWeight` được điều chỉnh theo độ phân tán hiện tại của health/load. Nếu tải thấp và spread nhỏ, Adaptive có thể fallback về Round Robin để tránh overreaction.
 
 ---
 
-## 8. Low-load stability
+## 8. Probe recovery guard
 
-Low load là vùng dễ bị nhiễu. Nếu chỉ vài request đang chạy, một chênh lệch latency nhỏ có thể làm score khác biệt giả.
-
-Cấu hình:
+Probe recovery cho backend bị loại cơ hội quay lại, nhưng nếu probe trong lúc toàn cụm đang căng thì có thể làm xấu p99. Bản hiện tại bổ sung guard:
 
 ```yaml
 alb:
   routing:
-    low-load-inflight: 20
-    low-load-health-spread: 0.12
-    low-load-load-spread: 0.25
+    probe-max-total-inflight-ratio: 0.70
+    probe-max-load-raw: 1.10
+    probe-max-absolute-latency-cost: 0.80
+    probe-max-final-cost: 1.50
 ```
 
-Nếu tải thấp và spread nhỏ, mode chuyển sang low-load stable để `AdaptiveLoadBalancer` dùng Round Robin. Đây là hành vi có chủ đích, không phải lỗi.
+Probe bị tắt khi cluster ở mode `LOAD_DOMINANT`, `ALL_HARD_EXCLUDED_FALLBACK`, hoặc khi load/latency/finalCost vượt ngưỡng an toàn.
 
 ---
 
@@ -168,6 +187,7 @@ Nếu tải thấp và spread nhỏ, mode chuyển sang low-load stable để `A
 | `alb_routing_health_cost` | health cost đã chuẩn hóa |
 | `alb_routing_load_cost` | load cost đã chuẩn hóa |
 | `alb_routing_load_raw` | load ratio thô theo capacity |
+| `alb_routing_absolute_latency_cost` | cost latency tuyệt đối theo SLA |
 | `alb_routing_capacity_weight` | capacity weight |
 | `alb_routing_weight` | tỷ trọng health/load |
 | `alb_routing_selected_total` | backend được chọn theo reason |
@@ -176,8 +196,8 @@ Nếu tải thấp và spread nhỏ, mode chuyển sang low-load stable để `A
 
 ## 10. Điểm cần giải thích trong luận văn
 
-- Capacity weight theo CPU quota chỉ là giả định về năng lực tương đối, không phản ánh mọi bottleneck.
-- Health cost và load cost là heuristic thực nghiệm.
-- Low-load fallback về RR là để tránh overreaction, nên Adaptive có thể giống RR khi tải thấp.
-- Stale penalty là cần thiết vì metrics polling có thể lỗi hoặc trễ.
-- Cần ablation `no-capacity`, `no-p2c`, `no-probe`, `no-low-load-rr` để chứng minh từng cơ chế có giá trị.
+- Capacity weight theo CPU quota chỉ là giả định về năng lực tương đối.
+- Health/load/absolute latency cost là heuristic thực nghiệm, không phải chứng minh tối ưu toàn cục.
+- Low-load fallback về RR là để tránh overreaction.
+- Absolute latency cost giúp tránh mất tín hiệu khi toàn cụm cùng chậm.
+- Cần ablation `no-capacity`, `no-p2c`, `no-probe`, `no-low-load-rr` và sensitivity analysis để chứng minh từng cơ chế có giá trị.
