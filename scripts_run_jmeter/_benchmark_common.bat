@@ -127,7 +127,7 @@ exit /b 1
 set "ORDER="
 
 REM Build run order with pure CMD logic.
-REM This avoids fragile PowerShell multiline escaping on Windows CMD.
+REM Avoid PowerShell here because multiline escaping is fragile in Windows CMD.
 for /L %%I in (1,1,%ITEM_COUNT%) do set "IDX_%%I=%%I"
 
 if /I "%RANDOMIZE_ORDER%"=="true" (
@@ -203,7 +203,7 @@ if errorlevel 1 (
 call :UPDATE_APPLICATION_YML "%TARGET_STRATEGY%" "%TARGET_ABLATION%"
 if errorlevel 1 exit /b 1
 
-"%POWERSHELL_EXE%" -NoProfile -ExecutionPolicy Bypass -Command "$p='%DEPLOY_MARKER%'; $enc=New-Object System.Text.UTF8Encoding($false); $content=@('strategy=%TARGET_STRATEGY%','ablation=%TARGET_ABLATION%','label=%TARGET_LABEL%','timestamp='+(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')); [System.IO.File]::WriteAllLines($p,$content,$enc)"
+"%POWERSHELL_EXE%" -NoProfile -ExecutionPolicy Bypass -Command "$p='%DEPLOY_MARKER%'; $enc=New-Object System.Text.UTF8Encoding($false); $content=@('strategy=%TARGET_STRATEGY%','ablation=%TARGET_ABLATION%','label=%TARGET_LABEL%','timestamp='+(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')); [System.IO.File]::WriteAllText($p, (($content -join [Environment]::NewLine) + [Environment]::NewLine), $enc)"
 if errorlevel 1 (
     echo [ERROR] Failed to update deploy marker.
     exit /b 1
@@ -234,7 +234,7 @@ exit /b 0
 set "NEW_STRATEGY=%~1"
 set "NEW_ABLATION=%~2"
 "%POWERSHELL_EXE%" -NoProfile -ExecutionPolicy Bypass -Command ^
-"$p='%APP_YML%'; $strategy='%NEW_STRATEGY%'; $ablation='%NEW_ABLATION%'; $enc=New-Object System.Text.UTF8Encoding($false); $lines=[System.IO.File]::ReadAllLines($p,$enc); $insideAlb=$false; $insideAblation=$false; $strategyDone=$false; $ablationDone=$false; for($i=0; $i -lt $lines.Length; $i++){ if($lines[$i] -match '^alb:\s*$'){ $insideAlb=$true; $insideAblation=$false; continue }; if($insideAlb -and $lines[$i] -match '^\S'){ $insideAlb=$false; $insideAblation=$false }; if($insideAlb -and $lines[$i] -match '^\s*strategy:\s*'){ $lines[$i]='    strategy: '+$strategy; $strategyDone=$true; continue }; if($insideAlb -and $lines[$i] -match '^\s*ablation:\s*$'){ $insideAblation=$true; continue }; if($insideAblation -and $lines[$i] -match '^\s*variant:\s*'){ $lines[$i]='        variant: '+$ablation; $ablationDone=$true; continue }; if($insideAblation -and $lines[$i] -match '^    \S' -and $lines[$i] -notmatch '^\s*variant:\s*'){ $insideAblation=$false } }; if(-not $strategyDone){ Write-Error 'Cannot find alb.strategy'; exit 2 }; if(-not $ablationDone){ Write-Error 'Cannot find alb.ablation.variant'; exit 3 }; [System.IO.File]::WriteAllLines($p,$lines,$enc)"
+"$p='%APP_YML%'; $strategy='%NEW_STRATEGY%'; $ablation='%NEW_ABLATION%'; $enc=New-Object System.Text.UTF8Encoding($false); $lines=[System.IO.File]::ReadAllLines($p,$enc); $insideAlb=$false; $insideAblation=$false; $strategyDone=$false; $ablationDone=$false; for($i=0; $i -lt $lines.Length; $i++){ if($lines[$i] -match '^alb:\s*$'){ $insideAlb=$true; $insideAblation=$false; continue }; if($insideAlb -and $lines[$i] -match '^\S'){ $insideAlb=$false; $insideAblation=$false }; if($insideAlb -and $lines[$i] -match '^\s*strategy:\s*'){ $lines[$i]='    strategy: '+$strategy; $strategyDone=$true; continue }; if($insideAlb -and $lines[$i] -match '^\s*ablation:\s*$'){ $insideAblation=$true; continue }; if($insideAblation -and $lines[$i] -match '^\s*variant:\s*'){ $lines[$i]='        variant: '+$ablation; $ablationDone=$true; continue }; if($insideAblation -and $lines[$i] -match '^    \S' -and $lines[$i] -notmatch '^\s*variant:\s*'){ $insideAblation=$false } }; if(-not $strategyDone){ Write-Error 'Cannot find alb.strategy'; exit 2 }; if(-not $ablationDone){ Write-Error 'Cannot find alb.ablation.variant'; exit 3 }; [System.IO.File]::WriteAllText($p, (($lines -join [Environment]::NewLine) + [Environment]::NewLine), $enc)"
 if errorlevel 1 (
     echo [ERROR] Failed to update strategy or ablation variant in application.yml.
     exit /b 1
