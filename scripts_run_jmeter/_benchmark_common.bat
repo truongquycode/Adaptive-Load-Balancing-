@@ -126,43 +126,25 @@ exit /b 1
 :BUILD_RUN_ORDER
 set "ORDER="
 
-if /I not "%RANDOMIZE_ORDER%"=="true" (
-    for /L %%I in (1,1,%ITEM_COUNT%) do set "ORDER=!ORDER! %%I"
-    exit /b 0
+REM Build run order with pure CMD logic.
+REM This avoids fragile PowerShell multiline escaping on Windows CMD.
+for /L %%I in (1,1,%ITEM_COUNT%) do set "IDX_%%I=%%I"
+
+if /I "%RANDOMIZE_ORDER%"=="true" (
+    for /L %%I in (%ITEM_COUNT%,-1,2) do (
+        set /a "J=(!RANDOM! %% %%I) + 1"
+        for %%J in (!J!) do (
+            set "TMP=!IDX_%%I!"
+            set "IDX_%%I=!IDX_%%J!"
+            set "IDX_%%J=!TMP!"
+        )
+    )
 )
 
-set "TMP_ORDER_FILE=%TEMP%\alb_order_%RANDOM%%RANDOM%.txt"
-
-"%POWERSHELL_EXE%" -NoProfile -ExecutionPolicy Bypass -Command ^
-"$ErrorActionPreference='Stop';" ^
-"$n=[int]'%ITEM_COUNT%';" ^
-"$items=New-Object System.Collections.Generic.List[int];" ^
-"for($i=1; $i -le $n; $i++){ $items.Add($i) };" ^
-"$out=New-Object System.Collections.Generic.List[string];" ^
-"while($items.Count -gt 0){" ^
-"  $idx=Get-Random -Minimum 0 -Maximum $items.Count;" ^
-"  $out.Add([string]$items[$idx]);" ^
-"  $items.RemoveAt($idx);" ^
-"};" ^
-"[System.IO.File]::WriteAllLines('%TMP_ORDER_FILE%', $out, [System.Text.Encoding]::ASCII);"
-
-if errorlevel 1 (
-    echo [ERROR] Cannot build randomized order.
-    echo [ERROR] PowerShell randomization failed. Try: set RANDOMIZE_ORDER=false
-    exit /b 1
-)
-
-if not exist "%TMP_ORDER_FILE%" (
-    echo [ERROR] Randomized order file was not created: %TMP_ORDER_FILE%
-    exit /b 1
-)
-
-for /f %%I in ("%TMP_ORDER_FILE%") do set "ORDER=!ORDER! %%I"
-
-del /f /q "%TMP_ORDER_FILE%" >nul 2>nul
+for /L %%I in (1,1,%ITEM_COUNT%) do set "ORDER=!ORDER! !IDX_%%I!"
 
 if not defined ORDER (
-    echo [ERROR] Randomized order is empty.
+    echo [ERROR] Run order is empty.
     exit /b 1
 )
 
