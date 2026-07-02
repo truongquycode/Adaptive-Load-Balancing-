@@ -1,0 +1,37 @@
+[
+  {
+    "file": "images/01_gateway_latency_all_http_statuses.png",
+    "title": "Gateway Latency Percentiles — All HTTP Statuses",
+    "source": "22412b9d-3077-4738-ba86-6ac3b6f113c5.png"
+  },
+  {
+    "file": "images/02_gateway_throughput_actual_rps.png",
+    "title": "Gateway Throughput — Actual RPS",
+    "source": "93953199-f6d0-4a9c-98d6-855c9fb82831.png"
+  },
+  {
+    "file": "images/03_routing_selection_rate_by_backend.png",
+    "title": "Routing Selection Rate by Backend",
+    "source": "ea2b5327-4cb0-46b7-8502-0285809579c2.png"
+  },
+  {
+    "file": "images/04_dynamic_mcdm_criterion_weights.png",
+    "title": "Dynamic MCDM criterion weights",
+    "source": "2fdbc66e-13da-4279-8ede-efeab788211e.png"
+  },
+  {
+    "file": "images/05_final_routing_cost_by_backend.png",
+    "title": "Final Routing Cost by Backend",
+    "source": "129d6d29-2bd0-48b5-b8c4-f97eff5b9749.png"
+  },
+  {
+    "file": "images/06_capacity_normalized_load_ratio_by_backend.png",
+    "title": "Capacity-normalized Load Ratio by Backend",
+    "source": "0aa561de-8d1f-42fa-9bc2-6dbf9c3eb6c0.png"
+  },
+  {
+    "file": "images/07_ewma_latency_by_backend.png",
+    "title": "EWMA latency by backend",
+    "source": "86fa7ba7-475b-4af1-80b6-ddd800e5ead0.png"
+  }
+]
