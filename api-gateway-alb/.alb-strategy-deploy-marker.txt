@@ -1,4 +1,4 @@
-strategy=round-robin
+strategy=least-connections
 ablation=full
-label=round_robin
-timestamp=2026-07-02 10:08:09
+label=least_connect
+timestamp=2026-07-02 14:59:30
