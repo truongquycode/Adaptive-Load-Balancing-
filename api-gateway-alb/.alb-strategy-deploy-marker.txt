@@ -1,4 +1,4 @@
-strategy=random
-reason=strategy-change
-timestamp=
-2026-06-24 05:42:45
+strategy=least-connections
+ablation=full
+label=least_connect
+timestamp=2026-07-02 09:34:56
