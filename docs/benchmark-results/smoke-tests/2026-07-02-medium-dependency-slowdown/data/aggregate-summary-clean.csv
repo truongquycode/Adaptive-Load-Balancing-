@@ -1,5 +1,5 @@
-strategy_label,samples,errors,error_rate_percent,throughput_rps,duration_s,avg_ms,p50_ms,p90_ms,p95_ms,p99_ms,max_ms
-Adaptive,242134,1,0.0004129944576143,493.8093849357281,490.339,338.9029669521835,92.0,1079.0,1289.0,2739.0,6347.0
-Least Connections,242314,0,0.0,496.2176596589955,488.322,338.28132093069325,73.0,1088.0,1302.0,2764.0,8353.0
-Random,241843,1,0.0004134913973114,494.6301875292727,488.937,353.3779890259383,93.0,1106.0,1326.0,2779.0,10268.0
-Round Robin,241717,1,0.000413706938279,491.5894692956143,491.705,358.38259617652045,101.0,1111.0,1332.0,2784.0,6358.0
+strategy,strategy_folder,samples,errors,error_rate_percent,throughput_rps,avg_ms,p50_ms,p90_ms,p95_ms,p99_ms,max_ms,note
+Adaptive,adaptive_full,197339,0,0.0,458.6975424356934,337.6051099883956,93.63758304237885,1093.0887442421417,1305.1004036201664,2751.3887400868553,6347,Aggregate percentiles are sample-weighted phase approximations because only JMeter HTML MEASURE rows were provided here. Re-run fixed summarize_jtl_results.py on raw JTL for exact percentiles.
+Least Connections,least_connect,197491,0,0.0,477.33705180529347,341.00677787848565,74.27086297603435,1111.1617238253896,1345.6881224967215,2780.7828965370572,8353,Aggregate percentiles are sample-weighted phase approximations because only JMeter HTML MEASURE rows were provided here. Re-run fixed summarize_jtl_results.py on raw JTL for exact percentiles.
+Random,random,196987,0,0.0,482.89493253336394,357.462383964424,94.53769030443634,1139.0463969703585,1383.4642862219334,2815.9833391035954,10268,Aggregate percentiles are sample-weighted phase approximations because only JMeter HTML MEASURE rows were provided here. Re-run fixed summarize_jtl_results.py on raw JTL for exact percentiles.
+Round Robin,round_robin,196910,0,0.0,475.7154782418634,362.24112548880197,110.00229038647097,1146.7194286729978,1396.868250215835,2814.7179315423286,5003,Aggregate percentiles are sample-weighted phase approximations because only JMeter HTML MEASURE rows were provided here. Re-run fixed summarize_jtl_results.py on raw JTL for exact percentiles.

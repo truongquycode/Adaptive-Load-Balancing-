@@ -1,0 +1,1 @@
+Low load smoke test corrected to use MEASURE_LOW_0300_RPS_BASELINE_STEADY_240s only. Round Robin is still the best latency baseline in this single run; Adaptive is stable but not superior at low load.

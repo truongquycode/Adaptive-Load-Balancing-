@@ -1,0 +1,13 @@
+strategy_folder,strategy,phase,label,samples,errors,error_rate_percent,throughput_rps,avg_ms,p50_ms,p90_ms,p95_ms,p99_ms,max_ms
+adaptive_full,Adaptive,baseline,MEASURE_MEDIUM_0600_RPS_BASELINE_60S_GET_/api/simulate-mixed-call,35843,0,0.0,388.54,335.42,86,1070.9,1277.0,2727.99,3517
+adaptive_full,Adaptive,dependency,MEASURE_MEDIUM_0600_RPS_DEPENDENCY_SLOWDOWN_180S_GET_/api/simulate-mixed-call,107767,0,0.0,487.97,341.61,95,1105.0,1322.0,2748.9,5296
+adaptive_full,Adaptive,recovery,MEASURE_MEDIUM_0600_RPS_RECOVERY_90S_GET_/api/simulate-mixed-call,53729,0,0.0,458.76,331.03,96,1084.0,1289.95,2771.99,6347
+least_connect,Least Connections,baseline,MEASURE_MEDIUM_0600_RPS_BASELINE_60S_GET_/api/simulate-mixed-call,35945,0,0.0,408.77,325.59,71,1073.0,1277.0,2755.99,6371
+least_connect,Least Connections,dependency,MEASURE_MEDIUM_0600_RPS_DEPENDENCY_SLOWDOWN_180S_GET_/api/simulate-mixed-call,107661,0,0.0,507.51,353.67,77,1140.0,1403.0,2796.97,8353
+least_connect,Least Connections,recovery,MEASURE_MEDIUM_0600_RPS_RECOVERY_90S_GET_/api/simulate-mixed-call,53885,0,0.0,474.07,325.99,71,1079.0,1277.0,2764.98,6362
+random,Random,baseline,MEASURE_MEDIUM_0600_RPS_BASELINE_60S_GET_/api/simulate-mixed-call,35882,0,0.0,418.93,329.13,79,1084.0,1290.95,2746.99,10268
+random,Random,dependency,MEASURE_MEDIUM_0600_RPS_DEPENDENCY_SLOWDOWN_180S_GET_/api/simulate-mixed-call,107494,0,0.0,522.94,373.25,97,1174.9,1455.0,2848.99,5853
+random,Random,recovery,MEASURE_MEDIUM_0600_RPS_RECOVERY_90S_GET_/api/simulate-mixed-call,53611,0,0.0,459.31,344.77,100,1104.0,1301.95,2795.98,4113
+round_robin,Round Robin,baseline,MEASURE_MEDIUM_0600_RPS_BASELINE_60S_GET_/api/simulate-mixed-call,35810,0,0.0,371.34,339.79,107,1096.0,1299.0,2751.99,4320
+round_robin,Round Robin,dependency,MEASURE_MEDIUM_0600_RPS_DEPENDENCY_SLOWDOWN_180S_GET_/api/simulate-mixed-call,107437,0,0.0,526.6,384.14,115,1197.0,1475.9,2849.98,5003
+round_robin,Round Robin,recovery,MEASURE_MEDIUM_0600_RPS_RECOVERY_90S_GET_/api/simulate-mixed-call,53663,0,0.0,472.93,333.38,102,1079.9,1303.95,2785.98,4042

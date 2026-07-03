@@ -1,7 +1,1 @@
-Tóm tắt nhanh smoke test medium dependency slowdown sau tuning:
-- Adaptive: Avg 338.90 ms, P90 1079 ms, P95 1289 ms, P99 2739 ms, throughput 493.81 req/s, error 0.0004%.
-- Least Connections: Avg 338.28 ms, P90 1088 ms, P95 1302 ms, P99 2764 ms, throughput 496.22 req/s, error 0%.
-- Random: Avg 353.38 ms, P90 1106 ms, P95 1326 ms, P99 2779 ms, throughput 494.63 req/s, error 0.0004%.
-- Round Robin: Avg 358.38 ms, P90 1111 ms, P95 1332 ms, P99 2784 ms, throughput 491.59 req/s, error 0.0004%.
-
-Nhận xét: Adaptive giữ throughput tương đương baseline, lỗi gần như bằng 0, cải thiện nhẹ tail latency so với RR/Random/LC. Grafana cho thấy 8083 có spike EWMA latency và Adaptive giảm traffic về 8083 trong cửa sổ Adaptive. Đây là kết quả smoke test tích cực nhưng cần chạy 3–5 lần để kết luận chắc chắn.
+Medium dependency slowdown smoke test corrected to use MEASURE_* rows only. Phase-level MEASURE values are included in data/measure-phase-summary.csv. For exact combined percentiles, rerun the fixed summarize_jtl_results.py on raw JTL files.

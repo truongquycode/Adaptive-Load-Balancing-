@@ -1,0 +1,10 @@
+{
+  "note": "Corrected folder. JMeter metrics use only MEASURE_* sampler rows, excluding setup, teardown and DISCARD_* rows.",
+  "images": [
+    "01_gateway_latency_successful_requests_only.png",
+    "02_gateway_throughput_actual_rps.png",
+    "03_routing_selection_rate_by_backend.png",
+    "04_dynamic_mcdm_criterion_weights.png",
+    "05_final_routing_cost_by_backend.png"
+  ]
+}
