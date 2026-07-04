@@ -1,0 +1,7 @@
+High Load 900 RPS smoke test
+
+Key finding:
+- Adaptive giảm error rõ so với Random/Round Robin.
+- Least Connections tốt nhất trong aggregate run này.
+- Adaptive còn tail latency cao ở high load, cần chạy thêm nhiều run và phân tích theo phase.
+- Không nên chạy stress chính thức trước khi kiểm tra high load ổn định hơn.

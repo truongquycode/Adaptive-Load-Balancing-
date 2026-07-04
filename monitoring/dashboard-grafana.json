@@ -5,8 +5,8 @@
     "name": "alb-routing-score-v1",
     "namespace": "default",
     "uid": "fe8ff613-0d42-4f6a-90cd-fb63086d1402",
-    "resourceVersion": "1781578465660996",
-    "generation": 75,
+    "resourceVersion": "1782806770007018",
+    "generation": 76,
     "creationTimestamp": "2026-05-16T02:56:52Z",
     "labels": {
       "grafana.app/deprecatedInternalID": "1841155171241984"
@@ -16,7 +16,7 @@
       "grafana.app/folder": "",
       "grafana.app/saved-from-ui": "Grafana v13.0.1+security-01 (9bbe672d)",
       "grafana.app/updatedBy": "user:efm738c7ou6f4a",
-      "grafana.app/updatedTimestamp": "2026-06-16T02:54:25Z"
+      "grafana.app/updatedTimestamp": "2026-06-30T08:06:09Z"
     }
   },
   "spec": {
@@ -42,7 +42,7 @@
       }
     ],
     "cursorSync": "Crosshair",
-    "description": "ALB Routing Score Dashboard — theo dõi pipeline điểm số, routing decision, latency thành công, latency all-status, error rate và throughput thực tế.",
+    "description": "ALB Routing Score Dashboard — theo dõi pipeline điểm số, routing decision, latency thành công, latency all-status, error rate và throughput thực tế, absolute latency cost.",
     "editable": true,
     "elements": {
       "panel-10": {
@@ -1772,6 +1772,7 @@
               "fieldConfig": {
                 "defaults": {
                   "unit": "ms",
+                  "decimals": 1,
                   "thresholds": {
                     "mode": "absolute",
                     "steps": [
@@ -1821,8 +1822,7 @@
                     "thresholdsStyle": {
                       "mode": "off"
                     }
-                  },
-                  "decimals": 1
+                  }
                 },
                 "overrides": []
               }
@@ -1896,6 +1896,8 @@
               "fieldConfig": {
                 "defaults": {
                   "unit": "percent",
+                  "decimals": 2,
+                  "min": 0,
                   "thresholds": {
                     "mode": "absolute",
                     "steps": [
@@ -1945,9 +1947,131 @@
                     "thresholdsStyle": {
                       "mode": "off"
                     }
+                  }
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
+      },
+      "panel-34": {
+        "kind": "Panel",
+        "spec": {
+          "id": 34,
+          "title": "Gateway Throughput — Actual RPS",
+          "description": "Số request mỗi giây thực tế đi qua API Gateway cho route backend-route. Dùng để kiểm tra JMeter target RPS có được hệ thống nhận đủ hay không.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "prometheus",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "dfm73fl4rijuoa"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "expr": "sum(rate(spring_cloud_gateway_requests_seconds_count{routeId=\"backend-route\"}[1m]))",
+                        "legendFormat": "Actual Gateway RPS",
+                        "range": true
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "13.0.1+security-01",
+            "spec": {
+              "options": {
+                "annotations": {
+                  "clustering": -1,
+                  "multiLane": false
+                },
+                "legend": {
+                  "calcs": [
+                    "last",
+                    "mean",
+                    "max"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "hideZeros": false,
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "reqps",
+                  "decimals": 1,
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "green"
+                      },
+                      {
+                        "value": 80,
+                        "color": "red"
+                      }
+                    ]
                   },
-                  "decimals": 2,
-                  "min": 0
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "axisBorderShow": false,
+                    "axisCenteredZero": false,
+                    "axisColorMode": "text",
+                    "axisLabel": "",
+                    "axisPlacement": "auto",
+                    "barAlignment": 0,
+                    "barWidthFactor": 0.6,
+                    "drawStyle": "line",
+                    "fillOpacity": 0,
+                    "gradientMode": "none",
+                    "hideFrom": {
+                      "legend": false,
+                      "tooltip": false,
+                      "viz": false
+                    },
+                    "insertNulls": false,
+                    "lineInterpolation": "linear",
+                    "lineWidth": 1,
+                    "pointSize": 5,
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "showPoints": "auto",
+                    "showValues": false,
+                    "spanNulls": false,
+                    "stacking": {
+                      "group": "A",
+                      "mode": "none"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  }
                 },
                 "overrides": []
               }
@@ -2200,12 +2324,12 @@
           }
         }
       },
-      "panel-34": {
+      "panel-35": {
         "kind": "Panel",
         "spec": {
-          "id": 34,
-          "title": "Gateway Throughput — Actual RPS",
-          "description": "Số request mỗi giây thực tế đi qua API Gateway cho route backend-route. Dùng để kiểm tra JMeter target RPS có được hệ thống nhận đủ hay không.",
+          "id": 35,
+          "title": "Absolute Latency Cost by Backend",
+          "description": "Chi phí độ trễ tuyệt đối theo SLA cho từng backend. Giá trị được tính từ EWMA latency với ngưỡng target và critical; giá trị càng cao cho thấy backend đang vi phạm ngưỡng độ trễ tuyệt đối mạnh hơn. Panel này bổ sung cho Final Routing Cost để tránh chỉ so sánh tương đối giữa các backend.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -2223,8 +2347,8 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "sum(rate(spring_cloud_gateway_requests_seconds_count{routeId=\"backend-route\"}[1m]))",
-                        "legendFormat": "Actual Gateway RPS",
+                        "expr": "alb_routing_absolute_latency_cost",
+                        "legendFormat": "{{backend}}",
                         "range": true
                       }
                     },
@@ -2248,24 +2372,21 @@
                   "multiLane": false
                 },
                 "legend": {
-                  "calcs": [
-                    "last",
-                    "mean",
-                    "max"
-                  ],
-                  "displayMode": "table",
+                  "calcs": [],
+                  "displayMode": "list",
                   "placement": "bottom",
                   "showLegend": true
                 },
                 "tooltip": {
                   "hideZeros": false,
-                  "mode": "multi",
-                  "sort": "desc"
+                  "mode": "single",
+                  "sort": "none"
                 }
               },
               "fieldConfig": {
                 "defaults": {
-                  "unit": "reqps",
+                  "unit": "none",
+                  "decimals": 3,
                   "thresholds": {
                     "mode": "absolute",
                     "steps": [
@@ -2274,7 +2395,11 @@
                         "color": "green"
                       },
                       {
-                        "value": 80,
+                        "value": 0.5,
+                        "color": "yellow"
+                      },
+                      {
+                        "value": 0.8,
                         "color": "red"
                       }
                     ]
@@ -2288,6 +2413,8 @@
                     "axisColorMode": "text",
                     "axisLabel": "",
                     "axisPlacement": "auto",
+                    "axisSoftMax": 1,
+                    "axisSoftMin": 0,
                     "barAlignment": 0,
                     "barWidthFactor": 0.6,
                     "drawStyle": "line",
@@ -2316,7 +2443,7 @@
                       "mode": "off"
                     }
                   },
-                  "decimals": 1
+                  "min": 0
                 },
                 "overrides": []
               }
@@ -2438,6 +2565,19 @@
             "spec": {
               "x": 0,
               "y": 51,
+              "width": 24,
+              "height": 8,
+              "element": {
+                "kind": "ElementReference",
+                "name": "panel-35"
+              }
+            }
+          },
+          {
+            "kind": "GridLayoutItem",
+            "spec": {
+              "x": 0,
+              "y": 59,
               "width": 12,
               "height": 7,
               "element": {
@@ -2450,7 +2590,7 @@
             "kind": "GridLayoutItem",
             "spec": {
               "x": 12,
-              "y": 51,
+              "y": 59,
               "width": 12,
               "height": 7,
               "element": {
@@ -2463,7 +2603,7 @@
             "kind": "GridLayoutItem",
             "spec": {
               "x": 0,
-              "y": 58,
+              "y": 66,
               "width": 24,
               "height": 9,
               "element": {
@@ -2476,7 +2616,7 @@
             "kind": "GridLayoutItem",
             "spec": {
               "x": 0,
-              "y": 67,
+              "y": 75,
               "width": 24,
               "height": 13,
               "element": {
@@ -2489,7 +2629,7 @@
             "kind": "GridLayoutItem",
             "spec": {
               "x": 0,
-              "y": 80,
+              "y": 88,
               "width": 24,
               "height": 9,
               "element": {
@@ -2502,7 +2642,7 @@
             "kind": "GridLayoutItem",
             "spec": {
               "x": 0,
-              "y": 89,
+              "y": 97,
               "width": 24,
               "height": 9,
               "element": {
@@ -2515,7 +2655,7 @@
             "kind": "GridLayoutItem",
             "spec": {
               "x": 0,
-              "y": 98,
+              "y": 106,
               "width": 24,
               "height": 8,
               "element": {
@@ -2528,7 +2668,7 @@
             "kind": "GridLayoutItem",
             "spec": {
               "x": 0,
-              "y": 106,
+              "y": 114,
               "width": 24,
               "height": 18,
               "element": {
@@ -2541,7 +2681,7 @@
             "kind": "GridLayoutItem",
             "spec": {
               "x": 0,
-              "y": 124,
+              "y": 132,
               "width": 24,
               "height": 18,
               "element": {

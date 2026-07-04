@@ -1,0 +1,34 @@
+[
+  {
+    "file": "images/01_gateway_latency_successful_requests_only.png",
+    "title": "Gateway Latency Percentiles — Successful Requests Only"
+  },
+  {
+    "file": "images/02_gateway_error_rate_non_2xx.png",
+    "title": "Gateway Error Rate — Non-2xx Requests"
+  },
+  {
+    "file": "images/03_gateway_throughput_actual_rps.png",
+    "title": "Gateway Throughput — Actual RPS"
+  },
+  {
+    "file": "images/04_routing_selection_rate_by_backend.png",
+    "title": "Routing Selection Rate by Backend"
+  },
+  {
+    "file": "images/05_final_routing_cost_by_backend.png",
+    "title": "Final Routing Cost by Backend"
+  },
+  {
+    "file": "images/06_routing_selection_rate_by_decision_reason.png",
+    "title": "Routing Selection Rate by Decision Reason"
+  },
+  {
+    "file": "images/07_ewma_latency_by_backend.png",
+    "title": "EWMA latency by Backend"
+  },
+  {
+    "file": "images/08_capacity_normalized_load_ratio_by_backend.png",
+    "title": "Capacity-normalized Load Ratio by Backend"
+  }
+]
