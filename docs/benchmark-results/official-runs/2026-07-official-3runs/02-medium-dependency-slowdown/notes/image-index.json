@@ -1,0 +1,68 @@
+[
+  {
+    "file": "images/01_medium_gateway_latency_all_statuses.png",
+    "source_file": "769c7c6a-e7b5-4562-bbe9-c53d243a4743.png",
+    "panel": "Gateway Latency Percentiles — All HTTP Statuses",
+    "available": true
+  },
+  {
+    "file": "images/02_medium_gateway_throughput_actual_rps.png",
+    "source_file": "8e2d471a-3ae4-4044-a0f1-519f9b0e529c.png",
+    "panel": "Gateway Throughput — Actual RPS",
+    "available": true
+  },
+  {
+    "file": "images/03_medium_gateway_error_rate.png",
+    "source_file": "f451b393-13eb-4008-9e1b-bb50dff35b4b.png",
+    "panel": "Gateway Error Rate — Non-2xx Requests",
+    "available": true
+  },
+  {
+    "file": "images/04_medium_routing_selection_by_backend.png",
+    "source_file": "47e28771-5a19-4a4b-850c-ff53e33acd33.png",
+    "panel": "Routing Selection Rate by Backend",
+    "available": true
+  },
+  {
+    "file": "images/05_medium_routing_selection_by_reason.png",
+    "source_file": "cd61f8b0-4c2f-47f3-9bfb-f8ed0e0ed994.png",
+    "panel": "Routing Selection Rate by Decision Reason",
+    "available": true
+  },
+  {
+    "file": "images/06_medium_queue_depth.png",
+    "source_file": "87bdfafe-226b-4c32-8ebb-9cb48ba54eb7.png",
+    "panel": "Queue Depth (inflight requests) theo instance",
+    "available": true
+  },
+  {
+    "file": "images/07_medium_ewma_latency_by_backend.png",
+    "source_file": "c889baed-5840-4065-82ba-aea671ba4fb0.png",
+    "panel": "EWMA latency by backend",
+    "available": true
+  },
+  {
+    "file": "images/08_medium_final_routing_cost.png",
+    "source_file": "19fc1694-9933-4702-8f48-aa63d83f4657.png",
+    "panel": "Final Routing Cost by Backend",
+    "available": true
+  },
+  {
+    "file": "images/09_medium_absolute_latency_cost.png",
+    "source_file": "4260a4b9-708c-4fc6-a76c-adf15c3c6503.png",
+    "panel": "Absolute Latency Cost by Backend",
+    "available": true
+  },
+  {
+    "file": "images/10_medium_capacity_normalized_load_ratio.png",
+    "source_file": "f364aa58-e411-410a-a6a0-1487a7e14f09.png",
+    "panel": "Capacity-normalized Load Ratio by Backend",
+    "available": true
+  },
+  {
+    "file": "images/11_medium_mcdm_weights.png",
+    "source_file": "6b0c01da-a02e-4766-bcf8-ceb3399810b5.png",
+    "panel": "Dynamic MCDM criterion weights",
+    "available": true
+  }
+]

@@ -1,0 +1,44 @@
+[
+  {
+    "file": "images/01_low_gateway_latency_all_statuses.png",
+    "source_file": "f43cf6f8-dc93-4677-ba0a-0201a81b34c5.png",
+    "panel": "Gateway Latency Percentiles — All HTTP Statuses",
+    "available": true
+  },
+  {
+    "file": "images/02_low_gateway_throughput_actual_rps.png",
+    "source_file": "8834426d-09f4-483c-9174-68a39cb8dfc5.png",
+    "panel": "Gateway Throughput — Actual RPS",
+    "available": true
+  },
+  {
+    "file": "images/03_low_gateway_error_rate.png",
+    "source_file": "0de4c84d-6ee4-4bb7-adfe-a1f81a8b1868.png",
+    "panel": "Gateway Error Rate — Non-2xx Requests",
+    "available": true
+  },
+  {
+    "file": "images/04_low_routing_selection_by_backend.png",
+    "source_file": "c95a3c86-853e-4403-b53d-21ca2e1da338.png",
+    "panel": "Routing Selection Rate by Backend",
+    "available": true
+  },
+  {
+    "file": "images/05_low_routing_selection_by_reason.png",
+    "source_file": "183559d7-2afa-42d1-b0f9-cb6a0d745012.png",
+    "panel": "Routing Selection Rate by Decision Reason",
+    "available": true
+  },
+  {
+    "file": "images/06_low_mcdm_weights.png",
+    "source_file": "ebe4aa2e-6013-457e-bbcc-2db42d43bd49.png",
+    "panel": "Dynamic MCDM criterion weights",
+    "available": true
+  },
+  {
+    "file": "images/07_low_final_routing_cost.png",
+    "source_file": "01ca1684-1221-4606-8455-b3a03eadcdb9.png",
+    "panel": "Final Routing Cost by Backend",
+    "available": true
+  }
+]

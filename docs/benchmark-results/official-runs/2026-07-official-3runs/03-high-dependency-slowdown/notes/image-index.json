@@ -1,0 +1,80 @@
+[
+  {
+    "file": "images/01_high_gateway_latency_all_statuses.png",
+    "source_file": "5364241b-9dac-4206-be3a-d203d610ccf8.png",
+    "panel": "Gateway Latency Percentiles — All HTTP Statuses",
+    "available": true
+  },
+  {
+    "file": "images/02_high_gateway_latency_successful_only.png",
+    "source_file": "9749f67b-1261-455c-9580-9abce7e5b811.png",
+    "panel": "Gateway Latency Percentiles — Successful Requests Only",
+    "available": true
+  },
+  {
+    "file": "images/03_high_gateway_throughput_actual_rps.png",
+    "source_file": "d59907cc-dace-4b2f-9ab4-978914e27ca0.png",
+    "panel": "Gateway Throughput — Actual RPS",
+    "available": true
+  },
+  {
+    "file": "images/04_high_gateway_error_rate.png",
+    "source_file": "7cb4a4cd-3fea-4cff-9cad-834ba29ec332.png",
+    "panel": "Gateway Error Rate — Non-2xx Requests",
+    "available": true
+  },
+  {
+    "file": "images/05_high_routing_selection_by_backend.png",
+    "source_file": "fb449a3f-ca8d-4b14-847b-87b1b6fc09b1.png",
+    "panel": "Routing Selection Rate by Backend",
+    "available": true
+  },
+  {
+    "file": "images/06_high_routing_selection_by_reason.png",
+    "source_file": "7fed6d2d-4deb-4a39-81b6-5a215d9eda87.png",
+    "panel": "Routing Selection Rate by Decision Reason",
+    "available": true
+  },
+  {
+    "file": "images/07_high_ewma_latency_by_backend.png",
+    "source_file": "e431c820-caa8-4fe0-9ba5-034b5ecdc45f.png",
+    "panel": "EWMA latency by backend",
+    "available": true
+  },
+  {
+    "file": "images/08_high_queue_depth.png",
+    "source_file": "ee0d4d7b-f5d2-4047-8dec-4fb577df180b.png",
+    "panel": "Queue Depth (inflight requests) theo instance",
+    "available": true
+  },
+  {
+    "file": "images/09_high_final_routing_cost.png",
+    "source_file": "0749ff60-d6fd-412d-aba6-b03758d50abe.png",
+    "panel": "Final Routing Cost by Backend",
+    "available": true
+  },
+  {
+    "file": "images/10_high_absolute_latency_cost.png",
+    "source_file": "25eb1bea-8b0d-486c-ac6c-b16bcf807e35.png",
+    "panel": "Absolute Latency Cost by Backend",
+    "available": true
+  },
+  {
+    "file": "images/11_high_capacity_normalized_load_ratio.png",
+    "source_file": "dfb542f3-c93d-486a-9a63-ad4641dc1d0d.png",
+    "panel": "Capacity-normalized Load Ratio by Backend",
+    "available": true
+  },
+  {
+    "file": "images/12_high_cpu_usage_normalized.png",
+    "source_file": "d52cead1-2938-4b0a-9311-27d934b617cd.png",
+    "panel": "CPU usage normalized by container quota",
+    "available": true
+  },
+  {
+    "file": "images/13_high_memory_usage.png",
+    "source_file": "74029280-aacb-44f8-8a7c-ee477cd7f033.png",
+    "panel": "Memory Usage per Container (% of Limit)",
+    "available": true
+  }
+]

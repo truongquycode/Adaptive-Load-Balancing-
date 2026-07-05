@@ -1,0 +1,7 @@
+Medium Load 600 RPS — Dependency Slowdown
+Run order: Adaptive → Least Connections → Random → Round Robin
+Best Avg: Adaptive
+Best P95: Adaptive
+Best P99: Adaptive
+Best Error: Adaptive
+Ở Medium Load, Adaptive là thuật toán tốt nhất về Average, P90, P95, P99 và giữ error rate bằng 0%.

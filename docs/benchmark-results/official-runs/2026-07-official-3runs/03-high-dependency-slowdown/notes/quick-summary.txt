@@ -1,0 +1,8 @@
+High Load 900 RPS — Dependency Slowdown
+Run order: Random → Adaptive → Round Robin
+Best Avg: Adaptive
+Best P95: Adaptive
+Best P99: Adaptive
+Best Error: Adaptive
+Incomplete strategies: [{'strategy_name': 'Round Robin', 'run_count': 2}]
+Ở High Load, Adaptive giảm error rate và tail latency rất mạnh so với Random/Round Robin, nhưng bộ dữ liệu high chưa đủ Least Connections và Round Robin mới có 2 run.

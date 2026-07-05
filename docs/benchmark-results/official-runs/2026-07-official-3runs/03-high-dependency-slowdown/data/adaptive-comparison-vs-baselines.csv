@@ -1,0 +1,4 @@
+﻿baseline_strategy,baseline_name,baseline_run_count,adaptive_run_count,avg_ms_reduction_percent,p90_ms_reduction_percent,p95_ms_reduction_percent,p99_ms_reduction_percent,error_rate_reduction_percent,throughput_delta_percent,note
+least_connect,Least Connections,0,3,,,,,,,Baseline data is not available in this CSV.
+random,Random,3,3,65.51876987441591,56.21849319798362,82.66686462340878,75.08620518373013,99.84953393895789,-2.9915889263287245,Positive latency/error reduction means Adaptive is lower. Positive throughput delta means Adaptive throughput is higher.
+round_robin,Round Robin,2,3,60.80347240153715,56.38757861635221,69.70417005144863,75.1328386344568,99.8597612212866,0.18766992005954067,Positive latency/error reduction means Adaptive is lower. Positive throughput delta means Adaptive throughput is higher.

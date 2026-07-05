@@ -1,0 +1,7 @@
+Low Load 300 RPS
+Run order: Round Robin → Random → Least Connections → Adaptive
+Best Avg: Random
+Best P95: Random
+Best P99: Round Robin
+Best Error: Adaptive
+Ở Low Load, Adaptive hoạt động ổn định và không phát sinh lỗi, nhưng chưa tạo lợi thế rõ rệt vì hệ thống chưa có suy giảm cục bộ.
