@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="drawio" version="26.0.0">
+  <diagram name="Page-1">
+    <mxGraphModel>
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        
+        <!-- Máy khách JMeter -->
+        <mxCell id="2" value="Máy khách JMeter" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;fontStyle=0;" vertex="1" parent="1">
+          <mxGeometry x="100" y="100" width="160" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- API Gateway ALB -->
+        <mxCell id="3" value="API Gateway ALB" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;fontStyle=0;" vertex="1" parent="1">
+          <mxGeometry x="360" y="100" width="160" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- ALB Dịch vụ Đăng ký -->
+        <mxCell id="4" value="ALB Dịch vụ Đăng ký" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;fontStyle=0;" vertex="1" parent="1">
+          <mxGeometry x="620" y="100" width="160" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- Edge: Máy khách JMeter -> API Gateway ALB -->
+        <mxCell id="5" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#000000;" edge="1" parent="1" source="2" target="3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Edge: API Gateway ALB -> ALB Dịch vụ Đăng ký -->
+        <mxCell id="6" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#000000;" edge="1" parent="1" source="3" target="4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

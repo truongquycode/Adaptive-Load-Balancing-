@@ -1,0 +1,263 @@
+<mxfile host="Electron">
+  <diagram name="Benchmark Methodology" id="0">
+    <mxGraphModel dx="1068" dy="671" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="p1_title" parent="1" style="text;html=1;align=center;verticalAlign=middle;fontSize=14;fontColor=#333333;" value="&lt;b&gt;Giai đoạn 1: Xác định ngưỡng chịu tải&lt;/b&gt;" vertex="1">
+          <mxGeometry height="30" width="260" x="40" y="30" as="geometry" />
+        </mxCell>
+        <mxCell id="rsat_start" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#333333;" value="JMeter tăng tải&#xa;600 → 1600 RPS" vertex="1">
+          <mxGeometry height="40" width="160" x="40" y="80" as="geometry" />
+        </mxCell>
+        <mxCell id="rsat_check" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontColor=#333333;" value="Đánh giá&#xa;ổn định?" vertex="1">
+          <mxGeometry height="60" width="130" x="260" y="70" as="geometry" />
+        </mxCell>
+        <mxCell id="rsat_criteria" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontColor=#333333;verticalAlign=top;" value="&lt;div style=&#39;text-align:left;font-size:11px;&#39;&gt;Tiêu chí:&lt;br/&gt;• Actual RPS ≈ Target RPS&lt;br/&gt;• Error rate ≈ 0%&lt;br/&gt;• P95/P99 chưa tăng đột biến&lt;br/&gt;• Queue không tích lũy&lt;/div&gt;" vertex="1">
+          <mxGeometry height="80" width="180" x="235" y="160" as="geometry" />
+        </mxCell>
+        <mxCell id="rsat_confirm" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontColor=#333333;fontStyle=1;" value="Xác nhận&#xa;R_sat = 1100 RPS&#xa;(JMX 00b: 1000→1250)" vertex="1">
+          <mxGeometry height="40" width="170" x="460" y="80" as="geometry" />
+        </mxCell>
+        <mxCell id="e_p1_1" edge="1" parent="1" source="rsat_start" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=classic;" target="rsat_check" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_p1_2" edge="1" parent="1" source="rsat_check" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=classic;" target="rsat_confirm" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_p1_3" edge="1" parent="1" source="rsat_check" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#999999;dashed=1;endArrow=classic;" target="rsat_criteria" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p2_title" parent="1" style="text;html=1;align=center;verticalAlign=middle;fontSize=14;fontColor=#333333;" value="&lt;b&gt;Giai đoạn 2: Thiết kế mức tải&lt;/b&gt;" vertex="1">
+          <mxGeometry width="170" x="140" y="260" as="geometry" />
+        </mxCell>
+        <mxCell id="rsat_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontColor=#333333;fontStyle=1;fontSize=13;" value="R_sat = 1100 RPS" vertex="1">
+          <mxGeometry height="50" width="160" x="40" y="340" as="geometry" />
+        </mxCell>
+        <mxCell id="load_low" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#333333;" value="Low Load&#xa;300 RPS" vertex="1">
+          <mxGeometry height="50" width="120" x="210" y="290" as="geometry" />
+        </mxCell>
+        <mxCell id="load_med" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#333333;" value="Medium Load&#xa;600 RPS" vertex="1">
+          <mxGeometry height="50" width="120" x="340" y="290" as="geometry" />
+        </mxCell>
+        <mxCell id="load_high" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontColor=#333333;" value="High Load&#xa;900 RPS" vertex="1">
+          <mxGeometry height="50" width="120" x="470" y="290" as="geometry" />
+        </mxCell>
+        <mxCell id="load_stress" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontColor=#333333;" value="Stress&#xa;1200 RPS" vertex="1">
+          <mxGeometry height="50" width="120" x="600" y="290" as="geometry" />
+        </mxCell>
+        <mxCell id="load_note_low" parent="1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fontColor=#666666;" value="No chaos" vertex="1">
+          <mxGeometry height="20" width="120" x="230" y="340" as="geometry" />
+        </mxCell>
+        <mxCell id="load_note_med" parent="1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fontColor=#666666;" value="+ Dependency slowdown" vertex="1">
+          <mxGeometry height="20" width="120" x="380" y="340" as="geometry" />
+        </mxCell>
+        <mxCell id="load_note_high" parent="1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fontColor=#666666;" value="+ Dependency slowdown" vertex="1">
+          <mxGeometry height="20" width="120" x="510" y="340" as="geometry" />
+        </mxCell>
+        <mxCell id="load_note_stress" parent="1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fontColor=#666666;" value="Graceful degradation" vertex="1">
+          <mxGeometry height="20" width="120" x="640" y="340" as="geometry" />
+        </mxCell>
+        <mxCell id="e_p2_1" edge="1" parent="1" source="rsat_box" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=classic;" target="load_low" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="260" y="370" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_p2_2" edge="1" parent="1" source="rsat_box" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=classic;entryX=0.369;entryY=0.969;entryDx=0;entryDy=0;entryPerimeter=0;" target="load_med" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="384" y="370" />
+              <mxPoint x="384" y="338" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_p2_3" edge="1" parent="1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=classic;entryX=0.333;entryY=1;entryDx=0;entryDy=0;entryPerimeter=0;" target="load_high" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="510" y="370" />
+            </Array>
+            <mxPoint x="200" y="370" as="sourcePoint" />
+            <mxPoint x="540" y="340" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_p2_4" edge="1" parent="1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=classic;entryX=0.38;entryY=1.013;entryDx=0;entryDy=0;entryPerimeter=0;" target="load_stress" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="646" y="370" />
+              <mxPoint x="646" y="341" />
+            </Array>
+            <mxPoint x="200" y="370" as="sourcePoint" />
+            <mxPoint x="700" y="340" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_p12" edge="1" parent="1" source="rsat_confirm" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#333333;strokeWidth=2;endArrow=classic;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="rsat_box" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="545" y="270" />
+              <mxPoint x="120" y="270" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p3_title" parent="1" style="text;html=1;align=center;verticalAlign=middle;fontSize=14;fontColor=#333333;" value="&lt;b&gt;Giai đoạn 3: Thực nghiệm&lt;/b&gt;" vertex="1">
+          <mxGeometry height="20" width="180" x="40" y="410" as="geometry" />
+        </mxCell>
+        <mxCell id="algo_group" parent="1" style="swimlane;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;fontColor=#333333;startSize=25;" value="Thuật toán so sánh" vertex="1">
+          <mxGeometry height="190" width="200" x="40" y="440" as="geometry" />
+        </mxCell>
+        <mxCell id="algo_rr" parent="algo_group" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#333333;" value="Round Robin" vertex="1">
+          <mxGeometry height="30" width="170" x="15" y="35" as="geometry" />
+        </mxCell>
+        <mxCell id="algo_rand" parent="algo_group" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#333333;" value="Random" vertex="1">
+          <mxGeometry height="30" width="170" x="15" y="75" as="geometry" />
+        </mxCell>
+        <mxCell id="algo_lc" parent="algo_group" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#333333;" value="Least Connections" vertex="1">
+          <mxGeometry height="30" width="170" x="15" y="115" as="geometry" />
+        </mxCell>
+        <mxCell id="algo_adp" parent="algo_group" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontColor=#333333;fontStyle=1;" value="Adaptive (đề xuất)" vertex="1">
+          <mxGeometry height="30" width="170" x="15" y="155" as="geometry" />
+        </mxCell>
+        <mxCell id="exec_process" parent="1" style="swimlane;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;fontColor=#333333;startSize=25;" value="Quy trình mỗi run" vertex="1">
+          <mxGeometry height="190" width="250" x="310" y="440" as="geometry" />
+        </mxCell>
+        <mxCell id="exec_s1" parent="exec_process" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontColor=#333333;fontSize=11;align=left;spacingLeft=8;" value="1. Verify strategy đang chạy" vertex="1">
+          <mxGeometry height="25" width="230" x="10" y="30" as="geometry" />
+        </mxCell>
+        <mxCell id="exec_s2" parent="exec_process" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontColor=#333333;fontSize=11;align=left;spacingLeft=8;" value="2. Reset ALB + Chaos" vertex="1">
+          <mxGeometry height="25" width="230" x="10" y="60" as="geometry" />
+        </mxCell>
+        <mxCell id="exec_s3" parent="exec_process" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontColor=#333333;fontSize=11;align=left;spacingLeft=8;" value="3. Chờ ổn định (cooldown)" vertex="1">
+          <mxGeometry height="25" width="230" x="10" y="90" as="geometry" />
+        </mxCell>
+        <mxCell id="exec_s4" parent="exec_process" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontColor=#333333;fontSize=11;align=left;spacingLeft=8;" value="4. JMeter non-GUI chạy kịch bản" vertex="1">
+          <mxGeometry height="25" width="230" x="10" y="120" as="geometry" />
+        </mxCell>
+        <mxCell id="exec_s5" parent="exec_process" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontColor=#333333;fontSize=11;align=left;spacingLeft=8;" value="5. Lưu .jtl + HTML report" vertex="1">
+          <mxGeometry height="25" width="230" x="10" y="150" as="geometry" />
+        </mxCell>
+        <mxCell id="repeat_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontColor=#333333;fontSize=12;" value="&lt;b&gt;Lặp 3 lần&lt;/b&gt;&#xa;mỗi thuật toán&#xa;× mỗi mức tải" vertex="1">
+          <mxGeometry height="70" width="140" x="630" y="500" as="geometry" />
+        </mxCell>
+        <mxCell id="randomize_note" parent="1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fontColor=#666666;" value="&lt;i&gt;Thứ tự strategy được&lt;br/&gt;xáo trộn ngẫu nhiên&lt;/i&gt;" vertex="1">
+          <mxGeometry height="30" width="150" x="570" y="580" as="geometry" />
+        </mxCell>
+        <mxCell id="e_p3_1" edge="1" parent="1" source="algo_group" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=classic;" target="exec_process" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_p3_2" edge="1" parent="1" source="exec_process" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=classic;" target="repeat_box" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p4_title" parent="1" style="text;html=1;align=center;verticalAlign=middle;fontSize=14;fontColor=#333333;" value="&lt;b&gt;Giai đoạn 4: Thu thập dữ liệu&lt;/b&gt;" vertex="1">
+          <mxGeometry height="30" width="320" x="95" y="650" as="geometry" />
+        </mxCell>
+        <mxCell id="filter_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontColor=#333333;" value="&lt;b&gt;Lọc dữ liệu&lt;/b&gt;&#xa;Chỉ dùng sampler nhãn MEASURE_&#xa;(loại bỏ ramp-up, warmup, teardown)" vertex="1">
+          <mxGeometry height="60" width="210" x="50" y="720" as="geometry" />
+        </mxCell>
+        <mxCell id="metrics_group" parent="1" style="swimlane;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;fontColor=#333333;startSize=25;" value="Chỉ số thu thập" vertex="1">
+          <mxGeometry height="100" width="450" x="310" y="700" as="geometry" />
+        </mxCell>
+        <mxCell id="m_lat" parent="metrics_group" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#333333;fontSize=10;" value="Average Latency" vertex="1">
+          <mxGeometry height="20" width="90" x="10" y="30" as="geometry" />
+        </mxCell>
+        <mxCell id="m_pct" parent="metrics_group" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#333333;fontSize=10;" value="P90 / P95 / P99" vertex="1">
+          <mxGeometry height="20" width="90" x="115" y="30" as="geometry" />
+        </mxCell>
+        <mxCell id="m_err" parent="metrics_group" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontColor=#333333;fontSize=10;" value="Error Rate" vertex="1">
+          <mxGeometry height="20" width="90" x="220" y="30" as="geometry" />
+        </mxCell>
+        <mxCell id="m_thr" parent="metrics_group" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#333333;fontSize=10;" value="Actual Throughput" vertex="1">
+          <mxGeometry height="20" width="110" x="330" y="30" as="geometry" />
+        </mxCell>
+        <mxCell id="m_dist" parent="metrics_group" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontColor=#333333;fontSize=10;" value="Routing Distribution" vertex="1">
+          <mxGeometry height="25" width="100" x="10" y="65" as="geometry" />
+        </mxCell>
+        <mxCell id="m_queue" parent="metrics_group" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontColor=#333333;fontSize=10;" value="Queue / Inflight" vertex="1">
+          <mxGeometry height="25" width="90" x="120" y="65" as="geometry" />
+        </mxCell>
+        <mxCell id="m_ewma" parent="metrics_group" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontColor=#333333;fontSize=10;" value="EWMA Latency" vertex="1">
+          <mxGeometry height="25" width="100" x="220" y="65" as="geometry" />
+        </mxCell>
+        <mxCell id="m_cost" parent="metrics_group" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontColor=#333333;fontSize=10;" value="Final Routing Cost" vertex="1">
+          <mxGeometry height="26.5" width="100" x="330" y="63.5" as="geometry" />
+        </mxCell>
+        <mxCell id="e_p4_1" edge="1" parent="1" source="filter_box" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=classic;" target="metrics_group" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="280" y="750" />
+              <mxPoint x="280" y="750" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_p34" edge="1" parent="1" source="repeat_box" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#333333;strokeWidth=2;endArrow=classic;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="filter_box" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="700" y="680" />
+              <mxPoint x="155" y="680" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p5_title" parent="1" style="text;html=1;align=center;verticalAlign=middle;fontSize=14;fontColor=#333333;" value="&lt;b&gt;Giai đoạn 5: Phân tích và lưu trữ&lt;/b&gt;" vertex="1">
+          <mxGeometry height="30" width="320" x="95" y="820" as="geometry" />
+        </mxCell>
+        <mxCell id="jtl_script" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontColor=#333333;" value="&lt;b&gt;summarize_jtl_results.py&lt;/b&gt;&#xa;Tổng hợp .jtl → CSV" vertex="1">
+          <mxGeometry height="60" width="200" x="40" y="880" as="geometry" />
+        </mxCell>
+        <mxCell id="analysis_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontColor=#333333;" value="&lt;b&gt;Phân tích&lt;/b&gt;&#xa;Mean / Std / CI qua 3 run&#xa;So sánh Adaptive vs Baselines" vertex="1">
+          <mxGeometry height="60" width="220" x="280" y="880" as="geometry" />
+        </mxCell>
+        <mxCell id="storage_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontColor=#333333;" value="&lt;b&gt;Lưu kết quả&lt;/b&gt;&#xa;docs/benchmark-results/&#xa;official-runs/2026-07-official-3runs/" vertex="1">
+          <mxGeometry height="60" width="220" x="540" y="880" as="geometry" />
+        </mxCell>
+        <mxCell id="storage_detail" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#999999;fontColor=#333333;verticalAlign=top;" value="&lt;div style=&#39;text-align:left;font-size:10px;&#39;&gt;• jtl-summary.csv&lt;br/&gt;• aggregate-summary-clean.csv&lt;br/&gt;• strategy-mean-std.csv&lt;br/&gt;• adaptive-comparison-vs-baselines.csv&lt;br/&gt;• Grafana screenshots&lt;/div&gt;" vertex="1">
+          <mxGeometry height="70" width="215" x="545" y="980" as="geometry" />
+        </mxCell>
+        <mxCell id="e_p5_1" edge="1" parent="1" source="jtl_script" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=classic;" target="analysis_box" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_p5_2" edge="1" parent="1" source="analysis_box" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=classic;" target="storage_box" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="580" y="910" />
+              <mxPoint x="580" y="910" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_p5_3" edge="1" parent="1" source="storage_box" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#999999;dashed=1;endArrow=classic;" target="storage_detail" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_p45" edge="1" parent="1" source="metrics_group" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#333333;strokeWidth=2;endArrow=classic;entryX=0.5;entryY=0;exitX=0.25;exitY=1;exitDx=0;exitDy=0;" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="423" y="850" />
+              <mxPoint x="100" y="850" />
+            </Array>
+            <mxPoint x="310" y="790" as="sourcePoint" />
+            <mxPoint x="100.00000000000006" y="880" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="legend" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#666666;verticalAlign=top;fontStyle=1;" value="Chú giải" vertex="1">
+          <mxGeometry height="80" width="200" x="40" y="960" as="geometry" />
+        </mxCell>
+        <mxCell id="leg1" parent="legend" style="rounded=0;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" value="" vertex="1">
+          <mxGeometry height="11.636363636363637" width="25" x="8.333333333333334" y="21.81818181818182" as="geometry" />
+        </mxCell>
+        <mxCell id="leg1t" parent="legend" style="text;html=1;align=left;verticalAlign=middle;fontSize=10;" value="Dữ liệu JMeter / Performance" vertex="1">
+          <mxGeometry height="14.545454545454545" width="150" x="41.66666666666667" y="20.363636363636363" as="geometry" />
+        </mxCell>
+        <mxCell id="leg2" parent="legend" style="rounded=0;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" value="" vertex="1">
+          <mxGeometry height="11.636363636363637" width="25" x="8.333333333333334" y="37.81818181818182" as="geometry" />
+        </mxCell>
+        <mxCell id="leg2t" parent="legend" style="text;html=1;align=left;verticalAlign=middle;fontSize=10;" value="Kết quả / Quyết định" vertex="1">
+          <mxGeometry height="14.545454545454545" width="150" x="41.66666666666667" y="36.36363636363637" as="geometry" />
+        </mxCell>
+        <mxCell id="leg3" parent="legend" style="rounded=0;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" value="" vertex="1">
+          <mxGeometry height="11.636363636363637" width="25" x="8.333333333333334" y="53.81818181818181" as="geometry" />
+        </mxCell>
+        <mxCell id="leg3t" parent="legend" style="text;html=1;align=left;verticalAlign=middle;fontSize=10;" value="Metrics ALB nội bộ" vertex="1">
+          <mxGeometry height="14.545454545454545" width="150" x="41.66666666666667" y="52.36363636363637" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

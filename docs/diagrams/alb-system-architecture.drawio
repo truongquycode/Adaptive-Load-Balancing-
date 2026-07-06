@@ -1,0 +1,164 @@
+<mxfile host="Electron">
+  <diagram name="Architecture" id="0">
+    <mxGraphModel dx="1043" dy="802" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="legend" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#666666;verticalAlign=top;fontStyle=1;" value="Chú giải" vertex="1">
+          <mxGeometry height="110" width="200" x="40" y="460" as="geometry" />
+        </mxCell>
+        <mxCell id="leg1" edge="1" parent="legend" style="edgeStyle=none;html=1;strokeColor=#000000;strokeWidth=2;endArrow=classic;endFill=1;" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="10" y="40" as="sourcePoint" />
+            <mxPoint x="50" y="40" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="leg1t" parent="legend" style="text;html=1;align=left;verticalAlign=middle;" value="Luồng Request" vertex="1">
+          <mxGeometry height="20" width="120" x="60" y="30" as="geometry" />
+        </mxCell>
+        <mxCell id="leg2" edge="1" parent="legend" style="edgeStyle=none;html=1;strokeColor=#0050b3;dashed=1;endArrow=classic;endFill=1;" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="10" y="65" as="sourcePoint" />
+            <mxPoint x="50" y="65" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="leg2t" parent="legend" style="text;html=1;align=left;verticalAlign=middle;" value="Service Discovery" vertex="1">
+          <mxGeometry height="20" width="120" x="60" y="55" as="geometry" />
+        </mxCell>
+        <mxCell id="leg3" edge="1" parent="legend" style="edgeStyle=none;html=1;strokeColor=#a8071a;dashed=1;dashPattern=1 2;endArrow=classic;endFill=1;" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="10" y="90" as="sourcePoint" />
+            <mxPoint x="50" y="90" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="leg3t" parent="legend" style="text;html=1;align=left;verticalAlign=middle;" value="Luồng Monitoring" vertex="1">
+          <mxGeometry height="20" width="120" x="60" y="80" as="geometry" />
+        </mxCell>
+        <mxCell id="docker" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#666666;dashed=1;dashPattern=1 2;verticalAlign=top;fontStyle=1;fontSize=14;fontColor=#333333;" value="Môi trường Docker Compose" vertex="1">
+          <mxGeometry height="560" width="820" x="260" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="client" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;" value="Máy khách JMeter&#xa;(Sinh tải HTTP)" vertex="1">
+          <mxGeometry height="60" width="140" x="40" y="150" as="geometry" />
+        </mxCell>
+        <mxCell id="gw" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;" value="&lt;b&gt;API Gateway ALB (:8080)&lt;/b&gt;&lt;br/&gt;[Chiến lược Cân bằng tải tùy chỉnh]" vertex="1">
+          <mxGeometry height="80" width="220" x="320" y="140" as="geometry" />
+        </mxCell>
+        <mxCell id="eureka" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;" value="&lt;b&gt;Eureka Server (:8761)&lt;/b&gt;&lt;br/&gt;[Service Discovery]" vertex="1">
+          <mxGeometry height="60" width="140" x="600" y="150" as="geometry" />
+        </mxCell>
+        <mxCell id="reg_group" parent="1" style="swimlane;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;fontColor=#333333;startSize=30;" value="Registration Service ALB" vertex="1">
+          <mxGeometry height="250" width="240" x="300" y="300" as="geometry" />
+        </mxCell>
+        <mxCell id="reg1" parent="reg_group" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;fontStyle=0;" value="registration-8081 (:8081)&#xa;[CPU: 2.0 | RAM: 768m]" vertex="1">
+          <mxGeometry height="50" width="220" x="10" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="reg2" parent="reg_group" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;fontStyle=0;" value="registration-8082 (:8082)&#xa;[CPU: 1.5 | RAM: 512m]" vertex="1">
+          <mxGeometry height="50" width="220" x="10" y="110" as="geometry" />
+        </mxCell>
+        <mxCell id="reg3" parent="reg_group" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;fontStyle=0;" value="registration-8083 (:8083)&#xa;[CPU: 1.0 | RAM: 384m]" vertex="1">
+          <mxGeometry height="50" width="220" x="10" y="180" as="geometry" />
+        </mxCell>
+        <mxCell id="grafana" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;verticalAlign=top;" value="&lt;b&gt;Grafana (:3000)&lt;/b&gt;&lt;br/&gt;&lt;div style=&quot;text-align: left; padding-left: 10px; font-size: 11px;&quot;&gt;- Latency percentiles&lt;br/&gt;- Throughput &amp;amp; Error rate&lt;br/&gt;- Routing selection&lt;br/&gt;- Queue depth&lt;br/&gt;- EWMA latency&lt;br/&gt;- Routing cost (Final &amp;amp; Abs)&lt;br/&gt;- CPU &amp;amp; Memory&lt;/div&gt;" vertex="1">
+          <mxGeometry height="160" width="220" x="820" y="80" as="geometry" />
+        </mxCell>
+        <mxCell id="prom" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;" value="&lt;b&gt;Prometheus (:9090)&lt;/b&gt;&lt;br/&gt;[Thu thập metrics]" vertex="1">
+          <mxGeometry height="60" width="180" x="840" y="320" as="geometry" />
+        </mxCell>
+        <mxCell id="cadvisor" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;" value="&lt;b&gt;cAdvisor (:8080)&lt;/b&gt;&lt;br/&gt;[Metrics Container]" vertex="1">
+          <mxGeometry height="60" width="180" x="840" y="500" as="geometry" />
+        </mxCell>
+        <mxCell id="e_req1" edge="1" parent="1" source="client" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#000000;strokeWidth=2;endArrow=classic;" target="gw" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_req2" edge="1" parent="1" source="gw" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#000000;strokeWidth=2;endArrow=classic;" target="reg1" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="430" y="230" />
+              <mxPoint x="300" y="230" />
+              <mxPoint x="300" y="365" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_req3" edge="1" parent="1" source="gw" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#000000;strokeWidth=2;endArrow=classic;entryX=0;entryY=0.5;exitX=0.25;exitY=1;" target="reg2" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="290" y="220" />
+              <mxPoint x="290" y="435" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_req4" edge="1" parent="1" source="gw" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#000000;strokeWidth=2;endArrow=classic;entryX=0;entryY=0.5;exitX=0.1;exitY=1;" target="reg3" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="280" y="220" />
+              <mxPoint x="280" y="505" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_sd1" edge="1" parent="1" source="gw" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#0050b3;dashed=1;endArrow=classic;startArrow=classic;fontColor=#0050b3;" target="eureka" value="Register &amp;amp; Fetch">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_sd2" edge="1" parent="1" source="reg1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#0050b3;dashed=1;endArrow=classic;entryX=0.25;entryY=1;exitX=1;exitY=0.5;fontColor=#0050b3;" target="eureka" value="Register">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="635" y="365" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_sd3" edge="1" parent="1" source="reg2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#0050b3;dashed=1;endArrow=classic;entryX=0.5;entryY=1;exitX=1;exitY=0.5;" target="eureka" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="670" y="435" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_sd4" edge="1" parent="1" source="reg3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#0050b3;dashed=1;endArrow=classic;entryX=0.75;entryY=1;exitX=1;exitY=0.5;" target="eureka" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="705" y="505" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_mon1" edge="1" parent="1" source="grafana" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#a8071a;dashed=1;dashPattern=1 2;endArrow=classic;fontColor=#a8071a;" target="prom" value="Query">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_mon2" edge="1" parent="1" source="prom" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#a8071a;dashed=1;dashPattern=1 2;endArrow=classic;entryX=1;entryY=0.25;exitX=0.25;exitY=0;fontColor=#a8071a;" target="gw" value="Scrape">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="885" y="270" />
+              <mxPoint x="740" y="270" />
+              <mxPoint x="740" y="160" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_mon3" edge="1" parent="1" source="prom" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#a8071a;dashed=1;dashPattern=1 2;endArrow=classic;entryX=1;entryY=0.5;exitX=0;exitY=0.25;" target="reg1" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="800" y="335" />
+              <mxPoint x="800" y="365" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_mon4" edge="1" parent="1" source="prom" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#a8071a;dashed=1;dashPattern=1 2;endArrow=classic;entryX=1;entryY=0.5;exitX=0;exitY=0.5;" target="reg2" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="800" y="350" />
+              <mxPoint x="800" y="435" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_mon5" edge="1" parent="1" source="prom" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#a8071a;dashed=1;dashPattern=1 2;endArrow=classic;entryX=1;entryY=0.5;exitX=0;exitY=0.75;" target="reg3" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="800" y="365" />
+              <mxPoint x="800" y="505" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_mon6" edge="1" parent="1" source="prom" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#a8071a;dashed=1;dashPattern=1 2;endArrow=classic;fontColor=#a8071a;" target="cadvisor" value="Scrape">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

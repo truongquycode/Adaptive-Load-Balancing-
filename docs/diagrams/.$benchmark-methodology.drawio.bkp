@@ -1,0 +1,297 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="drawio" version="26.0.0">
+  <diagram name="Benchmark Methodology">
+    <mxGraphModel>
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- ============================================================ -->
+        <!-- PHASE 1: Capacity Discovery (top row) -->
+        <!-- ============================================================ -->
+        <mxCell id="p1_title" value="&lt;b&gt;Giai &#273;o&#7841;n 1: X&#225;c &#273;&#7883;nh ng&#432;&#7905;ng ch&#7883;u t&#7843;i&lt;/b&gt;" style="text;html=1;align=center;verticalAlign=middle;fontSize=14;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="40" y="30" width="320" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="rsat_start" value="JMeter t&#259;ng t&#7843;i&#10;600 &#8594; 1600 RPS" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="40" y="80" width="160" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="rsat_check" value="&#272;&#225;nh gi&#225;&#10;&#7893;n &#273;&#7883;nh?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="260" y="70" width="130" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="rsat_criteria" value="&lt;div style='text-align:left;font-size:11px;'&gt;Ti&#234;u ch&#237;:&lt;br/&gt;&#8226; Actual RPS &#8776; Target RPS&lt;br/&gt;&#8226; Error rate &#8776; 0%&lt;br/&gt;&#8226; P95/P99 ch&#432;a t&#259;ng &#273;&#7897;t bi&#7871;n&lt;br/&gt;&#8226; Queue kh&#244;ng t&#237;ch l&#361;y&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontColor=#333333;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="260" y="180" width="180" height="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="rsat_confirm" value="X&#225;c nh&#7853;n&#10;R_sat = 1100 RPS&#10;(JMX 00b: 1000&#8594;1250)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontColor=#333333;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="460" y="80" width="190" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Phase 1 edges -->
+        <mxCell id="e_p1_1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=classic;" edge="1" parent="1" source="rsat_start" target="rsat_check">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e_p1_2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=classic;" edge="1" parent="1" source="rsat_check" target="rsat_confirm">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e_p1_3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#999999;dashed=1;endArrow=classic;" edge="1" parent="1" source="rsat_check" target="rsat_criteria">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- PHASE 2: Load Level Design -->
+        <!-- ============================================================ -->
+        <mxCell id="p2_title" value="&lt;b&gt;Giai &#273;o&#7841;n 2: Thi&#7871;t k&#7871; m&#7913;c t&#7843;i&lt;/b&gt;" style="text;html=1;align=center;verticalAlign=middle;fontSize=14;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="40" y="320" width="320" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="rsat_box" value="R_sat = 1100 RPS" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontColor=#333333;fontStyle=1;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="40" y="370" width="160" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="load_low" value="Low Load&#10;300 RPS" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="280" y="340" width="120" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="load_med" value="Medium Load&#10;600 RPS" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="420" y="340" width="120" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="load_high" value="High Load&#10;900 RPS" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="560" y="340" width="120" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="load_stress" value="Stress&#10;1200 RPS" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="700" y="340" width="120" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="load_note_low" value="No chaos" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="280" y="390" width="120" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="load_note_med" value="+ Dependency slowdown" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="420" y="390" width="120" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="load_note_high" value="+ Dependency slowdown" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="560" y="390" width="120" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="load_note_stress" value="Graceful degradation" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="700" y="390" width="120" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- Phase 2 edges -->
+        <mxCell id="e_p2_1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=classic;" edge="1" parent="1" source="rsat_box" target="load_low">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_p2_2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=classic;" edge="1" parent="1" source="rsat_box" target="load_med">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_p2_3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=classic;" edge="1" parent="1" source="rsat_box" target="load_high">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_p2_4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=classic;" edge="1" parent="1" source="rsat_box" target="load_stress">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Connect Phase 1 to Phase 2 -->
+        <mxCell id="e_p12" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#333333;strokeWidth=2;endArrow=classic;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="rsat_confirm" target="rsat_box">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="555" y="170" />
+              <mxPoint x="120" y="170" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- PHASE 3: Experiment Execution -->
+        <!-- ============================================================ -->
+        <mxCell id="p3_title" value="&lt;b&gt;Giai &#273;o&#7841;n 3: Th&#7921;c nghi&#7879;m&lt;/b&gt;" style="text;html=1;align=center;verticalAlign=middle;fontSize=14;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="40" y="440" width="320" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- Algorithms container -->
+        <mxCell id="algo_group" value="Thu&#7853;t to&#225;n so s&#225;nh" style="swimlane;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;fontColor=#333333;startSize=25;" vertex="1" parent="1">
+          <mxGeometry x="40" y="490" width="200" height="190" as="geometry" />
+        </mxCell>
+        <mxCell id="algo_rr" value="Round Robin" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#333333;" vertex="1" parent="algo_group">
+          <mxGeometry x="15" y="35" width="170" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="algo_rand" value="Random" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#333333;" vertex="1" parent="algo_group">
+          <mxGeometry x="15" y="75" width="170" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="algo_lc" value="Least Connections" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#333333;" vertex="1" parent="algo_group">
+          <mxGeometry x="15" y="115" width="170" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="algo_adp" value="Adaptive (&#273;&#7873; xu&#7845;t)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontColor=#333333;fontStyle=1;" vertex="1" parent="algo_group">
+          <mxGeometry x="15" y="155" width="170" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- Execution process -->
+        <mxCell id="exec_process" value="Quy tr&#236;nh m&#7895;i run" style="swimlane;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;fontColor=#333333;startSize=25;" vertex="1" parent="1">
+          <mxGeometry x="310" y="490" width="250" height="190" as="geometry" />
+        </mxCell>
+        <mxCell id="exec_s1" value="1. Verify strategy &#273;ang ch&#7841;y" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontColor=#333333;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="exec_process">
+          <mxGeometry x="10" y="30" width="230" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="exec_s2" value="2. Reset ALB + Chaos" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontColor=#333333;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="exec_process">
+          <mxGeometry x="10" y="60" width="230" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="exec_s3" value="3. Ch&#7901; &#7893;n &#273;&#7883;nh (cooldown)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontColor=#333333;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="exec_process">
+          <mxGeometry x="10" y="90" width="230" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="exec_s4" value="4. JMeter non-GUI ch&#7841;y k&#7883;ch b&#7843;n" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontColor=#333333;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="exec_process">
+          <mxGeometry x="10" y="120" width="230" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="exec_s5" value="5. L&#432;u .jtl + HTML report" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontColor=#333333;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="exec_process">
+          <mxGeometry x="10" y="150" width="230" height="25" as="geometry" />
+        </mxCell>
+
+        <!-- Repetition -->
+        <mxCell id="repeat_box" value="&lt;b&gt;L&#7863;p 3 l&#7847;n&lt;/b&gt;&#10;m&#7895;i thu&#7853;t to&#225;n&#10;&#215; m&#7895;i m&#7913;c t&#7843;i" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontColor=#333333;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="630" y="520" width="140" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="randomize_note" value="&lt;i&gt;Th&#7913; t&#7921; strategy &#273;&#432;&#7907;c&lt;br/&gt;x&#225;o tr&#7897;n ng&#7851;u nhi&#234;n&lt;/i&gt;" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="625" y="600" width="150" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- Phase 3 edges -->
+        <mxCell id="e_p3_1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=classic;" edge="1" parent="1" source="algo_group" target="exec_process">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_p3_2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=classic;" edge="1" parent="1" source="exec_process" target="repeat_box">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- PHASE 4: Data Collection -->
+        <!-- ============================================================ -->
+        <mxCell id="p4_title" value="&lt;b&gt;Giai &#273;o&#7841;n 4: Thu th&#7853;p d&#7919; li&#7879;u&lt;/b&gt;" style="text;html=1;align=center;verticalAlign=middle;fontSize=14;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="40" y="710" width="320" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="filter_box" value="&lt;b&gt;L&#7885;c d&#7919; li&#7879;u&lt;/b&gt;&#10;Ch&#7881; d&#249;ng sampler nh&#227;n MEASURE_&#10;(lo&#7841;i b&#7887; ramp-up, warmup, teardown)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="40" y="760" width="230" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="metrics_group" value="Ch&#7881; s&#7889; thu th&#7853;p" style="swimlane;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;fontColor=#333333;startSize=25;" vertex="1" parent="1">
+          <mxGeometry x="340" y="750" width="480" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- Metrics row 1 -->
+        <mxCell id="m_lat" value="Average Latency" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#333333;fontSize=10;" vertex="1" parent="metrics_group">
+          <mxGeometry x="10" y="30" width="100" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="m_pct" value="P90 / P95 / P99" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#333333;fontSize=10;" vertex="1" parent="metrics_group">
+          <mxGeometry x="120" y="30" width="100" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="m_err" value="Error Rate" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontColor=#333333;fontSize=10;" vertex="1" parent="metrics_group">
+          <mxGeometry x="230" y="30" width="100" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="m_thr" value="Actual Throughput" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#333333;fontSize=10;" vertex="1" parent="metrics_group">
+          <mxGeometry x="340" y="30" width="120" height="28" as="geometry" />
+        </mxCell>
+
+        <!-- Metrics row 2 -->
+        <mxCell id="m_dist" value="Routing Distribution" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontColor=#333333;fontSize=10;" vertex="1" parent="metrics_group">
+          <mxGeometry x="10" y="65" width="120" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="m_queue" value="Queue / Inflight" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontColor=#333333;fontSize=10;" vertex="1" parent="metrics_group">
+          <mxGeometry x="140" y="65" width="100" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="m_ewma" value="EWMA Latency" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontColor=#333333;fontSize=10;" vertex="1" parent="metrics_group">
+          <mxGeometry x="250" y="65" width="100" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="m_cost" value="Final Routing Cost" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontColor=#333333;fontSize=10;" vertex="1" parent="metrics_group">
+          <mxGeometry x="360" y="65" width="110" height="28" as="geometry" />
+        </mxCell>
+
+        <!-- Phase 4 edges -->
+        <mxCell id="e_p4_1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=classic;" edge="1" parent="1" source="filter_box" target="metrics_group">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Connect Phase 3 to Phase 4 -->
+        <mxCell id="e_p34" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#333333;strokeWidth=2;endArrow=classic;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="repeat_box" target="filter_box">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="700" y="660" />
+              <mxPoint x="155" y="660" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- PHASE 5: Analysis and Storage -->
+        <!-- ============================================================ -->
+        <mxCell id="p5_title" value="&lt;b&gt;Giai &#273;o&#7841;n 5: Ph&#226;n t&#237;ch v&#224; l&#432;u tr&#7919;&lt;/b&gt;" style="text;html=1;align=center;verticalAlign=middle;fontSize=14;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="40" y="880" width="320" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="jtl_script" value="&lt;b&gt;summarize_jtl_results.py&lt;/b&gt;&#10;T&#7893;ng h&#7907;p .jtl &#8594; CSV" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="40" y="930" width="200" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="analysis_box" value="&lt;b&gt;Ph&#226;n t&#237;ch&lt;/b&gt;&#10;Mean / Std / CI qua 3 run&#10;So s&#225;nh Adaptive vs Baselines" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="310" y="930" width="220" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="storage_box" value="&lt;b&gt;L&#432;u k&#7871;t qu&#7843;&lt;/b&gt;&#10;docs/benchmark-results/&#10;official-runs/2026-07-official-3runs/" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="600" y="920" width="230" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="storage_detail" value="&lt;div style='text-align:left;font-size:10px;'&gt;&#8226; jtl-summary.csv&lt;br/&gt;&#8226; aggregate-summary-clean.csv&lt;br/&gt;&#8226; strategy-mean-std.csv&lt;br/&gt;&#8226; adaptive-comparison-vs-baselines.csv&lt;br/&gt;&#8226; Grafana screenshots&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#999999;fontColor=#333333;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="620" y="1010" width="200" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- Phase 5 edges -->
+        <mxCell id="e_p5_1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=classic;" edge="1" parent="1" source="jtl_script" target="analysis_box">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_p5_2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=classic;" edge="1" parent="1" source="analysis_box" target="storage_box">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_p5_3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#999999;dashed=1;endArrow=classic;" edge="1" parent="1" source="storage_box" target="storage_detail">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Connect Phase 4 to Phase 5 -->
+        <mxCell id="e_p45" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#333333;strokeWidth=2;endArrow=classic;exitX=0;exitY=0.5;entryX=0.5;entryY=0;" edge="1" parent="1" source="metrics_group" target="jtl_script">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="140" y="800" />
+              <mxPoint x="140" y="900" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- LEGEND -->
+        <!-- ============================================================ -->
+        <mxCell id="legend" value="Ch&#250; gi&#7843;i" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#666666;verticalAlign=top;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1050" width="240" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="leg1" value="" style="rounded=0;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="legend">
+          <mxGeometry x="10" y="30" width="30" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="leg1t" value="D&#7919; li&#7879;u JMeter / Performance" style="text;html=1;align=left;verticalAlign=middle;fontSize=10;" vertex="1" parent="legend">
+          <mxGeometry x="50" y="28" width="180" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="leg2" value="" style="rounded=0;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="legend">
+          <mxGeometry x="10" y="52" width="30" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="leg2t" value="K&#7871;t qu&#7843; / Quy&#7871;t &#273;&#7883;nh" style="text;html=1;align=left;verticalAlign=middle;fontSize=10;" vertex="1" parent="legend">
+          <mxGeometry x="50" y="50" width="180" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="leg3" value="" style="rounded=0;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="legend">
+          <mxGeometry x="10" y="74" width="30" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="leg3t" value="Metrics ALB n&#7897;i b&#7897;" style="text;html=1;align=left;verticalAlign=middle;fontSize=10;" vertex="1" parent="legend">
+          <mxGeometry x="50" y="72" width="180" height="20" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
