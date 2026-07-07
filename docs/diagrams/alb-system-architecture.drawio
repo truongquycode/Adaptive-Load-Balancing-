@@ -1,161 +1,188 @@
 <mxfile host="Electron">
-  <diagram name="Architecture" id="0">
-    <mxGraphModel dx="1043" dy="802" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+  <diagram id="alb_arch" name="ALB System Architecture">
+    <mxGraphModel dx="1423" dy="895" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1440" pageHeight="810" math="0" shadow="1">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <mxCell id="legend" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#666666;verticalAlign=top;fontStyle=1;" value="Chú giải" vertex="1">
-          <mxGeometry height="110" width="200" x="40" y="460" as="geometry" />
+        <mxCell id="z1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;strokeWidth=2;align=center;verticalAlign=top;spacingTop=15;fontFamily=Helvetica;fontSize=18;fontStyle=1;shadow=1;arcSize=2;fillColor=#F8FAFC;strokeColor=#CBD5E1;fontColor=#334155;" value="1. Load Generation" vertex="1">
+          <mxGeometry height="760" width="220" x="20" y="20" as="geometry" />
         </mxCell>
-        <mxCell id="leg1" edge="1" parent="legend" style="edgeStyle=none;html=1;strokeColor=#000000;strokeWidth=2;endArrow=classic;endFill=1;" value="">
+        <mxCell id="z2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;strokeWidth=2;align=center;verticalAlign=top;spacingTop=15;fontFamily=Helvetica;fontSize=18;fontStyle=1;shadow=1;arcSize=2;fillColor=#F0FDF4;strokeColor=#86EFAC;fontColor=#166534;" value="2. Application Layer" vertex="1">
+          <mxGeometry height="760" width="540" x="260" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="z3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;strokeWidth=2;align=center;verticalAlign=top;spacingTop=15;fontFamily=Helvetica;fontSize=18;fontStyle=1;shadow=1;arcSize=2;fillColor=#EFF6FF;strokeColor=#93C5FD;fontColor=#1E40AF;" value="3. Observability Layer" vertex="1">
+          <mxGeometry height="760" width="300" x="820" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="z4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;strokeWidth=2;align=center;verticalAlign=top;spacingTop=15;fontFamily=Helvetica;fontSize=18;fontStyle=1;shadow=1;arcSize=2;fillColor=#F5F3FF;strokeColor=#C4B5FD;fontColor=#5B21B6;" value="4. Deployment / Runtime Context" vertex="1">
+          <mxGeometry height="760" width="280" x="1140" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="jmeter" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#475569;strokeWidth=2;fontFamily=Helvetica;fontSize=16;fontStyle=1;shadow=1;" value="&lt;b&gt;JMeter / Client&lt;/b&gt;&lt;br/&gt;&lt;br/&gt;&lt;i&gt;Generates benchmark&lt;br/&gt;traffic to the Gateway&lt;/i&gt;" vertex="1">
+          <mxGeometry height="90" width="160" x="50" y="340" as="geometry" />
+        </mxCell>
+        <mxCell id="legend" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#CBD5E1;align=left;spacingLeft=10;spacingTop=5;fontFamily=Helvetica;fontSize=12;" value="&lt;b&gt;Chú giải (Legend)&lt;/b&gt;" vertex="1">
+          <mxGeometry height="120" width="180" x="40" y="630" as="geometry" />
+        </mxCell>
+        <mxCell id="leg_r_arr" edge="1" parent="1" style="html=1;strokeWidth=3;strokeColor=#2B6CB0;endArrow=block;endFill=1;edgeStyle=orthogonalEdgeStyle;" value="">
           <mxGeometry relative="1" as="geometry">
-            <mxPoint x="10" y="40" as="sourcePoint" />
-            <mxPoint x="50" y="40" as="targetPoint" />
+            <mxPoint x="50" y="670" as="sourcePoint" />
+            <mxPoint x="90" y="670" as="targetPoint" />
           </mxGeometry>
         </mxCell>
-        <mxCell id="leg1t" parent="legend" style="text;html=1;align=left;verticalAlign=middle;" value="Luồng Request" vertex="1">
-          <mxGeometry height="20" width="120" x="60" y="30" as="geometry" />
+        <mxCell id="leg_r_txt" parent="1" style="text;html=1;align=left;verticalAlign=middle;fontSize=12;fontFamily=Helvetica;" value="Request flow" vertex="1">
+          <mxGeometry height="20" width="100" x="95" y="660" as="geometry" />
         </mxCell>
-        <mxCell id="leg2" edge="1" parent="legend" style="edgeStyle=none;html=1;strokeColor=#0050b3;dashed=1;endArrow=classic;endFill=1;" value="">
+        <mxCell id="leg_d_arr" edge="1" parent="1" style="html=1;strokeWidth=2;strokeColor=#805AD5;dashed=1;endArrow=classic;endFill=1;edgeStyle=orthogonalEdgeStyle;" value="">
           <mxGeometry relative="1" as="geometry">
-            <mxPoint x="10" y="65" as="sourcePoint" />
-            <mxPoint x="50" y="65" as="targetPoint" />
+            <mxPoint x="50" y="700" as="sourcePoint" />
+            <mxPoint x="90" y="700" as="targetPoint" />
           </mxGeometry>
         </mxCell>
-        <mxCell id="leg2t" parent="legend" style="text;html=1;align=left;verticalAlign=middle;" value="Service Discovery" vertex="1">
-          <mxGeometry height="20" width="120" x="60" y="55" as="geometry" />
+        <mxCell id="leg_d_txt" parent="1" style="text;html=1;align=left;verticalAlign=middle;fontSize=12;fontFamily=Helvetica;" value="Service discovery" vertex="1">
+          <mxGeometry height="20" width="100" x="95" y="690" as="geometry" />
         </mxCell>
-        <mxCell id="leg3" edge="1" parent="legend" style="edgeStyle=none;html=1;strokeColor=#a8071a;dashed=1;dashPattern=1 2;endArrow=classic;endFill=1;" value="">
+        <mxCell id="leg_m_arr" edge="1" parent="1" style="html=1;strokeWidth=2;strokeColor=#DD6B20;dashed=1;dashPattern=1 2;endArrow=classic;endFill=1;edgeStyle=orthogonalEdgeStyle;" value="">
           <mxGeometry relative="1" as="geometry">
-            <mxPoint x="10" y="90" as="sourcePoint" />
-            <mxPoint x="50" y="90" as="targetPoint" />
+            <mxPoint x="50" y="730" as="sourcePoint" />
+            <mxPoint x="90" y="730" as="targetPoint" />
           </mxGeometry>
         </mxCell>
-        <mxCell id="leg3t" parent="legend" style="text;html=1;align=left;verticalAlign=middle;" value="Luồng Monitoring" vertex="1">
-          <mxGeometry height="20" width="120" x="60" y="80" as="geometry" />
+        <mxCell id="leg_m_txt" parent="1" style="text;html=1;align=left;verticalAlign=middle;fontSize=12;fontFamily=Helvetica;" value="Metrics scraping" vertex="1">
+          <mxGeometry height="20" width="100" x="95" y="720" as="geometry" />
         </mxCell>
-        <mxCell id="docker" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#666666;dashed=1;dashPattern=1 2;verticalAlign=top;fontStyle=1;fontSize=14;fontColor=#333333;" value="Môi trường Docker Compose" vertex="1">
-          <mxGeometry height="560" width="820" x="260" y="40" as="geometry" />
+        <mxCell id="gw" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2B6CB0;strokeColor=#1A365D;strokeWidth=2;fontColor=#FFFFFF;fontFamily=Helvetica;fontSize=16;fontStyle=1;shadow=1;" value="&lt;b&gt;API Gateway ALB&lt;/b&gt;&lt;br/&gt;(Port: 8080)&lt;br/&gt;&lt;hr/&gt;&lt;div style=&#39;font-size:12px;font-weight:normal;&#39;&gt;- Spring Cloud Gateway&lt;br/&gt;- Spring Cloud LoadBalancer&lt;br/&gt;- Custom Strategy Selection&lt;/div&gt;" vertex="1">
+          <mxGeometry height="110" width="200" x="290" y="280" as="geometry" />
         </mxCell>
-        <mxCell id="client" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;" value="Máy khách JMeter&#xa;(Sinh tải HTTP)" vertex="1">
-          <mxGeometry height="60" width="140" x="40" y="150" as="geometry" />
+        <mxCell id="gw_callout" parent="1" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;darkOpacity=0.05;fillColor=#FEFCBF;strokeColor=#B7791F;fontFamily=Helvetica;fontSize=12;align=left;spacing=10;shadow=1;" value="&lt;b&gt;Supported Strategies:&lt;/b&gt;&lt;br/&gt;&amp;bull; Adaptive (Custom)&lt;br/&gt;&amp;bull; Round Robin&lt;br/&gt;&amp;bull; Random&lt;br/&gt;&amp;bull; Least Connections" vertex="1">
+          <mxGeometry height="90" width="170" x="305" y="410" as="geometry" />
         </mxCell>
-        <mxCell id="gw" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;" value="&lt;b&gt;API Gateway ALB (:8080)&lt;/b&gt;&lt;br/&gt;[Chiến lược Cân bằng tải tùy chỉnh]" vertex="1">
-          <mxGeometry height="80" width="220" x="320" y="140" as="geometry" />
+        <mxCell id="gw_route" parent="1" style="text;html=1;strokeColor=#4299E1;fillColor=#EBF8FF;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=1;fontFamily=Helvetica;fontSize=12;fontStyle=1;fontColor=#2B6CB0;shadow=1;" value="Route: /api/** &amp;rarr; lb://REGISTRATION-SERVICE-ALB" vertex="1">
+          <mxGeometry height="30" width="310" x="290" y="230" as="geometry" />
         </mxCell>
-        <mxCell id="eureka" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;" value="&lt;b&gt;Eureka Server (:8761)&lt;/b&gt;&lt;br/&gt;[Service Discovery]" vertex="1">
-          <mxGeometry height="60" width="140" x="600" y="150" as="geometry" />
+        <mxCell id="annot_gw" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=14;fontStyle=2;fontColor=#4A5568;" value="Điểm quyết định định tuyến duy nhất của hệ thống" vertex="1">
+          <mxGeometry height="40" width="200" x="290" y="180" as="geometry" />
         </mxCell>
-        <mxCell id="reg_group" parent="1" style="swimlane;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;fontColor=#333333;startSize=30;" value="Registration Service ALB" vertex="1">
-          <mxGeometry height="250" width="240" x="300" y="300" as="geometry" />
+        <mxCell id="annot_be" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=14;fontStyle=2;fontColor=#4A5568;" value="Các backend có năng lực không đồng nhất" vertex="1">
+          <mxGeometry height="40" width="210" x="550" y="190" as="geometry" />
         </mxCell>
-        <mxCell id="reg1" parent="reg_group" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;fontStyle=0;" value="registration-8081 (:8081)&#xa;[CPU: 2.0 | RAM: 768m]" vertex="1">
-          <mxGeometry height="50" width="220" x="10" y="40" as="geometry" />
+        <mxCell id="eureka" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#805AD5;strokeColor=#44337A;strokeWidth=2;fontColor=#FFFFFF;fontFamily=Helvetica;fontSize=16;fontStyle=1;shadow=1;" value="&lt;b&gt;Eureka Server&lt;/b&gt;&lt;br/&gt;(Port: 8761)&lt;br/&gt;&lt;i&gt;Service Discovery&lt;/i&gt;" vertex="1">
+          <mxGeometry height="70" width="180" x="430" y="70" as="geometry" />
         </mxCell>
-        <mxCell id="reg2" parent="reg_group" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;fontStyle=0;" value="registration-8082 (:8082)&#xa;[CPU: 1.5 | RAM: 512m]" vertex="1">
-          <mxGeometry height="50" width="220" x="10" y="110" as="geometry" />
+        <mxCell id="be1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;strokeWidth=2;fontColor=#FFFFFF;fontFamily=Helvetica;fontSize=14;shadow=1;fillColor=#2F855A;strokeColor=#1C4532;" value="&lt;b&gt;REGISTRATION-SERVICE-ALB&lt;/b&gt;&lt;br/&gt;&lt;div style=&#39;font-size:12px;font-weight:normal;margin-top:4px;&#39;&gt;Port: 8081&lt;br/&gt;Capacity: 2.0 CPU, 768 MB&lt;/div&gt;&lt;div style=&#39;font-size:11px;margin-top:6px;background-color:rgba(0,0,0,0.2);padding:2px;border-radius:4px;&#39;&gt;Strongest backend&lt;/div&gt;" vertex="1">
+          <mxGeometry height="90" width="210" x="550" y="240" as="geometry" />
         </mxCell>
-        <mxCell id="reg3" parent="reg_group" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;fontStyle=0;" value="registration-8083 (:8083)&#xa;[CPU: 1.0 | RAM: 384m]" vertex="1">
-          <mxGeometry height="50" width="220" x="10" y="180" as="geometry" />
+        <mxCell id="be2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;strokeWidth=2;fontColor=#FFFFFF;fontFamily=Helvetica;fontSize=14;shadow=1;fillColor=#D69E2E;strokeColor=#744210;" value="&lt;b&gt;REGISTRATION-SERVICE-ALB&lt;/b&gt;&lt;br/&gt;&lt;div style=&#39;font-size:12px;font-weight:normal;margin-top:4px;&#39;&gt;Port: 8082&lt;br/&gt;Capacity: 1.5 CPU, 512 MB&lt;/div&gt;&lt;div style=&#39;font-size:11px;margin-top:6px;background-color:rgba(0,0,0,0.2);padding:2px;border-radius:4px;&#39;&gt;Medium backend&lt;/div&gt;" vertex="1">
+          <mxGeometry height="90" width="210" x="550" y="360" as="geometry" />
         </mxCell>
-        <mxCell id="grafana" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;verticalAlign=top;" value="&lt;b&gt;Grafana (:3000)&lt;/b&gt;&lt;br/&gt;&lt;div style=&quot;text-align: left; padding-left: 10px; font-size: 11px;&quot;&gt;- Latency percentiles&lt;br/&gt;- Throughput &amp;amp; Error rate&lt;br/&gt;- Routing selection&lt;br/&gt;- Queue depth&lt;br/&gt;- EWMA latency&lt;br/&gt;- Routing cost (Final &amp;amp; Abs)&lt;br/&gt;- CPU &amp;amp; Memory&lt;/div&gt;" vertex="1">
-          <mxGeometry height="160" width="220" x="820" y="80" as="geometry" />
+        <mxCell id="be3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;strokeWidth=2;fontColor=#FFFFFF;fontFamily=Helvetica;fontSize=14;shadow=1;fillColor=#C53030;strokeColor=#742A2A;" value="&lt;b&gt;REGISTRATION-SERVICE-ALB&lt;/b&gt;&lt;br/&gt;&lt;div style=&#39;font-size:12px;font-weight:normal;margin-top:4px;&#39;&gt;Port: 8083&lt;br/&gt;Capacity: 1.0 CPU, 384 MB&lt;/div&gt;&lt;div style=&#39;font-size:11px;margin-top:6px;background-color:rgba(0,0,0,0.2);padding:2px;border-radius:4px;&#39;&gt;&lt;b&gt;Weakest backend / Chaos target&lt;/b&gt;&lt;br/&gt;&lt;i&gt;(instance yếu nhất)&lt;/i&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="100" width="210" x="550" y="480" as="geometry" />
         </mxCell>
-        <mxCell id="prom" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;" value="&lt;b&gt;Prometheus (:9090)&lt;/b&gt;&lt;br/&gt;[Thu thập metrics]" vertex="1">
-          <mxGeometry height="60" width="180" x="840" y="320" as="geometry" />
+        <mxCell id="annot_obs" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=14;fontStyle=2;fontColor=#4A5568;" value="Theo dõi số liệu phục vụ benchmark&lt;br/&gt;và phân tích thuật toán" vertex="1">
+          <mxGeometry height="40" width="260" x="840" y="80" as="geometry" />
         </mxCell>
-        <mxCell id="cadvisor" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;" value="&lt;b&gt;cAdvisor (:8080)&lt;/b&gt;&lt;br/&gt;[Metrics Container]" vertex="1">
-          <mxGeometry height="60" width="180" x="840" y="500" as="geometry" />
+        <mxCell id="grafana" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DD6B20;strokeColor=#7B341E;strokeWidth=2;fontColor=#FFFFFF;fontFamily=Helvetica;fontSize=16;fontStyle=1;shadow=1;" value="&lt;b&gt;Grafana&lt;/b&gt;&lt;br/&gt;&lt;i&gt;Dashboards &amp;amp; Viz&lt;/i&gt;" vertex="1">
+          <mxGeometry height="70" width="160" x="880" y="140" as="geometry" />
         </mxCell>
-        <mxCell id="e_req1" edge="1" parent="1" source="client" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#000000;strokeWidth=2;endArrow=classic;" target="gw" value="">
+        <mxCell id="prometheus" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ED8936;strokeColor=#7B341E;strokeWidth=2;fontColor=#FFFFFF;fontFamily=Helvetica;fontSize=16;fontStyle=1;shadow=1;" value="&lt;b&gt;Prometheus&lt;/b&gt;&lt;br/&gt;&lt;i&gt;Metrics Server&lt;/i&gt;" vertex="1">
+          <mxGeometry height="70" width="160" x="880" y="300" as="geometry" />
+        </mxCell>
+        <mxCell id="cadvisor" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ED8936;strokeColor=#7B341E;strokeWidth=2;fontColor=#FFFFFF;fontFamily=Helvetica;fontSize=16;fontStyle=1;shadow=1;" value="&lt;b&gt;cAdvisor&lt;/b&gt;&lt;br/&gt;&lt;i&gt;Container Metrics&lt;/i&gt;" vertex="1">
+          <mxGeometry height="70" width="160" x="880" y="500" as="geometry" />
+        </mxCell>
+        <mxCell id="dash_callout" parent="1" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;darkOpacity=0.05;fillColor=#FEFCBF;strokeColor=#B7791F;fontFamily=Helvetica;fontSize=12;align=left;spacing=10;shadow=1;" value="&lt;b&gt;Key Dashboard Groups:&lt;/b&gt;&lt;br/&gt;&amp;bull; Gateway latency percentiles&lt;br/&gt;&amp;bull; Gateway throughput &amp;amp; errors&lt;br/&gt;&amp;bull; Routing selection &amp;amp; reason&lt;br/&gt;&amp;bull; EWMA latency&lt;br/&gt;&amp;bull; Queue depth / inflight&lt;br/&gt;&amp;bull; Routing cost (Final &amp;amp; Absolute)&lt;br/&gt;&amp;bull; CPU / Memory usage" vertex="1">
+          <mxGeometry height="140" width="240" x="850" y="600" as="geometry" />
+        </mxCell>
+        <mxCell id="docker_comp" parent="1" style="shape=module;whiteSpace=wrap;html=1;fillColor=#EBF8FF;strokeColor=#2B6CB0;strokeWidth=2;fontFamily=Helvetica;fontSize=14;align=left;spacingLeft=10;spacingTop=10;shadow=1;" value="&lt;b&gt;Docker Compose Environment&lt;/b&gt;&lt;br/&gt;&lt;br/&gt;&lt;i&gt;Microservice Testbed&lt;/i&gt;" vertex="1">
+          <mxGeometry height="180" width="240" x="1160" y="100" as="geometry" />
+        </mxCell>
+        <mxCell id="network" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E2E8F0;strokeColor=#64748B;fontFamily=Helvetica;fontSize=14;fontStyle=1;" value="&lt;b&gt;Bridge Network&lt;/b&gt;&lt;br/&gt;(alb-network)" vertex="1">
+          <mxGeometry height="60" width="180" x="1190" y="190" as="geometry" />
+        </mxCell>
+        <mxCell id="docker_desc" parent="1" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;fontFamily=Helvetica;fontSize=13;fontColor=#475569;" value="All components run in isolated containers with explicitly configured CPU and Memory quotas to simulate heterogeneous deployment." vertex="1">
+          <mxGeometry height="100" width="220" x="1170" y="300" as="geometry" />
+        </mxCell>
+        <mxCell id="e_req1" edge="1" parent="1" source="jmeter" style="html=1;strokeWidth=3;strokeColor=#2B6CB0;edgeStyle=orthogonalEdgeStyle;rounded=1;curved=1;endArrow=block;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="gw" value="">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e_req2" edge="1" parent="1" source="gw" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#000000;strokeWidth=2;endArrow=classic;" target="reg1" value="">
+        <mxCell id="e_req_be1" edge="1" parent="1" source="gw" style="html=1;strokeWidth=3;strokeColor=#2B6CB0;edgeStyle=orthogonalEdgeStyle;rounded=1;curved=1;endArrow=block;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="be1" value="">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="430" y="230" />
-              <mxPoint x="300" y="230" />
-              <mxPoint x="300" y="365" />
+              <mxPoint x="520" y="335" />
+              <mxPoint x="520" y="285" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="e_req3" edge="1" parent="1" source="gw" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#000000;strokeWidth=2;endArrow=classic;entryX=0;entryY=0.5;exitX=0.25;exitY=1;" target="reg2" value="">
+        <mxCell id="e_req_be2" edge="1" parent="1" source="gw" style="html=1;strokeWidth=3;strokeColor=#2B6CB0;edgeStyle=orthogonalEdgeStyle;rounded=1;curved=1;endArrow=block;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="be2" value="">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="290" y="220" />
-              <mxPoint x="290" y="435" />
+              <mxPoint x="520" y="335" />
+              <mxPoint x="520" y="405" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="e_req4" edge="1" parent="1" source="gw" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#000000;strokeWidth=2;endArrow=classic;entryX=0;entryY=0.5;exitX=0.1;exitY=1;" target="reg3" value="">
+        <mxCell id="e_req_be3" edge="1" parent="1" source="gw" style="html=1;strokeWidth=3;strokeColor=#2B6CB0;edgeStyle=orthogonalEdgeStyle;rounded=1;curved=1;endArrow=block;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="be3" value="">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="280" y="220" />
-              <mxPoint x="280" y="505" />
+              <mxPoint x="520" y="335" />
+              <mxPoint x="520" y="530" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="e_sd1" edge="1" parent="1" source="gw" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#0050b3;dashed=1;endArrow=classic;startArrow=classic;fontColor=#0050b3;" target="eureka" value="Register &amp;amp; Fetch">
+        <mxCell id="e_disc_gw" edge="1" parent="1" source="gw" style="html=1;strokeWidth=2;strokeColor=#805AD5;dashed=1;edgeStyle=orthogonalEdgeStyle;rounded=1;curved=0;endArrow=classic;endFill=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="eureka" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="390" y="105" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_disc_be1" edge="1" parent="1" source="be1" style="html=1;strokeWidth=2;strokeColor=#805AD5;dashed=1;edgeStyle=orthogonalEdgeStyle;rounded=1;curved=0;endArrow=classic;endFill=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.75;entryY=1;entryDx=0;entryDy=0;" target="eureka" value="">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e_sd2" edge="1" parent="1" source="reg1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#0050b3;dashed=1;endArrow=classic;entryX=0.25;entryY=1;exitX=1;exitY=0.5;fontColor=#0050b3;" target="eureka" value="Register">
+        <mxCell id="e_disc_be2" edge="1" parent="1" source="be2" style="html=1;strokeWidth=2;strokeColor=#805AD5;dashed=1;edgeStyle=orthogonalEdgeStyle;rounded=1;curved=0;endArrow=classic;endFill=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.75;entryY=1;entryDx=0;entryDy=0;" target="eureka" value="">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="635" y="365" />
+              <mxPoint x="655" y="170" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="e_sd3" edge="1" parent="1" source="reg2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#0050b3;dashed=1;endArrow=classic;entryX=0.5;entryY=1;exitX=1;exitY=0.5;" target="eureka" value="">
+        <mxCell id="e_disc_be3" edge="1" parent="1" source="be3" style="html=1;strokeWidth=2;strokeColor=#805AD5;dashed=1;edgeStyle=orthogonalEdgeStyle;rounded=1;curved=0;endArrow=classic;endFill=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.75;entryY=1;entryDx=0;entryDy=0;" target="eureka" value="">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="670" y="435" />
+              <mxPoint x="655" y="170" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="e_sd4" edge="1" parent="1" source="reg3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#0050b3;dashed=1;endArrow=classic;entryX=0.75;entryY=1;exitX=1;exitY=0.5;" target="eureka" value="">
+        <mxCell id="e_m_gw" edge="1" parent="1" source="prometheus" style="html=1;strokeWidth=2;strokeColor=#DD6B20;dashed=1;dashPattern=1 2;edgeStyle=orthogonalEdgeStyle;rounded=1;curved=0;endArrow=classic;endFill=1;exitX=0;exitY=0.25;exitDx=0;exitDy=0;entryX=0.75;entryY=0;entryDx=0;entryDy=0;" target="gw" value="">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="705" y="505" />
+              <mxPoint x="820" y="318" />
+              <mxPoint x="820" y="270" />
+              <mxPoint x="440" y="270" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="e_mon1" edge="1" parent="1" source="grafana" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#a8071a;dashed=1;dashPattern=1 2;endArrow=classic;fontColor=#a8071a;" target="prom" value="Query">
+        <mxCell id="e_m_be1" edge="1" parent="1" source="prometheus" style="html=1;strokeWidth=2;strokeColor=#DD6B20;dashed=1;dashPattern=1 2;edgeStyle=orthogonalEdgeStyle;rounded=1;curved=0;endArrow=classic;endFill=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="be1" value="">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e_mon2" edge="1" parent="1" source="prom" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#a8071a;dashed=1;dashPattern=1 2;endArrow=classic;entryX=1;entryY=0.25;exitX=0.25;exitY=0;fontColor=#a8071a;" target="gw" value="Scrape">
-          <mxGeometry relative="1" as="geometry">
-            <Array as="points">
-              <mxPoint x="885" y="270" />
-              <mxPoint x="740" y="270" />
-              <mxPoint x="740" y="160" />
-            </Array>
-          </mxGeometry>
-        </mxCell>
-        <mxCell id="e_mon3" edge="1" parent="1" source="prom" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#a8071a;dashed=1;dashPattern=1 2;endArrow=classic;entryX=1;entryY=0.5;exitX=0;exitY=0.25;" target="reg1" value="">
+        <mxCell id="e_m_be2" edge="1" parent="1" source="prometheus" style="html=1;strokeWidth=2;strokeColor=#DD6B20;dashed=1;dashPattern=1 2;edgeStyle=orthogonalEdgeStyle;rounded=1;curved=0;endArrow=classic;endFill=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="be2" value="">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
               <mxPoint x="800" y="335" />
-              <mxPoint x="800" y="365" />
+              <mxPoint x="800" y="405" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="e_mon4" edge="1" parent="1" source="prom" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#a8071a;dashed=1;dashPattern=1 2;endArrow=classic;entryX=1;entryY=0.5;exitX=0;exitY=0.5;" target="reg2" value="">
+        <mxCell id="e_m_be3" edge="1" parent="1" source="prometheus" style="html=1;strokeWidth=2;strokeColor=#DD6B20;dashed=1;dashPattern=1 2;edgeStyle=orthogonalEdgeStyle;rounded=1;curved=0;endArrow=classic;endFill=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="be3" value="">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="800" y="350" />
-              <mxPoint x="800" y="435" />
+              <mxPoint x="800" y="335" />
+              <mxPoint x="800" y="530" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="e_mon5" edge="1" parent="1" source="prom" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#a8071a;dashed=1;dashPattern=1 2;endArrow=classic;entryX=1;entryY=0.5;exitX=0;exitY=0.75;" target="reg3" value="">
-          <mxGeometry relative="1" as="geometry">
-            <Array as="points">
-              <mxPoint x="800" y="365" />
-              <mxPoint x="800" y="505" />
-            </Array>
-          </mxGeometry>
+        <mxCell id="e_m_cadv" edge="1" parent="1" source="prometheus" style="html=1;strokeWidth=2;strokeColor=#DD6B20;dashed=1;dashPattern=1 2;edgeStyle=orthogonalEdgeStyle;rounded=1;curved=0;endArrow=classic;endFill=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="cadvisor" value="">
+          <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e_mon6" edge="1" parent="1" source="prom" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#a8071a;dashed=1;dashPattern=1 2;endArrow=classic;fontColor=#a8071a;" target="cadvisor" value="Scrape">
+        <mxCell id="e_g_p" edge="1" parent="1" source="grafana" style="html=1;strokeWidth=2;strokeColor=#DD6B20;dashed=0;edgeStyle=orthogonalEdgeStyle;rounded=1;curved=0;endArrow=classic;endFill=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontColor=#DD6B20;fontSize=12;labelBackgroundColor=#FFFFFF;verticalAlign=bottom;spacingBottom=5;" target="prometheus" value="Reads">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
       </root>

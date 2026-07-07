@@ -1,228 +1,287 @@
 <mxfile host="Electron">
-  <diagram name="Adaptive Routing Flow" id="0">
-    <mxGraphModel dx="848" dy="651" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2400" pageHeight="1200" math="0" shadow="0">
+  <diagram name="Thuật toán ALB" id="0">
+    <mxGraphModel dx="798" dy="613" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1920" pageHeight="1080" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <mxCell id="start" parent="1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;" value="Request HTTP&amp;#xa;đến API Gateway" vertex="1">
-          <mxGeometry height="70" width="150" x="40" y="180" as="geometry" />
+        <mxCell id="main_title" parent="1" style="text;html=1;align=left;verticalAlign=top;" value="&lt;div style=&#39;line-height:1.3;&#39;&gt;&lt;b style=&#39;font-size:22px;color:#263238;letter-spacing:0.3px;&#39;&gt;Thuật toán Định tuyến thích nghi (Adaptive Load Balancing)&lt;/b&gt;&lt;br/&gt;&lt;span style=&#39;font-size:15px;color:#546e7a;&#39;&gt;Phân tách mặt phẳng ďiều khiển (Control-Plane) và mặt phẳng Dữ liệu (Data-Plane)&lt;/span&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="60" width="800" x="30" y="15" as="geometry" />
         </mxCell>
-        <mxCell id="eureka" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" value="Đọc danh sách&amp;#xa;instance từ Eureka" vertex="1">
-          <mxGeometry height="60" width="160" x="250" y="185" as="geometry" />
+        <mxCell id="z1_bg" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ede7f6;strokeColor=#d1c4e9;arcSize=4;shadow=0;" value="" vertex="1">
+          <mxGeometry height="950" width="220" x="30" y="90" as="geometry" />
         </mxCell>
-        <mxCell id="rcc" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;verticalAlign=top;" value="&lt;b&gt;RoutingCostCalculator&lt;/b&gt;&lt;br/&gt;&lt;div style=&quot;text-align:left;font-size:11px;padding:2px 6px;&quot;&gt;• Chi phí sức khỏe (health cost)&lt;br/&gt;• Chi phí tải (load cost)&lt;br/&gt;• Chi phí latency tuyệt đối&lt;br/&gt;• Tỷ lệ tải chuẩn hóa theo capacity&lt;br/&gt;• Phạt stale metrics&lt;/div&gt;" vertex="1">
-          <mxGeometry height="120" width="250" x="470" y="155" as="geometry" />
+        <mxCell id="z1_header" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#5e35b1;strokeColor=none;fontColor=#ffffff;arcSize=0;" value="&lt;b style=&#39;font-size:11px;letter-spacing:1px;color:#ffffff;&#39;&gt;1. ĐẦU VÀO &amp; NGỮ CẢNH&lt;/b&gt;" vertex="1">
+          <mxGeometry height="30" width="220" x="30" y="90" as="geometry" />
         </mxCell>
-        <mxCell id="dec_warmup" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;" value="Giai đoạn&amp;#xa;khởi động?" vertex="1">
-          <mxGeometry height="80" width="130" x="790" y="175" as="geometry" />
+        <mxCell id="in_client" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9575cd;arcSize=10;shadow=1;" value="&lt;div style=&#39;text-align:center;&#39;&gt;&lt;span style=&#39;font-size:24px;&#39;&gt;💻&lt;/span&gt;&lt;br/&gt;&lt;b style=&#39;font-size:12px;color:#4527a0;&#39;&gt;Client Request&lt;/b&gt;&lt;br/&gt;&lt;span style=&#39;font-size:10px;color:#673ab7;&#39;&gt;JMeter / Traffic&lt;/span&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="70" width="160" x="60" y="520" as="geometry" />
         </mxCell>
-        <mxCell id="dec_lowload" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;" value="Tải thấp &amp;amp;&amp;#xa;sức khỏe&amp;#xa;đồng đều?" vertex="1">
-          <mxGeometry height="95" width="140" x="990" y="168" as="geometry" />
+        <mxCell id="in_eureka" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9575cd;arcSize=10;shadow=1;" value="&lt;div style=&#39;text-align:center;&#39;&gt;&lt;span style=&#39;font-size:24px;&#39;&gt;🔍&lt;/span&gt;&lt;br/&gt;&lt;b style=&#39;font-size:12px;color:#4527a0;&#39;&gt;Eureka Server&lt;/b&gt;&lt;br/&gt;&lt;span style=&#39;font-size:10px;color:#673ab7;&#39;&gt;Candidate Instances&lt;/span&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="70" width="160" x="60" y="650" as="geometry" />
         </mxCell>
-        <mxCell id="dec_probe" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;" value="Điều kiện&amp;#xa;Probe&amp;#xa;thỏa mãn?" vertex="1">
-          <mxGeometry height="80" width="130" x="1200" y="175" as="geometry" />
+        <mxCell id="in_backends" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9575cd;arcSize=10;shadow=1;" value="&lt;div style=&#39;text-align:center;&#39;&gt;&lt;span style=&#39;font-size:24px;&#39;&gt;📟&lt;/span&gt;&lt;br/&gt;&lt;b style=&#39;font-size:12px;color:#4527a0;&#39;&gt;Backend Metrics&lt;/b&gt;&lt;br/&gt;&lt;span style=&#39;font-size:10px;color:#673ab7;&#39;&gt;/api/alb-metrics&lt;/span&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="70" width="160" x="60" y="200" as="geometry" />
         </mxCell>
-        <mxCell id="p2c" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;verticalAlign=top;" value="&lt;b&gt;Chọn P2C&lt;/b&gt;&lt;br/&gt;&lt;div style=&quot;text-align:left;font-size:11px;padding:2px 4px;&quot;&gt;Chọn ngẫu nhiên 2 backend,&lt;br/&gt;lấy backend có chi phí thấp hơn&lt;/div&gt;" vertex="1">
-          <mxGeometry height="80" width="200" x="1400" y="175" as="geometry" />
+        <mxCell id="in_inflight" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9575cd;arcSize=10;shadow=1;" value="&lt;div style=&#39;text-align:center;&#39;&gt;&lt;span style=&#39;font-size:24px;&#39;&gt;⏱&lt;/span&gt;&lt;br/&gt;&lt;b style=&#39;font-size:12px;color:#4527a0;&#39;&gt;InflightTracker&lt;/b&gt;&lt;br/&gt;&lt;span style=&#39;font-size:10px;color:#673ab7;&#39;&gt;Real-time queue&lt;/span&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="70" width="160" x="60" y="780" as="geometry" />
         </mxCell>
-        <mxCell id="res_warmup" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;" value="WARMUP_RR&amp;#xa;(Round-Robin)" vertex="1">
-          <mxGeometry height="50" width="120" x="795" y="50" as="geometry" />
+        <mxCell id="z2_bg" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f2fd;strokeColor=#bbdefb;arcSize=4;shadow=0;" value="" vertex="1">
+          <mxGeometry height="380" width="1260" x="280" y="90" as="geometry" />
         </mxCell>
-        <mxCell id="res_lowload" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;" value="LOW_LOAD_RR&amp;#xa;(Round-Robin)" vertex="1">
-          <mxGeometry height="50" width="120" x="1000" y="50" as="geometry" />
+        <mxCell id="z2_header" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#1565c0;strokeColor=none;fontColor=#ffffff;arcSize=0;align=left;spacingLeft=15;" value="&lt;b style=&#39;font-size:11px;letter-spacing:1px;color:#ffffff;&#39;&gt;2. MẶT PHẲNG ĐIỀU KHIỂN (CONTROL-PLANE) &amp;mdash; Cập nhật nền định kỳ&lt;/b&gt;" vertex="1">
+          <mxGeometry height="30" width="1260" x="280" y="90" as="geometry" />
         </mxCell>
-        <mxCell id="res_probe" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;" value="PROBE_RECOVERY&amp;#xa;(Backend yếu nhất)" vertex="1">
-          <mxGeometry height="50" width="140" x="1195" y="50" as="geometry" />
+        <mxCell id="cp_poller" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#42a5f5;strokeWidth=2;arcSize=8;shadow=1;" value="" vertex="1">
+          <mxGeometry height="150" width="170" x="310" y="160" as="geometry" />
         </mxCell>
-        <mxCell id="res_p2c_label" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;" value="Lý do quyết định:&amp;#xa;HEALTH_DOMINANT |&amp;#xa;LOAD_DOMINANT |&amp;#xa;NORMAL_P2C" vertex="1">
-          <mxGeometry height="70" width="140" x="1430" y="40" as="geometry" />
+        <mxCell id="cpp_title" parent="1" style="text;html=1;align=center;verticalAlign=middle;" value="&lt;b style=&#39;font-size:12px;color:#1565c0;&#39;&gt;MetricsPoller&lt;/b&gt;&lt;br/&gt;&lt;span style=&#39;font-size:9px;color:#64b5f6;&#39;&gt;Poll định kỳ từ backend&lt;/span&gt;" vertex="1">
+          <mxGeometry height="30" width="150" x="320" y="170" as="geometry" />
         </mxCell>
-        <mxCell id="merge" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;fontStyle=1;" value="Backend&amp;#xa;được chọn" vertex="1">
-          <mxGeometry height="50" width="120" x="1680" y="190" as="geometry" />
+        <mxCell id="cpp_data" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f2fd;strokeColor=none;align=left;spacingLeft=10;" value="&lt;div style=&#39;font-size:10px;color:#444;&#39;&gt;• Latency&lt;br/&gt;• Queue / Inflight&lt;br/&gt;• CPU usage&lt;br/&gt;• Capacity weight&lt;/div&gt;" vertex="1">
+          <mxGeometry height="80" width="140" x="325" y="210" as="geometry" />
         </mxCell>
-        <mxCell id="route" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" value="Định tuyến request&amp;#xa;đến backend đã chọn" vertex="1">
-          <mxGeometry height="60" width="170" x="1860" y="185" as="geometry" />
+        <mxCell id="cp_window" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#42a5f5;strokeWidth=2;arcSize=8;shadow=1;" value="" vertex="1">
+          <mxGeometry height="80" width="160" x="530" y="140" as="geometry" />
         </mxCell>
-        <mxCell id="update" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" value="Cập nhật metrics&amp;#xa;(InflightTracker release)" vertex="1">
-          <mxGeometry height="60" width="170" x="2090" y="185" as="geometry" />
+        <mxCell id="cpw_title" parent="1" style="text;html=1;align=center;verticalAlign=middle;" value="&lt;b style=&#39;font-size:11px;color:#1565c0;&#39;&gt;SlidingWindow&lt;br/&gt;Manager&lt;/b&gt;&lt;hr style=&#39;border:1px solid #e0e0e0;&#39;/&gt;&lt;span style=&#39;font-size:9px;color:#666;&#39;&gt;Cửa sổ trượt thống kê&lt;br/&gt;percentiles (P90, P95)&lt;/span&gt;" vertex="1">
+          <mxGeometry height="60" width="140" x="540" y="150" as="geometry" />
         </mxCell>
-        <mxCell id="end" parent="1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;" value="Trả response&amp;#xa;về Client" vertex="1">
-          <mxGeometry height="60" width="130" x="2310" y="185" as="geometry" />
+        <mxCell id="cp_mcdm" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#42a5f5;strokeWidth=2;arcSize=8;shadow=1;" value="" vertex="1">
+          <mxGeometry height="130" width="160" x="530" y="240" as="geometry" />
         </mxCell>
-        <mxCell id="bg_label" parent="1" style="text;html=1;align=left;verticalAlign=middle;fontSize=13;fontStyle=5;fontColor=#333333;" value="Vòng lặp nền (Control-Plane)" vertex="1">
-          <mxGeometry height="30" width="260" x="40" y="380" as="geometry" />
+        <mxCell id="cpm_title" parent="1" style="text;html=1;align=center;verticalAlign=middle;" value="&lt;b style=&#39;font-size:11px;color:#1565c0;&#39;&gt;DynamicWeight&lt;br/&gt;Engine&lt;/b&gt;&lt;hr style=&#39;border:1px solid #e0e0e0;&#39;/&gt;" vertex="1">
+          <mxGeometry height="35" width="140" x="540" y="245" as="geometry" />
         </mxCell>
-        <mxCell id="bg_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#999999;dashed=1;dashPattern=8 4;" value="" vertex="1">
-          <mxGeometry height="320" width="880" x="30" y="410" as="geometry" />
+        <mxCell id="cpm_data" parent="1" style="text;html=1;align=left;verticalAlign=top;" value="&lt;div style=&#39;font-size:9px;color:#444;&#39;&gt;▸ Latency (α)&lt;br/&gt;▸ Queue (β)&lt;br/&gt;▸ CPU (γ)&lt;br/&gt;&lt;i style=&#39;color:#777;&#39;&gt;Học khi có tải thật,&lt;br/&gt;fallback về AHP khi idle&lt;/i&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="70" width="140" x="545" y="290" as="geometry" />
         </mxCell>
-        <mxCell id="poller" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;verticalAlign=top;" value="&lt;b&gt;MetricsPoller&lt;/b&gt;&lt;br/&gt;&lt;div style=&quot;text-align:left;font-size:11px;padding:2px 6px;&quot;&gt;• Poll /api/alb-metrics&lt;br/&gt;• Latency (delta-based)&lt;br/&gt;• Queue / Inflight&lt;br/&gt;• CPU usage&lt;br/&gt;• Capacity weight&lt;/div&gt;" vertex="1">
-          <mxGeometry height="140" width="180" x="50" y="425" as="geometry" />
+        <mxCell id="cp_score" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#1565c0;strokeWidth=2;arcSize=8;shadow=1;" value="" vertex="1">
+          <mxGeometry height="160" width="180" x="750" y="160" as="geometry" />
         </mxCell>
-        <mxCell id="scorer" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;verticalAlign=top;" value="&lt;b&gt;ScoreCalculator&lt;/b&gt;&lt;br/&gt;&lt;div style=&quot;text-align:left;font-size:11px;padding:2px 6px;&quot;&gt;• EWMA latency&lt;br/&gt;• Chuẩn hóa queue&lt;br/&gt;• Chuẩn hóa CPU&lt;br/&gt;• Điểm MCDM cơ sở&lt;br/&gt;• Phạt PID latency&lt;/div&gt;" vertex="1">
-          <mxGeometry height="140" width="180" x="300" y="425" as="geometry" />
+        <mxCell id="cps_title" parent="1" style="text;html=1;align=center;verticalAlign=middle;" value="&lt;b style=&#39;font-size:12px;color:#0d47a1;&#39;&gt;ScoreCalculator&lt;/b&gt;&lt;br/&gt;&lt;span style=&#39;font-size:9px;color:#64b5f6;&#39;&gt;Tính Health Score&lt;/span&gt;" vertex="1">
+          <mxGeometry height="30" width="160" x="760" y="170" as="geometry" />
         </mxCell>
-        <mxCell id="pid" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;verticalAlign=top;" value="&lt;b&gt;PIDController&lt;/b&gt;&lt;br/&gt;&lt;div style=&quot;text-align:left;font-size:11px;padding:2px 6px;&quot;&gt;• Độ lệch so với&lt;br/&gt;&amp;nbsp;&amp;nbsp;P75 hệ thống&lt;br/&gt;• P + I + D penalty&lt;br/&gt;• Phạt backend&lt;br/&gt;&amp;nbsp;&amp;nbsp;chậm kéo dài&lt;/div&gt;" vertex="1">
-          <mxGeometry height="140" width="140" x="750" y="425" as="geometry" />
+        <mxCell id="cps_data" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f2fd;strokeColor=none;align=left;spacingLeft=10;" value="&lt;div style=&#39;font-size:10px;color:#444;line-height:1.4;&#39;&gt;&lt;b&gt;Thành phần:&lt;/b&gt;&lt;br/&gt;1. EWMA Latency&lt;br/&gt;2. Norm. Latency&lt;br/&gt;3. Norm. Queue&lt;br/&gt;4. Norm. CPU&lt;br/&gt;5. MCDM base score&lt;/div&gt;" vertex="1">
+          <mxGeometry height="90" width="150" x="765" y="210" as="geometry" />
         </mxCell>
-        <mxCell id="e1" edge="1" parent="1" source="start" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#000000;strokeWidth=1.5;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="eureka" value="">
-          <mxGeometry relative="1" as="geometry" />
+        <mxCell id="cp_pid" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#ab47bc;strokeWidth=2;arcSize=8;shadow=1;" value="" vertex="1">
+          <mxGeometry height="100" width="150" x="980" y="180" as="geometry" />
         </mxCell>
-        <mxCell id="e2" edge="1" parent="1" source="eureka" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#000000;strokeWidth=1.5;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="rcc" value="">
-          <mxGeometry relative="1" as="geometry" />
+        <mxCell id="cppid_title" parent="1" style="text;html=1;align=center;verticalAlign=middle;" value="&lt;b style=&#39;font-size:12px;color:#6a1b9a;&#39;&gt;PIDController&lt;/b&gt;&lt;hr style=&#39;border:1px solid #e0e0e0;&#39;/&gt;&lt;span style=&#39;font-size:9px;color:#444;&#39;&gt;Phạt (penalty) khi&lt;br/&gt;độ trễ lệch mục tiêu SLA&lt;/span&gt;" vertex="1">
+          <mxGeometry height="80" width="130" x="990" y="190" as="geometry" />
         </mxCell>
-        <mxCell id="e3" edge="1" parent="1" source="rcc" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#000000;strokeWidth=1.5;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="dec_warmup" value="">
-          <mxGeometry relative="1" as="geometry" />
+        <mxCell id="cp_cache" parent="1" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#fff8e1;strokeColor=#ffb300;strokeWidth=2;shadow=1;" value="" vertex="1">
+          <mxGeometry height="150" width="140" x="1190" y="160" as="geometry" />
         </mxCell>
-        <mxCell id="e4" edge="1" parent="1" source="dec_warmup" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#000000;strokeWidth=1.5;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;labelBackgroundColor=#ffffff;fontSize=11;" target="res_warmup" value="Có">
-          <mxGeometry relative="1" as="geometry" />
+        <mxCell id="cpc_title" parent="1" style="text;html=1;align=center;verticalAlign=middle;" value="&lt;b style=&#39;font-size:12px;color:#f57f17;&#39;&gt;MetricsCache&lt;/b&gt;&lt;br/&gt;&lt;br/&gt;&lt;span style=&#39;font-size:10px;color:#555;&#39;&gt;▸ Final Score&lt;br/&gt;▸ EWMA Latency&lt;br/&gt;▸ Capacity W.&lt;/span&gt;" vertex="1">
+          <mxGeometry height="80" width="120" x="1200" y="200" as="geometry" />
         </mxCell>
-        <mxCell id="e5" edge="1" parent="1" source="dec_warmup" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#000000;strokeWidth=1.5;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;labelBackgroundColor=#ffffff;fontSize=11;" target="dec_lowload" value="Không">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e6" edge="1" parent="1" source="dec_lowload" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#000000;strokeWidth=1.5;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;labelBackgroundColor=#ffffff;fontSize=11;" target="res_lowload" value="Có">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e7" edge="1" parent="1" source="dec_lowload" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#000000;strokeWidth=1.5;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;labelBackgroundColor=#ffffff;fontSize=11;" target="dec_probe" value="Không">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e8" edge="1" parent="1" source="dec_probe" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#000000;strokeWidth=1.5;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;labelBackgroundColor=#ffffff;fontSize=11;" target="res_probe" value="Có">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e9" edge="1" parent="1" source="dec_probe" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#000000;strokeWidth=1.5;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;labelBackgroundColor=#ffffff;fontSize=11;" target="p2c" value="Không">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e9b" edge="1" parent="1" source="p2c" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#999999;strokeWidth=1;dashed=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;endArrow=open;endFill=0;" target="res_p2c_label" value="">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e10" edge="1" parent="1" source="p2c" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#000000;strokeWidth=1.5;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="merge" value="">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e11" edge="1" parent="1" source="res_warmup" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#000000;strokeWidth=1.5;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="merge" value="">
+        <mxCell id="e_cp_poll" edge="1" parent="1" source="in_backends" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#64b5f6;strokeWidth=2;endArrow=classic;" target="cp_poller" value="">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="1740" y="75" />
+              <mxPoint x="250" y="235" />
+              <mxPoint x="250" y="235" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="e12" edge="1" parent="1" source="res_lowload" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#000000;strokeWidth=1.5;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="merge" value="">
+        <mxCell id="e_poll_win" edge="1" parent="1" source="cp_poller" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#64b5f6;strokeWidth=2;endArrow=classic;" target="cp_window" value="">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="1740" y="75" />
+              <mxPoint x="500" y="235" />
+              <mxPoint x="500" y="180" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="e13" edge="1" parent="1" source="res_probe" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#000000;strokeWidth=1.5;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="merge" value="">
+        <mxCell id="e_poll_mcdm" edge="1" parent="1" source="cp_poller" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#64b5f6;strokeWidth=2;endArrow=classic;" target="cp_mcdm" value="">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="1740" y="75" />
+              <mxPoint x="500" y="235" />
+              <mxPoint x="500" y="305" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="e14" edge="1" parent="1" source="merge" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#000000;strokeWidth=1.5;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="route" value="">
+        <mxCell id="e_win_score" edge="1" parent="1" source="cp_window" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#64b5f6;strokeWidth=2;endArrow=classic;" target="cp_score" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="720" y="180" />
+              <mxPoint x="720" y="240" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_mcdm_score" edge="1" parent="1" source="cp_mcdm" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#64b5f6;strokeWidth=2;endArrow=classic;fontSize=9;fontColor=#1565c0;labelBackgroundColor=#e3f2fd;" target="cp_score" value="weights">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="720" y="305" />
+              <mxPoint x="720" y="240" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_score_pid" edge="1" parent="1" source="cp_score" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#1565c0;strokeWidth=2;endArrow=classic;" target="cp_pid" value="">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e15" edge="1" parent="1" source="route" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#000000;strokeWidth=1.5;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="update" value="">
+        <mxCell id="e_pid_cache" edge="1" parent="1" source="cp_pid" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#f57f17;strokeWidth=2;endArrow=classic;fontColor=#f57f17;labelBackgroundColor=#e3f2fd;" target="cp_cache" value="&lt;span style=&#39;font-size:10px;&#39;&gt;Health Score&lt;/span&gt;">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e16" edge="1" parent="1" source="update" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#000000;strokeWidth=1.5;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="end" value="">
+        <mxCell id="z3_bg" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#a5d6a7;arcSize=4;shadow=0;" value="" vertex="1">
+          <mxGeometry height="550" width="1260" x="280" y="490" as="geometry" />
+        </mxCell>
+        <mxCell id="z3_header" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#2e7d32;strokeColor=none;fontColor=#ffffff;arcSize=0;align=left;spacingLeft=15;" value="&lt;b style=&#39;font-size:11px;letter-spacing:1px;color:#ffffff;&#39;&gt;3. MẶT PHẲNG DỮ LIỆU (DATA-PLANE) &amp;mdash; Quyết định định tuyến theo từng request&lt;/b&gt;" vertex="1">
+          <mxGeometry height="30" width="1260" x="280" y="490" as="geometry" />
+        </mxCell>
+        <mxCell id="dp_start" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2e7d32;strokeColor=#1b5e20;arcSize=20;shadow=1;" value="&lt;b style=&#39;font-size:12px;color:#ffffff;&#39;&gt;Request Arrives&lt;/b&gt;" vertex="1">
+          <mxGeometry height="40" width="140" x="310" y="550" as="geometry" />
+        </mxCell>
+        <mxCell id="e_req_in" edge="1" parent="1" source="in_client" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#43a047;strokeWidth=3;endArrow=classic;" target="dp_start" value="">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="ec1" edge="1" parent="1" source="poller" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#666666;strokeWidth=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;labelBackgroundColor=#ffffff;fontSize=10;fontColor=#666666;" target="scorer" value="metrics">
+        <mxCell id="dp_cost" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#43a047;strokeWidth=2;arcSize=8;shadow=1;" value="" vertex="1">
+          <mxGeometry height="230" width="220" x="310" y="630" as="geometry" />
+        </mxCell>
+        <mxCell id="dpc_title" parent="1" style="text;html=1;align=center;verticalAlign=middle;" value="&lt;b style=&#39;font-size:12px;color:#1b5e20;&#39;&gt;RoutingCostCalculator&lt;/b&gt;&lt;br/&gt;&lt;span style=&#39;font-size:9px;color:#4caf50;&#39;&gt;Tính Final Routing Cost cho mỗi backend&lt;/span&gt;" vertex="1">
+          <mxGeometry height="30" width="200" x="320" y="640" as="geometry" />
+        </mxCell>
+        <mxCell id="dpc_data" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=none;align=left;spacingLeft=15;" value="&lt;div style=&#39;font-size:10px;color:#444;line-height:1.8;&#39;&gt;✚ &lt;b style=&#39;color:#c62828;&#39;&gt;Health Cost&lt;/b&gt; (từ Cache)&lt;br/&gt;✚ &lt;b style=&#39;color:#1565c0;&#39;&gt;Load Cost&lt;/b&gt; (Inflight / Capacity)&lt;br/&gt;✚ &lt;b style=&#39;color:#f57f17;&#39;&gt;Absolute Latency Cost&lt;/b&gt;&lt;br/&gt;✚ &lt;b style=&#39;color:#7b1fa2;&#39;&gt;Stale Penalty&lt;/b&gt; (nếu out-of-date)&lt;/div&gt;" vertex="1">
+          <mxGeometry height="100" width="190" x="325" y="680" as="geometry" />
+        </mxCell>
+        <mxCell id="dpc_out" parent="1" style="text;html=1;align=center;verticalAlign=middle;" value="&lt;b style=&#39;font-size:10px;color:#2e7d32;&#39;&gt;&amp;rarr; Final Cost &amp;amp; Routing Mode&lt;/b&gt;" vertex="1">
+          <mxGeometry height="20" width="190" x="325" y="790" as="geometry" />
+        </mxCell>
+        <mxCell id="e_start_cost" edge="1" parent="1" source="dp_start" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#43a047;strokeWidth=2;endArrow=classic;" target="dp_cost" value="">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="ec2" edge="1" parent="1" source="scorer" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#666666;strokeWidth=1;exitX=1;exitY=0.4;exitDx=0;exitDy=0;entryX=0;entryY=0.4;entryDx=0;entryDy=0;labelBackgroundColor=#ffffff;fontSize=10;fontColor=#666666;startArrow=classic;startFill=1;" target="dwe" value="trọng số">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="ec3" edge="1" parent="1" source="pid" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#666666;strokeWidth=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.735;entryY=1.014;entryDx=0;entryDy=0;labelBackgroundColor=#ffffff;fontSize=10;fontColor=#666666;entryPerimeter=0;" target="scorer" value="penalty">
+        <mxCell id="e_eu_cost" edge="1" parent="1" source="in_eureka" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#9575cd;strokeWidth=1.5;dashed=1;endArrow=classic;fontColor=#673ab7;" target="dp_cost" value="&lt;span style=&#39;font-size:9px;&#39;&gt;Instances&lt;/span&gt;">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="820" y="600" />
-              <mxPoint x="432" y="600" />
-              <mxPoint x="432" y="567" />
+              <mxPoint x="280" y="685" />
+              <mxPoint x="280" y="745" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="ec4" edge="1" parent="1" source="scorer" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#9673a6;strokeWidth=1.5;dashed=1;dashPattern=8 4;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.3;entryY=1;entryDx=0;entryDy=0;labelBackgroundColor=#ffffff;fontSize=10;fontColor=#666666;" target="rcc" value="Điểm sức khỏe&amp;#xa;(health score)">
+        <mxCell id="e_inf_cost" edge="1" parent="1" source="in_inflight" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#9575cd;strokeWidth=1.5;dashed=1;endArrow=classic;fontColor=#673ab7;" target="dp_cost" value="&lt;span style=&#39;font-size:9px;&#39;&gt;Inflight&lt;/span&gt;">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="380" y="370" />
-              <mxPoint x="545" y="370" />
+              <mxPoint x="290" y="815" />
+              <mxPoint x="290" y="745" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="ec5" edge="1" parent="1" source="poller" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#9673a6;strokeWidth=1.5;dashed=1;dashPattern=8 4;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.1;entryY=1;entryDx=0;entryDy=0;labelBackgroundColor=#ffffff;fontSize=10;fontColor=#666666;" target="rcc" value="Metrics thô&amp;#xa;(tải, capacity)">
+        <mxCell id="e_cache_cost" edge="1" parent="1" source="cp_cache" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#f57f17;strokeWidth=1.5;dashed=1;endArrow=classic;fontColor=#f57f17;exitX=0.5;exitY=1;" target="dp_cost" value="&lt;span style=&#39;font-size:9px;&#39;&gt;Scores&lt;/span&gt;">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="140" y="350" />
-              <mxPoint x="495" y="350" />
+              <mxPoint x="1260" y="530" />
+              <mxPoint x="420" y="530" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="efb" edge="1" parent="1" source="dwe" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#999999;strokeWidth=1;dashed=1;dashPattern=4 4;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;labelBackgroundColor=#ffffff;fontSize=10;fontColor=#999999;endArrow=classic;endFill=1;" target="poller" value="Vòng phản hồi metrics">
-          <mxGeometry relative="1" as="geometry">
-            <Array as="points" />
-          </mxGeometry>
+        <mxCell id="dp_core" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#388e3c;strokeWidth=2;arcSize=4;shadow=1;" value="" vertex="1">
+          <mxGeometry height="330" width="760" x="580" y="560" as="geometry" />
         </mxCell>
-        <mxCell id="legend" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#666666;verticalAlign=top;fontStyle=1;fontSize=12;" value="Chú giải" vertex="1">
-          <mxGeometry height="240" width="230" x="1700" y="360" as="geometry" />
+        <mxCell id="dpc_core_title" parent="1" style="text;html=1;align=center;verticalAlign=middle;" value="&lt;b style=&#39;font-size:12px;color:#1b5e20;&#39;&gt;Quyết định Định tuyến (AdaptiveLoadBalancer.choose)&lt;/b&gt;" vertex="1">
+          <mxGeometry height="20" width="760" x="580" y="570" as="geometry" />
         </mxCell>
-        <mxCell id="l1s" parent="legend" style="ellipse;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" value="" vertex="1">
-          <mxGeometry height="16" width="30" x="10" y="35" as="geometry" />
+        <mxCell id="d_warmup" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff9c4;strokeColor=#fbc02d;" value="&lt;b style=&#39;font-size:10px;&#39;&gt;Warmup?&lt;/b&gt;" vertex="1">
+          <mxGeometry height="50" width="90" x="610" y="610" as="geometry" />
         </mxCell>
-        <mxCell id="l1t" parent="legend" style="text;html=1;align=left;verticalAlign=middle;fontSize=11;" value="Bắt đầu / Kết thúc" vertex="1">
-          <mxGeometry height="20" width="160" x="50" y="33" as="geometry" />
+        <mxCell id="d_lowload" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff9c4;strokeColor=#fbc02d;" value="&lt;b style=&#39;font-size:10px;&#39;&gt;Low-load&lt;br/&gt;Stable?&lt;/b&gt;" vertex="1">
+          <mxGeometry height="50" width="100" x="740" y="610" as="geometry" />
         </mxCell>
-        <mxCell id="l2s" parent="legend" style="rounded=0;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" value="" vertex="1">
-          <mxGeometry height="16" width="30" x="10" y="63" as="geometry" />
+        <mxCell id="d_probe" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff9c4;strokeColor=#fbc02d;" value="&lt;b style=&#39;font-size:10px;&#39;&gt;Probe&lt;br/&gt;Recovery?&lt;/b&gt;" vertex="1">
+          <mxGeometry height="50" width="100" x="880" y="610" as="geometry" />
         </mxCell>
-        <mxCell id="l2t" parent="legend" style="text;html=1;align=left;verticalAlign=middle;fontSize=11;" value="Xử lý (Process)" vertex="1">
-          <mxGeometry height="20" width="160" x="50" y="61" as="geometry" />
+        <mxCell id="d_normal" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2e7d32;strokeColor=#1b5e20;arcSize=10;shadow=1;" value="&lt;b style=&#39;font-size:11px;color:#ffffff;&#39;&gt;Normal Adaptive (P2C)&lt;/b&gt;" vertex="1">
+          <mxGeometry height="50" width="150" x="1050" y="610" as="geometry" />
         </mxCell>
-        <mxCell id="l3s" parent="legend" style="rhombus;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" value="" vertex="1">
-          <mxGeometry height="20" width="30" x="10" y="91" as="geometry" />
+        <mxCell id="d_p2c_desc" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f1f8e9;strokeColor=#c5e1a5;arcSize=8;" value="&lt;div style=&#39;font-size:9px;color:#555;text-align:left;&#39;&gt;1. Chọn 2 instance ngẫu nhiên&lt;br/&gt;2. So sánh Final Routing Cost&lt;br/&gt;3. Chọn backend có cost thấp hơn&lt;br/&gt;&lt;i&gt;&amp;rarr; Giảm herd effect&lt;/i&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="60" width="170" x="1050" y="670" as="geometry" />
         </mxCell>
-        <mxCell id="l3t" parent="legend" style="text;html=1;align=left;verticalAlign=middle;fontSize=11;" value="Điều kiện (Decision)" vertex="1">
-          <mxGeometry height="20" width="160" x="50" y="89" as="geometry" />
+        <mxCell id="a_rr1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#81c784;fontSize=10;" value="Round Robin" vertex="1">
+          <mxGeometry height="30" width="80" x="615" y="720" as="geometry" />
         </mxCell>
-        <mxCell id="l4s" parent="legend" style="rounded=0;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" value="" vertex="1">
-          <mxGeometry height="16" width="30" x="10" y="121" as="geometry" />
+        <mxCell id="a_rr2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#81c784;fontSize=10;" value="Round Robin&lt;br/&gt;&lt;i style=&#39;font-size:8px;&#39;&gt;Tránh overreaction&lt;/i&gt;" vertex="1">
+          <mxGeometry height="40" width="80" x="750" y="720" as="geometry" />
         </mxCell>
-        <mxCell id="l4t" parent="legend" style="text;html=1;align=left;verticalAlign=middle;fontSize=11;" value="Module thuật toán" vertex="1">
-          <mxGeometry height="20" width="160" x="50" y="119" as="geometry" />
+        <mxCell id="a_probe" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#81c784;fontSize=10;" value="Controlled Probe&lt;br/&gt;&lt;i style=&#39;font-size:8px;&#39;&gt;Thử nghiệm hồi phục&lt;/i&gt;" vertex="1">
+          <mxGeometry height="40" width="100" x="880" y="720" as="geometry" />
         </mxCell>
-        <mxCell id="l5s" parent="legend" style="rounded=0;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" value="" vertex="1">
-          <mxGeometry height="16" width="30" x="10" y="149" as="geometry" />
+        <mxCell id="a_p2c" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c8e6c9;strokeColor=#43a047;fontSize=10;fontStyle=1;" value="P2C Selection" vertex="1">
+          <mxGeometry height="30" width="100" x="1050" y="750" as="geometry" />
         </mxCell>
-        <mxCell id="l5t" parent="legend" style="text;html=1;align=left;verticalAlign=middle;fontSize=11;" value="Lý do quyết định" vertex="1">
-          <mxGeometry height="20" width="160" x="50" y="147" as="geometry" />
+        <mxCell id="d_fallback" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffebee;strokeColor=#ef9a9a;fontColor=#c62828;" value="&lt;span style=&#39;font-size:9px;&#39;&gt;Nếu tất cả bị loại (hard cap, unhealthy)&lt;br/&gt;&lt;b&gt;Fallback&lt;/b&gt; (Least Cost) để tránh rớt request&lt;/span&gt;" vertex="1">
+          <mxGeometry height="40" width="540" x="610" y="820" as="geometry" />
         </mxCell>
-        <mxCell id="l6s" parent="legend" style="rounded=0;html=1;fillColor=none;strokeColor=#999999;dashed=1;" value="" vertex="1">
-          <mxGeometry height="16" width="30" x="10" y="177" as="geometry" />
+        <mxCell id="e_c_w" edge="1" parent="1" source="dp_cost" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#43a047;strokeWidth=2;endArrow=classic;" target="d_warmup" value="">
+          <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="l6t" parent="legend" style="text;html=1;align=left;verticalAlign=middle;fontSize=11;" value="Vòng lặp nền (Control-Plane)" vertex="1">
-          <mxGeometry height="20" width="170" x="50" y="175" as="geometry" />
+        <mxCell id="e_w_ll" edge="1" parent="1" source="d_warmup" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#666;endArrow=classic;fontSize=9;" target="d_lowload" value="No">
+          <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="l7e" edge="1" parent="legend" style="edgeStyle=none;html=1;strokeColor=#999999;dashed=1;dashPattern=4 4;endArrow=classic;endFill=1;" value="">
-          <mxGeometry relative="1" as="geometry">
-            <mxPoint x="10" y="213" as="sourcePoint" />
-            <mxPoint x="40" y="213" as="targetPoint" />
-          </mxGeometry>
+        <mxCell id="e_ll_pr" edge="1" parent="1" source="d_lowload" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#666;endArrow=classic;fontSize=9;" target="d_probe" value="No">
+          <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="l7t" parent="legend" style="text;html=1;align=left;verticalAlign=middle;fontSize=11;" value="Vòng phản hồi metrics" vertex="1">
-          <mxGeometry height="20" width="160" x="50" y="203" as="geometry" />
+        <mxCell id="e_pr_n" edge="1" parent="1" source="d_probe" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#666;endArrow=classic;fontSize=9;" target="d_normal" value="No">
+          <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="uc9lYHDmiPam8-zkR7D3-1" edge="1" parent="1" source="update" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#999999;strokeWidth=1;dashed=1;dashPattern=4 4;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;labelBackgroundColor=#ffffff;fontSize=10;fontColor=#999999;endArrow=classic;endFill=1;" target="dwe" value="">
+        <mxCell id="e_w_y" edge="1" parent="1" source="d_warmup" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#388e3c;endArrow=classic;fontSize=9;fontColor=#388e3c;" target="a_rr1" value="Yes">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_ll_y" edge="1" parent="1" source="d_lowload" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#388e3c;endArrow=classic;fontSize=9;fontColor=#388e3c;" target="a_rr2" value="Yes">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_pr_y" edge="1" parent="1" source="d_probe" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#388e3c;endArrow=classic;fontSize=9;fontColor=#388e3c;" target="a_probe" value="Yes">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_n_y" edge="1" parent="1" source="d_p2c_desc" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#388e3c;endArrow=classic;strokeWidth=2;" target="a_p2c" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_fb_in" edge="1" parent="1" source="d_warmup" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#e53935;dashed=1;endArrow=classic;fontSize=9;" target="d_fallback" value="All excluded">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="2175" y="620" />
-              <mxPoint x="140" y="620" />
+              <mxPoint x="590" y="635" />
+              <mxPoint x="590" y="840" />
             </Array>
-            <mxPoint x="2175" y="245" as="sourcePoint" />
-            <mxPoint x="140" y="565" as="targetPoint" />
           </mxGeometry>
         </mxCell>
-        <mxCell id="dwe" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;verticalAlign=top;" value="&lt;b&gt;DynamicWeightEngine&lt;/b&gt;&lt;br/&gt;&lt;div style=&quot;text-align:left;font-size:11px;padding:2px 6px;&quot;&gt;• EWM + AHP blend&lt;br/&gt;• Cập nhật trọng số&lt;br/&gt;&amp;nbsp;&amp;nbsp;khi RPS &amp;ge; 5.0&lt;br/&gt;• Reset về AHP&lt;br/&gt;&amp;nbsp;&amp;nbsp;khi idle&lt;/div&gt;" vertex="1">
-          <mxGeometry height="140" width="170" x="550" y="425" as="geometry" />
+        <mxCell id="z4_bg" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e1;strokeColor=#ffe082;arcSize=4;shadow=0;" value="" vertex="1">
+          <mxGeometry height="950" width="330" x="1560" y="90" as="geometry" />
+        </mxCell>
+        <mxCell id="z4_header" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ff8f00;strokeColor=none;fontColor=#ffffff;arcSize=0;" value="&lt;b style=&#39;font-size:11px;letter-spacing:1px;color:#ffffff;&#39;&gt;4. KẾT QUẢ &amp; PHẢN HỒI&lt;/b&gt;" vertex="1">
+          <mxGeometry height="30" width="330" x="1560" y="90" as="geometry" />
+        </mxCell>
+        <mxCell id="out_backend" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#66bb6a;strokeWidth=2;arcSize=10;shadow=1;" value="&lt;div style=&#39;text-align:center;&#39;&gt;&lt;span style=&#39;font-size:24px;&#39;&gt;✔️&lt;/span&gt;&lt;br/&gt;&lt;b style=&#39;font-size:14px;color:#2e7d32;&#39;&gt;Selected Backend&lt;/b&gt;&lt;br/&gt;&lt;span style=&#39;font-size:10px;color:#43a047;&#39;&gt;Route Request&lt;/span&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="80" width="180" x="1635" y="550" as="geometry" />
+        </mxCell>
+        <mxCell id="out_reason" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff3e0;strokeColor=#ffb74d;align=left;spacingLeft=10;" value="&lt;div style=&#39;font-size:10px;color:#555;line-height:1.5;&#39;&gt;&lt;b style=&#39;color:#e65100;&#39;&gt;Routing Reason (Metrics):&lt;/b&gt;&lt;br/&gt;• WARMUP_RR&lt;br/&gt;• LOW_LOAD_RR&lt;br/&gt;• PROBE&lt;br/&gt;• NORMAL_P2C&lt;br/&gt;• FALLBACK&lt;/div&gt;" vertex="1">
+          <mxGeometry height="90" width="180" x="1635" y="650" as="geometry" />
+        </mxCell>
+        <mxCell id="out_lifecycle" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fce4ec;strokeColor=#f48fb1;arcSize=8;shadow=1;" value="&lt;b style=&#39;font-size:12px;color:#c2185b;&#39;&gt;InflightLifecycle&lt;/b&gt;&lt;br/&gt;&lt;span style=&#39;font-size:10px;color:#d81b60;&#39;&gt;Cập nhật khi request xong&lt;/span&gt;" vertex="1">
+          <mxGeometry height="60" width="180" x="1635" y="780" as="geometry" />
+        </mxCell>
+        <mxCell id="e_core_out" edge="1" parent="1" source="dp_core" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#2e7d32;strokeWidth=3;endArrow=classic;" target="out_backend" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1450" y="725" />
+              <mxPoint x="1450" y="590" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_out_life" edge="1" parent="1" source="out_backend" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#d81b60;strokeWidth=2;endArrow=classic;dashed=1;" target="out_lifecycle" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_life_inf" edge="1" parent="1" source="out_lifecycle" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#673ab7;strokeWidth=2;dashed=1;endArrow=classic;fontColor=#673ab7;labelBackgroundColor=#ffffff;" target="in_inflight" value="&lt;span style=&#39;font-size:10px;&#39;&gt;Giảm Inflight (-1)&lt;/span&gt;">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1725" y="1000" />
+              <mxPoint x="140" y="1000" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_sel_inf" edge="1" parent="1" source="dp_core" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#673ab7;strokeWidth=2;dashed=1;endArrow=classic;fontColor=#673ab7;labelBackgroundColor=#ffffff;" target="in_inflight" value="&lt;span style=&#39;font-size:10px;&#39;&gt;Tăng Inflight (+1)&lt;/span&gt;">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1200" y="890" />
+              <mxPoint x="140" y="890" />
+            </Array>
+          </mxGeometry>
         </mxCell>
       </root>
     </mxGraphModel>
