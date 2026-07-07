@@ -42,3 +42,4 @@ benchmark-raw-results/
 .agents/
 2/
 3/
+*.bkp
