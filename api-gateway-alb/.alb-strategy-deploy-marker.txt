@@ -1,4 +1,4 @@
-strategy=random
+strategy=least-connections
 ablation=full
-label=random
-timestamp=2026-07-21 21:25:25
+label=least_connect
+timestamp=2026-07-21 22:28:52
