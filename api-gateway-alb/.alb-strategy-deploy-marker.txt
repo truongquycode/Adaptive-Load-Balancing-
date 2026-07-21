@@ -1,4 +1,4 @@
-strategy=round-robin
+strategy=adaptive
 ablation=full
-label=round_robin
-timestamp=2026-07-21 21:06:18
+label=adaptive_full
+timestamp=2026-07-21 21:13:42
