@@ -1,4 +1,4 @@
-strategy=adaptive
+strategy=least-connections
 ablation=full
-label=adaptive
-timestamp=2026-07-22 12:15:46
+label=least-connections
+timestamp=2026-07-22 14:06:12
