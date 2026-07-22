@@ -1,4 +1,4 @@
-strategy=random
+strategy=round-robin
 ablation=full
-label=random
-timestamp=2026-07-22 15:27:08
+label=round-robin
+timestamp=2026-07-22 16:37:33
