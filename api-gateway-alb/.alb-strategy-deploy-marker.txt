@@ -1,4 +1,4 @@
 strategy=adaptive
-ablation=no-low-load-rr
-label=adaptive_no_low_load_rr
-timestamp=2026-07-23 20:47:50
+ablation=no-ewma-latency
+label=adaptive_no_ewma_latency
+timestamp=2026-07-23 21:22:24
