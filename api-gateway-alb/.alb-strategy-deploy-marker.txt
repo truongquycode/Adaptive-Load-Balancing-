@@ -1,4 +1,4 @@
 strategy=adaptive
-ablation=no-capacity
-label=adaptive_no_capacity
-timestamp=2026-07-23 20:13:16
+ablation=no-low-load-rr
+label=adaptive_no_low_load_rr
+timestamp=2026-07-23 20:47:50
