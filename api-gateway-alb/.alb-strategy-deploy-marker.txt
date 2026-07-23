@@ -1,4 +1,4 @@
 strategy=adaptive
-ablation=no-pid
-label=adaptive_no_pid
-timestamp=2026-07-23 19:38:43
+ablation=no-capacity
+label=adaptive_no_capacity
+timestamp=2026-07-23 20:13:16
