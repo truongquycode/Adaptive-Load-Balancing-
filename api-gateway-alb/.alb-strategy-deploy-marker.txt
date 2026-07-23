@@ -1,4 +1,4 @@
 strategy=adaptive
-ablation=no-probe
-label=adaptive_no_probe
-timestamp=2026-07-23 23:06:02
+ablation=fixed-weights
+label=adaptive_fixed_weights
+timestamp=2026-07-23 23:40:35
