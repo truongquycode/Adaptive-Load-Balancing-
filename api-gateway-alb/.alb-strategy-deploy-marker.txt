@@ -1,4 +1,4 @@
 strategy=adaptive
-ablation=no-ewma-latency
-label=adaptive_no_ewma_latency
-timestamp=2026-07-23 21:22:24
+ablation=no-score-ema
+label=adaptive_no_score_ema
+timestamp=2026-07-23 21:56:57
