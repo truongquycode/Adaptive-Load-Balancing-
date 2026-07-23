@@ -1,4 +1,4 @@
 strategy=adaptive
-ablation=no-p2c
-label=adaptive_no_p2c
-timestamp=2026-07-23 22:31:29
+ablation=no-probe
+label=adaptive_no_probe
+timestamp=2026-07-23 23:06:02
