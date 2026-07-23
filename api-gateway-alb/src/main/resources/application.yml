@@ -26,7 +26,7 @@ alb:
     # Phục vụ ablation study cho Adaptive. Giá trị mặc định full để benchmark chính không bị nhiễm.
     # full, no-pid, fixed-weights, no-ewma-latency, no-score-ema, no-capacity, no-p2c, no-probe, no-low-load-rr
     ablation:
-        variant: no-score-ema
+        variant: no-p2c
     polling:
         interval: 200
         metrics-timeout-ms: 800
