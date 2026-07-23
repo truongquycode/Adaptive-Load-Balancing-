@@ -1,4 +1,4 @@
 strategy=adaptive
-ablation=no-probe
-label=adaptive_no_probe
-timestamp=2026-07-23 19:12:13
+ablation=no-pid
+label=adaptive_no_pid
+timestamp=2026-07-23 19:38:43
