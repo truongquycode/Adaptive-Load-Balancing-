@@ -43,3 +43,8 @@ benchmark-raw-results/
 2/
 3/
 *.bkp
+
+# Added by PRE-PUSH SAFETY AUDIT
+*.jtl
+*.csv
+.DS_Store

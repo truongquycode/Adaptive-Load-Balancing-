@@ -1,0 +1,58 @@
+name: CI/CD Auto Deploy Kong to Ubuntu
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'kong-adaptive-lb/**'
+      - '.github/workflows/deploy-kong.yml'
+
+concurrency:
+  group: deploy-kong
+  cancel-in-progress: true
+
+jobs:
+  deploy-kong:
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Deploy Kong with flock
+        shell: bash
+        run: |
+          set -e
+          
+          cat << 'EOF' > deploy_kong.sh
+          #!/bin/bash
+          set -e
+          
+          echo "Acquired deployment lock for Kong."
+          
+          # 1. Stop SCG Gateway if running
+          echo "Stopping SCG API Gateway..."
+          docker compose stop api-gateway-alb || true
+          docker compose rm -f api-gateway-alb || true
+          
+          # 2. Ensure backends and dependencies are running
+          docker compose up -d eureka-server registration-8081 registration-8082 registration-8083
+          
+          # 3. Deploy Kong Gateway
+          echo "Building and deploying Kong Gateway..."
+          docker compose -f kong-adaptive-lb/docker-compose-kong.yml build
+          docker compose -f kong-adaptive-lb/docker-compose-kong.yml up -d --remove-orphans
+          
+          echo "Released deployment lock."
+          EOF
+          chmod +x deploy_kong.sh
+          
+          # Execute with flock
+          flock -w 300 /tmp/gateway-deploy.lock ./deploy_kong.sh
+
+      - name: Show running containers
+        shell: bash
+        run: |
+          docker compose ps
+          docker compose -f kong-adaptive-lb/docker-compose-kong.yml ps

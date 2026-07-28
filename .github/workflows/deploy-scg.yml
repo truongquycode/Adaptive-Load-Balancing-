@@ -1,0 +1,139 @@
+name: CI/CD Auto Deploy SCG to Ubuntu
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'kong-adaptive-lb/**'
+      - '.github/workflows/deploy-kong.yml'
+
+concurrency:
+  group: deploy-scg
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed services
+        id: detect
+        shell: bash
+        run: |
+          set -e
+          BEFORE="${{ github.event.before }}"
+          AFTER="${{ github.sha }}"
+
+          if [[ -z "$BEFORE" || "$BEFORE" =~ ^0+$ ]]; then
+            CHANGED_FILES="$(git ls-files)"
+          else
+            CHANGED_FILES="$(git diff --name-only "$BEFORE" "$AFTER")"
+          fi
+
+          deploy_all=false
+          deploy_eureka=false
+          deploy_gateway=false
+          deploy_registration=false
+
+          if echo "$CHANGED_FILES" | grep -Eq '^(docker-compose\.ya?ml|pom\.xml|\.github/workflows/|mvnw|\.mvn/)'; then
+            deploy_all=true
+          fi
+          if echo "$CHANGED_FILES" | grep -Eq '(^|/)pom\.xml$'; then
+            deploy_all=true
+          fi
+          if echo "$CHANGED_FILES" | grep -Eq '^eureka-server/'; then
+            deploy_eureka=true
+          fi
+          if echo "$CHANGED_FILES" | grep -Eq '^api-gateway-alb/'; then
+            deploy_gateway=true
+          fi
+          if echo "$CHANGED_FILES" | grep -Eq '^registration-service-alb/'; then
+            deploy_registration=true
+          fi
+
+          if [[ "$deploy_all" == "true" ]]; then
+            SERVICES="all"
+          else
+            SERVICES=""
+            [[ "$deploy_eureka" == "true" ]] && SERVICES="$SERVICES eureka-server"
+            [[ "$deploy_gateway" == "true" ]] && SERVICES="$SERVICES api-gateway-alb"
+            if [[ "$deploy_registration" == "true" ]]; then
+              SERVICES="$SERVICES registration-8081 registration-8082 registration-8083"
+            fi
+            SERVICES="$(echo "$SERVICES" | xargs)"
+          fi
+
+          if [[ -z "$SERVICES" ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "services=$SERVICES" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Deploy SCG with flock
+        if: ${{ steps.detect.outputs.skip == 'false' }}
+        shell: bash
+        run: |
+          set -e
+          SERVICES="${{ steps.detect.outputs.services }}"
+          
+          # Create deployment script
+          cat << 'EOF' > deploy_scg.sh
+          #!/bin/bash
+          set -e
+          
+          echo "Acquired deployment lock for SCG."
+          
+          # 1. Stop Kong Gateway if running
+          if [ -f "kong-adaptive-lb/docker-compose-kong.yml" ]; then
+            echo "Stopping Kong Gateway..."
+            docker compose -f kong-adaptive-lb/docker-compose-kong.yml down || true
+          fi
+          
+          # 2. Deploy SCG
+          if [ "$1" == "all" ]; then
+            echo "Building and deploying ALL SCG services..."
+            docker compose build
+            docker compose up -d --remove-orphans
+          else
+            echo "Building and deploying SPECIFIC SCG services: $1"
+            docker compose build $1
+            docker compose up -d --no-deps $1
+          fi
+          
+          echo "Released deployment lock."
+          EOF
+          chmod +x deploy_scg.sh
+          
+          # Execute with flock
+          flock -w 300 /tmp/gateway-deploy.lock ./deploy_scg.sh "$SERVICES"
+
+      - name: Cleanup stale API Gateway instances in Eureka
+        if: ${{ steps.detect.outputs.skip == 'false' && (steps.detect.outputs.services == 'all' || contains(steps.detect.outputs.services, 'api-gateway-alb')) }}
+        shell: bash
+        run: |
+          set -e
+          EUREKA="http://localhost:8761"
+          APP="API-GATEWAY-ALB"
+          CURRENT="api-gateway-alb:8080"
+          
+          sleep 20
+          IDS="$(curl -s "$EUREKA/eureka/apps/$APP" | tr -d '\n' | sed -n 's/.*<instanceId>\([^<]*\)<\/instanceId>.*/\1/p')"
+          
+          if [[ -z "$IDS" ]]; then exit 0; fi
+          echo "$IDS" | while read -r id; do
+            if [[ -n "$id" && "$id" != "$CURRENT" ]]; then
+              curl -s -X DELETE "$EUREKA/eureka/apps/$APP/$id" || true
+            fi
+          done
+
+      - name: Show running containers
+        if: ${{ steps.detect.outputs.skip == 'false' }}
+        shell: bash
+        run: docker compose ps

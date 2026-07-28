@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  kong-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: custom-kong-alb:1.0
+    container_name: kong-gateway-alb
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /etc/kong/kong.yml
+      KONG_PLUGINS: "bundled,adaptive-lb"
+      KONG_LOG_LEVEL: "info"
+      # NGINX Shared Dictionaries for ALB
+      # metrics cache (optional), scores, inflight, state (health check targets)
+      KONG_NGINX_HTTP_LUA_SHARED_DICT: "alb_scores 5m, alb_inflight 5m, alb_state 5m"
+      KONG_NGINX_WORKER_PROCESSES: "2"
+    ports:
+      - "8000:8000"
+      - "8001:8001"
+    volumes:
+      - ./kong.yml:/etc/kong/kong.yml
+      - ./kong/plugins/adaptive-lb:/usr/local/share/lua/5.1/kong/plugins/adaptive-lb
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 512M
+    networks:
+      - default
+
+networks:
+  default:
+    name: adaptive-load-balancer-parent_alb-network
+    external: true
