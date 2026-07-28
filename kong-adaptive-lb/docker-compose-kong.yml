@@ -14,7 +14,7 @@ services:
       KONG_LOG_LEVEL: "info"
       # NGINX Shared Dictionaries for ALB
       # metrics cache (optional), scores, inflight, state (health check targets)
-      KONG_NGINX_HTTP_LUA_SHARED_DICT: "alb_scores 5m, alb_inflight 5m, alb_state 5m"
+      KONG_NGINX_HTTP_LUA_SHARED_DICT: "alb_scores 5m; lua_shared_dict alb_inflight 5m; lua_shared_dict alb_state 5m"
       KONG_NGINX_WORKER_PROCESSES: "2"
     ports:
       - "8000:8000"
