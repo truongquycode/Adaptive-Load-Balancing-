@@ -32,5 +32,5 @@ services:
 
 networks:
   default:
-    name: adaptive-load-balancer-parent_alb-network
+    name: adaptive-load-balancing-_alb-network
     external: true
