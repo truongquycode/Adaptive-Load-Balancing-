@@ -79,4 +79,14 @@ function _M.calculate_dynamic_weights(scores_list, prior_alpha, prior_beta, prio
   end
 end
 
+function _M.normalize(val, min_val, max_val, eps)
+  if (max_val - min_val) < eps then
+    return 1.0
+  end
+  local n = (max_val - val) / (max_val - min_val)
+  if n < 0.0 then return 0.0 end
+  if n > 1.0 then return 1.0 end
+  return n
+end
+
 return _M

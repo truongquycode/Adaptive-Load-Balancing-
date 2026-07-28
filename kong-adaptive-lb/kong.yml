@@ -4,6 +4,7 @@ services:
     url: http://dummy-url  # Bị bypass bởi set_target trong plugin
     routes:
       - name: api-route
+        strip_path: false
         paths:
           - /api
 plugins:
