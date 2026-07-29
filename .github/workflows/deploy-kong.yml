@@ -43,7 +43,7 @@ jobs:
           # 3. Deploy Kong Gateway
           echo "Building and deploying Kong Gateway..."
           docker compose -f kong-adaptive-lb/docker-compose-kong.yml build
-          docker compose -f kong-adaptive-lb/docker-compose-kong.yml up -d --remove-orphans
+          docker compose -f kong-adaptive-lb/docker-compose-kong.yml up -d --force-recreate --remove-orphans
           
           echo "Released deployment lock."
           EOF
