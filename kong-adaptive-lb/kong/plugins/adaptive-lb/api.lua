@@ -1,6 +1,4 @@
-local _M = {}
-
-_M.endpoints = {
+return {
   ["/alb-metrics"] = {
     GET = function(self, db, helpers)
       local scores = ngx.shared.alb_scores
