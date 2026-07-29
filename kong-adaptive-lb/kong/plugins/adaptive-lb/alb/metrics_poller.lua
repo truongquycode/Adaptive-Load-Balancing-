@@ -103,12 +103,12 @@ local function do_poll(premature, config)
   
   -- 5. Tính Final Score với MCDM và PID
   for _, s in ipairs(intermediate_scores) do
-    -- SCG Java tách base_score và pid thành calculate_score nên intermediate_scores đã có final_score
-    -- Nhưng vì update_weights vừa chạy, ta cần update lại base_score và final_score ở đây.
-    -- (Trong SCG Java, MetricsCache update trước, sau đó ScoreCalculator gọi lấy MCDM).
-    -- Để chuẩn xác, ta tính lại base_score = alpha*nL + beta*nQ + gamma*nC.
-    s.base_score = (alpha * s.nL) + (beta * s.nQ) + (gamma * s.nC)
-    s.final_score = s.base_score + s.pid_penalty
+    -- Chỉ tính lại base_score và final_score cho các node ALIVE (score < 20.0)
+    -- Nếu node bị fail, score_calculator đã trả về final_score = 20.0, ta không được ghi đè!
+    if s.final_score < 20.0 then
+      s.base_score = (alpha * s.nL) + (beta * s.nQ) + (gamma * s.nC)
+      s.final_score = s.base_score + s.pid_penalty
+    end
     
     -- Lưu Final Score vào Shared Memory để Data Plane (p2c_balancer) dùng
     scores_dict:set(s.instance_id, s.final_score)
