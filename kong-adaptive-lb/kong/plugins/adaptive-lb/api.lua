@@ -1,6 +1,5 @@
 return {
   ["/alb-metrics"] = {
-    schema = {},
     methods = {
       GET = function(self, db, helpers)
         local scores = ngx.shared.alb_scores
