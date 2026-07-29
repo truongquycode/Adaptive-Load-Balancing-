@@ -1,0 +1,25 @@
+name: Fetch Server Logs
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  fetch-logs:
+    runs-on: self-hosted
+    steps:
+      - name: Fetch Kong Logs
+        run: |
+          echo "================ KONG GATEWAY LOGS ================"
+          docker compose -f kong-adaptive-lb/docker-compose-kong.yml logs --tail 200 kong-gateway
+          
+      - name: Fetch Backend 8081 Logs
+        run: |
+          echo "================ BACKEND 8081 LOGS ================"
+          docker compose logs --tail 200 registration-8081
+          
+      - name: Fetch Backend 8082 Logs
+        run: |
+          echo "================ BACKEND 8082 LOGS ================"
+          docker compose logs --tail 200 registration-8082
