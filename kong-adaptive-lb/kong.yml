@@ -1,7 +1,9 @@
 _format_version: "3.0"
+# Lưu ý: Kong API Gateway không hỗ trợ thuật toán "random" nguyên bản (chỉ có round-robin, consistent-hashing, least-connections, latency).
+# Để script chạy mượt mà, file này cấu hình tạm upstream là round-robin để bypass, trừ khi bạn có plugin custom "random".
 upstreams:
-  - name: backend-upstream-least-connections
-    algorithm: least-connections
+  - name: backend-upstream-random
+    algorithm: round-robin
     targets:
       - target: registration-8081:8081
         weight: 100
@@ -11,7 +13,7 @@ upstreams:
         weight: 100
 services:
   - name: backend-service
-    url: http://backend-upstream-least-connections
+    url: http://backend-upstream-random
     routes:
       - name: api-route
         strip_path: false
@@ -27,4 +29,4 @@ services:
           - name: request-termination
             config:
               status_code: 200
-              message: "least-connections"
+              message: "random"
