@@ -1,0 +1,20 @@
+_format_version: "3.0"
+upstreams:
+  - name: backend-upstream
+    algorithm: consistent-hashing
+    hash_on: none
+    targets:
+      - target: registration-8081:8081
+        weight: 100
+      - target: registration-8082:8082
+        weight: 100
+      - target: registration-8083:8083
+        weight: 100
+services:
+  - name: backend-service
+    url: http://backend-upstream
+    routes:
+      - name: api-route
+        strip_path: false
+        paths:
+          - /api

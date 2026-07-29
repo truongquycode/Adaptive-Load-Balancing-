@@ -1,0 +1,43 @@
+_format_version: "3.0"
+services:
+  - name: backend-service
+    url: http://dummy-url  # Bị bypass bởi set_target trong plugin
+    routes:
+      - name: api-route
+        strip_path: false
+        paths:
+          - /api
+  - name: strategy-status-service
+    url: http://localhost
+    routes:
+      - name: strategy-status-route
+        paths:
+          - /alb/strategy
+        plugins:
+          - name: request-termination
+            config:
+              status_code: 200
+              message: "adaptive"
+plugins:
+  - name: adaptive-lb
+    config:
+      targets:
+        - host: "registration-8081"
+          port: 8081
+          capacity_weight: 2.0
+        - host: "registration-8082"
+          port: 8082
+          capacity_weight: 1.5
+        - host: "registration-8083"
+          port: 8083
+          capacity_weight: 1.0
+      polling_interval_ms: 200
+      weights_update_interval_ms: 5000
+      ewma_tau_min: 200.0
+      ewma_tau_max: 2000.0
+      pid_kp: 1.0
+      pid_ki: 0.08
+      pid_kd: 0.04
+      routing_warmup_ms: 5000
+      routing_low_load_inflight: 20
+      routing_hard_inflight_cap: 220

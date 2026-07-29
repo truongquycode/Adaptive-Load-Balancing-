@@ -47,4 +47,4 @@ benchmark-raw-results/
 # Added by PRE-PUSH SAFETY AUDIT
 *.jtl
 *.csv
-.DS_Store
+.DS_Store*.bak

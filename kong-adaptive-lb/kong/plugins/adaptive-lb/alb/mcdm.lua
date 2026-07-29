@@ -1,7 +1,5 @@
 local _M = {}
 
-local _M = {}
-
 local AHP_WEIGHTS = { 0.648, 0.230, 0.122 }
 
 local function clamp01(v)
