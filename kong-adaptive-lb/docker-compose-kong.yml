@@ -12,6 +12,7 @@ services:
       KONG_DECLARATIVE_CONFIG: /etc/kong/kong.yml
       KONG_PLUGINS: "bundled,adaptive-lb"
       KONG_LOG_LEVEL: "info"
+      KONG_ADMIN_LISTEN: "0.0.0.0:8001, 0.0.0.0:8444 ssl"
       # NGINX Shared Dictionaries for ALB
       # metrics cache (optional), scores, inflight, state (health check targets)
       KONG_NGINX_HTTP_LUA_SHARED_DICT: "alb_scores 5m; lua_shared_dict alb_inflight 5m; lua_shared_dict alb_state 5m"
