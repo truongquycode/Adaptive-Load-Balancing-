@@ -61,5 +61,3 @@ return {
     }
   }
 }
-
-return _M
