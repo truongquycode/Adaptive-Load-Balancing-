@@ -2,12 +2,17 @@ global:
   scrape_interval: 5s
 
 scrape_configs:
-  - job_name: "api-gateway-alb"
-    metrics_path: "/actuator/prometheus"
+  - job_name: "kong-gateway-alb"
+    # Cổng 8001 là cổng Admin API (chứa cả /metrics gốc của Kong và /alb-metrics custom)
+    metrics_path: "/metrics"
     static_configs:
-      - targets: ["172.30.35.37:8080"]
+      - targets: ["172.30.35.37:8001"]
 
-  # Scrape trực tiếp backend để có số liệu độc lập khi đối chiếu với metrics Gateway poll.
+  - job_name: "kong-alb-custom"
+    metrics_path: "/alb-metrics"
+    static_configs:
+      - targets: ["172.30.35.37:8001"]
+
   - job_name: "registration-service-alb"
     metrics_path: "/actuator/prometheus"
     static_configs:
