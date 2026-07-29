@@ -4,10 +4,10 @@ setlocal EnableExtensions EnableDelayedExpansion
 set "JMETER_HOME=D:\Downloads\apache-jmeter-5.6.3"
 set "RESULT_ROOT=%~dp0..\benchmark-raw-results\kong-medium-chaos"
 set "TEST_PLAN=%~dp0..\jmeter\02_medium_dependency_slowdown_mixed_0600_tst.jmx"
-set "KONG_ADMIN_URL=http://172.30.35.37:8001/config"
-set "KONG_SERVICE_URL=http://172.30.35.37:8001/services/backend-service"
+set "KONG_GATEWAY_URL=http://172.30.35.37:8000/alb/strategy"
 set "BACKEND_BASE_URL=http://172.30.35.37"
 set "BACKEND_PORTS=8081 8082 8083"
+set "PROJECT_DIR=%~dp0.."
 
 set "POWERSHELL_EXE=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
 
@@ -18,7 +18,7 @@ set STRATEGIES=round-robin least-connections random adaptive
 set RUNS_PER_ITEM=5
 
 echo =============================================================
-echo Starting Kong API Gateway Benchmark
+echo Starting Kong API Gateway Benchmark (CI/CD Git Push mode)
 echo Test Plan: 02_medium_dependency_slowdown_mixed_0600_tst.jmx
 echo =============================================================
 
@@ -28,30 +28,40 @@ for %%S in (%STRATEGIES%) do (
     echo Deploying Kong Strategy: %%S
     echo =============================================================
     
+    cd /d "%PROJECT_DIR%\kong-adaptive-lb"
+    
     if "%%S"=="adaptive" (
-        curl -s -X POST "%KONG_ADMIN_URL%" -F config=@..\kong-adaptive-lb\kong.yml
+        REM adaptive dùng file kong.yml gốc (tôi lưu tạm là kong.yml.bak)
+        if exist kong.yml.bak copy /y kong.yml.bak kong.yml >nul
     ) else (
-        curl -s -X POST "%KONG_ADMIN_URL%" -F config=@..\kong-adaptive-lb\kong-%%S.yml
+        REM backup file kong.yml gốc nếu chưa có
+        if not exist kong.yml.bak copy /y kong.yml kong.yml.bak >nul
+        copy /y kong-%%S.yml kong.yml >nul
+    )
+    
+    echo [INFO] Committing and pushing config %%S to trigger CI/CD...
+    git add kong.yml
+    git commit -m "Benchmark deploy strategy %%S"
+    git push origin main
+    
+    if errorlevel 1 (
+        echo [ERROR] Git push failed. Please check your git connection.
+        exit /b 1
     )
     
     echo.
-    echo [INFO] Waiting 5 seconds for config to apply...
-    timeout /t 5 /nobreak
+    echo [INFO] Waiting 20 seconds for GitHub Actions to start deploy...
+    timeout /t 20 /nobreak
     
-    REM Kiểm tra xem config đã được nạp trên server chưa
-    set "EXPECTED_HOST="
-    if "%%S"=="adaptive" set "EXPECTED_HOST=dummy-url"
-    if "%%S"=="round-robin" set "EXPECTED_HOST=backend-upstream-round-robin"
-    if "%%S"=="least-connections" set "EXPECTED_HOST=backend-upstream-least-connections"
-    if "%%S"=="random" set "EXPECTED_HOST=backend-upstream-random"
+    cd /d "%~dp0"
     
-    echo [INFO] Verifying strategy %%S on remote server...
+    echo [INFO] Verifying strategy %%S on remote server (Polling %KONG_GATEWAY_URL%)...
     "%POWERSHELL_EXE%" -NoProfile -ExecutionPolicy Bypass -Command ^
-    "$ErrorActionPreference='Stop'; for($i=1; $i -le 10; $i++){ try { $r=Invoke-RestMethod -Uri '%KONG_SERVICE_URL%' -TimeoutSec 5; if ($r.host -eq '!EXPECTED_HOST!') { Write-Host ('[INFO] Confirmed strategy active (service_host='+$r.host+')'); exit 0 } else { Write-Host ('[WARN] Host mismatch, expected !EXPECTED_HOST! but got '+$r.host) } } catch { Write-Host ('[WARN] Admin API unavailable') }; Start-Sleep -Seconds 2 }; exit 1"
+    "$ErrorActionPreference='Stop'; for($i=1; $i -le 30; $i++){ try { $r=Invoke-RestMethod -Uri '%KONG_GATEWAY_URL%' -TimeoutSec 5; if ($r.message -eq '%%S') { Write-Host ('[INFO] Confirmed strategy active (message='+$r.message+')'); exit 0 } else { Write-Host ('[WARN] Strategy mismatch, expected %%S but got '+$r.message) } } catch { Write-Host ('[WARN] Gateway API unavailable') }; Start-Sleep -Seconds 5 }; exit 1"
     
     if errorlevel 1 (
         echo [ERROR] Failed to verify strategy %%S on Ubuntu server!
-        echo Vui long kiem tra lai CI/CD hoac thu muc kong-adaptive-lb da duoc push len Ubuntu chua.
+        echo CI/CD pipeline might have failed, or the Gateway is not starting.
         exit /b 1
     )
     

@@ -17,3 +17,14 @@ services:
         strip_path: false
         paths:
           - /api
+  - name: strategy-status-service
+    url: http://localhost
+    routes:
+      - name: strategy-status-route
+        paths:
+          - /alb/strategy
+        plugins:
+          - name: request-termination
+            config:
+              status_code: 200
+              message: "least-connections"
