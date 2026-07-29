@@ -12,7 +12,7 @@ jobs:
       - name: Fetch Kong Logs
         run: |
           echo "================ KONG GATEWAY LOGS ================"
-          docker compose -f kong-adaptive-lb/docker-compose-kong.yml logs --tail 200 kong-gateway
+          docker compose -f kong-adaptive-lb/docker-compose-kong.yml logs --tail 1000 kong-gateway | grep -v "GET /metrics" | grep -v "GET /alb-metrics"
           
       - name: Fetch Backend 8081 Logs
         run: |
