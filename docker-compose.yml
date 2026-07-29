@@ -8,8 +8,8 @@ networks:
 services:
 
   eureka-server:
-    cpus: "0.5"
-    mem_limit: 256m
+    cpus: "1.0"
+    mem_limit: 512m
     build:
       context: .
       dockerfile: eureka-server/Dockerfile
@@ -25,7 +25,7 @@ services:
       interval: 15s
       timeout: 5s
       retries: 5
-      start_period: 40s
+      start_period: 60s
     restart: on-failure
 
   registration-8081:
