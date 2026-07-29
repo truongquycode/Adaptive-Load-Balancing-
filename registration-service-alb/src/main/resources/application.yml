@@ -2,9 +2,9 @@ server:
   port: ${PORT:8081}
   tomcat:
     threads:
-      max: 1000       # Mở rộng trần luồng xử lý để gánh bão tải
+      max: 500        # Mở rộng trần luồng xử lý để gánh bão 500 users (Mặc định chỉ có 200)
       min-spare: 50   # Luôn giữ sẵn 50 luồng chờ sẵn để phản xạ nhanh với bão tải
-    accept-count: 2000
+    accept-count: 200
 
 spring:
   application:
