@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'kong-adaptive-lb/**'
+      - 'monitoring/**'
       - '.github/workflows/deploy-kong.yml'
 
 concurrency:
