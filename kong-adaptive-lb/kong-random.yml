@@ -1,0 +1,21 @@
+_format_version: "3.0"
+# Lưu ý: Kong API Gateway không hỗ trợ thuật toán "random" nguyên bản (chỉ có round-robin, consistent-hashing, least-connections, latency).
+# Để script chạy mượt mà, file này cấu hình tạm upstream là round-robin để bypass, trừ khi bạn có plugin custom "random".
+upstreams:
+  - name: backend-upstream-random
+    algorithm: round-robin
+    targets:
+      - target: registration-8081:8081
+        weight: 100
+      - target: registration-8082:8082
+        weight: 100
+      - target: registration-8083:8083
+        weight: 100
+services:
+  - name: backend-service
+    url: http://backend-upstream-random
+    routes:
+      - name: api-route
+        strip_path: false
+        paths:
+          - /api
