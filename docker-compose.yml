@@ -2,6 +2,7 @@ version: '3.8'
 
 networks:
   alb-network:
+    name: alb-network
     driver: bridge
 
 services:

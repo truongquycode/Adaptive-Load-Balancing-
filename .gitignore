@@ -48,3 +48,6 @@ benchmark-raw-results/
 *.jtl
 *.csv
 .DS_Store*.bak
+.agents/
+.codegraph/
+.serena/
