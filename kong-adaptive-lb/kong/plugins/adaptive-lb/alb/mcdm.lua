@@ -43,40 +43,18 @@ local function clamp01(v)
   return v
 end
 
-function _M.calculate_dynamic_weights(scores_list, prior_alpha, prior_beta, prior_gamma, eps)
-  local n = #scores_list
-  if n < 2 then
-    return prior_alpha, prior_beta, prior_gamma
-  end
-  
-  -- Matrix: [row][col]
-  -- Col 1: latency, Col 2: queue, Col 3: cpu
+function _M.calculate_entropy_weights_from_scores(scores_list, n)
+  local eps = 1e-9
   local matrix = {}
   for i = 1, n do
     local s = scores_list[i]
     matrix[i] = {
-      math.max(s.lat_score, eps),
-      math.max(s.queue_score, eps),
-      math.max(s.cpu_score, eps)
+      math.max(s.nL, eps),
+      math.max(s.nQ, eps),
+      math.max(s.nC, eps)
     }
   end
-  
-  local ewm = calculate_entropy_weights(matrix, n)
-  
-  -- Simple average blending (blend_factor = 0.5 in SCG default, or adaptive based on RPS)
-  -- For strictness, SCG uses adaptive blending. We will approximate blend = 0.5.
-  local blend = 0.5
-  
-  local target_alpha = blend * prior_alpha + (1 - blend) * ewm[1]
-  local target_beta = blend * prior_beta + (1 - blend) * ewm[2]
-  local target_gamma = blend * prior_gamma + (1 - blend) * ewm[3]
-  
-  local sum = target_alpha + target_beta + target_gamma
-  if sum > 0 then
-    return target_alpha / sum, target_beta / sum, target_gamma / sum
-  else
-    return prior_alpha, prior_beta, prior_gamma
-  end
+  return calculate_entropy_weights(matrix, n)
 end
 
 function _M.normalize(val, min_val, max_val, eps)

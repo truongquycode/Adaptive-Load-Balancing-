@@ -1,5 +1,7 @@
 local _M = {}
 
+local LN_0_97 = math.log(0.97)
+
 function _M.new(kp, ki, kd, min_i, max_i, error_deadband, tau_d, lambda, kappa)
   return {
     kp = kp,
@@ -13,51 +15,58 @@ function _M.new(kp, ki, kd, min_i, max_i, error_deadband, tau_d, lambda, kappa)
     kappa = kappa,
     
     integral = 0.0,
-    last_error = 0.0,
-    last_derivative = 0.0
+    last_raw_lat = 0.0,
+    last_filtered_d = 0.0,
+    last_output = 0.0,
+    last_timestamp = ngx.now() * 1000 - 200.0
   }
 end
 
-function _M.update(pid_state, setpoint, measured, dt_ms)
-  local error_val = setpoint - measured
+function _M.update(state, setpoint, raw_lat, interval_ms)
+  local now = ngx.now() * 1000
+  local dt_sec = (now - state.last_timestamp) / 1000.0
+  dt_sec = math.max(0.001, math.min(5.0, dt_sec))
+
+  local error_val = raw_lat - setpoint
   
-  -- Deadband
-  if math.abs(error_val) < pid_state.error_deadband then
+  if math.abs(error_val) <= state.error_deadband then
     error_val = 0.0
+  elseif error_val > 0.0 then
+    error_val = error_val - state.error_deadband
+  else
+    error_val = error_val + state.error_deadband
   end
   
-  local dt_sec = dt_ms / 1000.0
-  if dt_sec <= 0 then dt_sec = 0.2 end
+  local p = state.kp * error_val
   
-  -- Proportional
-  local p_out = pid_state.kp * error_val
+  local is_saturated = math.abs(state.last_output) >= 2.0
+  local same_sign = (error_val * state.last_output) > 0.0
   
-  -- Integral with Anti-windup
-  pid_state.integral = pid_state.integral + (error_val * dt_sec)
-  if pid_state.integral > pid_state.max_i then
-    pid_state.integral = pid_state.max_i
-  elseif pid_state.integral < pid_state.min_i then
-    pid_state.integral = pid_state.min_i
-  end
-  local i_out = pid_state.ki * pid_state.integral
-  
-  -- Derivative with low-pass filter
-  local derivative = (error_val - pid_state.last_error) / dt_sec
-  local alpha_d = 1.0 - math.exp(-dt_sec / pid_state.tau_d)
-  local filtered_d = pid_state.last_derivative + alpha_d * (derivative - pid_state.last_derivative)
-  local d_out = pid_state.kd * filtered_d
-  
-  -- Save state
-  pid_state.last_error = error_val
-  pid_state.last_derivative = filtered_d
-  
-  -- Non-linear scaling (lambda/kappa) for penalty shaping
-  local total_out = p_out + i_out + d_out
-  local penalty = pid_state.lambda * math.pow(math.abs(total_out), pid_state.kappa)
-  if total_out < 0 then
-    penalty = -penalty
+  local integral = state.integral
+  if not (is_saturated and same_sign) then
+    local new_i = state.integral + (error_val * dt_sec)
+    if math.abs(error_val) < 0.1 then
+      new_i = new_i * math.exp(LN_0_97 * dt_sec)
+    end
+    integral = math.max(state.min_i, math.min(state.max_i, new_i))
+    state.integral = integral
   end
   
+  local i = state.ki * integral
+  
+  local raw_d = (raw_lat - state.last_raw_lat) / dt_sec
+  local exp_term = math.exp(-dt_sec / state.tau_d)
+  local filtered_d = ((1.0 - exp_term) * raw_d) + (exp_term * state.last_filtered_d)
+  local d = state.kd * filtered_d
+  
+  local u = p + i + d
+  
+  state.last_raw_lat = raw_lat
+  state.last_filtered_d = filtered_d
+  state.last_output = u
+  state.last_timestamp = now
+  
+  local penalty = state.lambda * math.tanh(state.kappa * math.max(0.0, u))
   return penalty
 end
 

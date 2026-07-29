@@ -1,0 +1,27 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: "kong-gateway-alb"
+    # Port 8100 là port Prometheus của Kong (được bật qua plugin prometheus)
+    # Port 8001 là port Admin API của Kong (nơi ta vừa tạo endpoint /alb-metrics)
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["172.30.35.37:8100"]
+
+  - job_name: "kong-alb-custom"
+    metrics_path: "/alb-metrics"
+    static_configs:
+      - targets: ["172.30.35.37:8001"]
+
+  - job_name: "registration-service-alb"
+    metrics_path: "/actuator/prometheus"
+    static_configs:
+      - targets:
+          - "172.30.35.37:8081"
+          - "172.30.35.37:8082"
+          - "172.30.35.37:8083"
+
+  - job_name: "cadvisor"
+    static_configs:
+      - targets: ["cadvisor:8080"]

@@ -54,18 +54,16 @@ function AdaptiveLbHandler:log(config)
   local key = kong.ctx.plugin.selected_target_key
   if key then
     local inflight_dict = ngx.shared.alb_inflight
+    local scores_dict = ngx.shared.alb_scores
+    
     -- Atomic Inflight Decrement
     local new_val, err = inflight_dict:incr(key, -1, 0)
-    
-    -- Safety check: prevent negative inflight
     if new_val and new_val < 0 then
       inflight_dict:set(key, 0)
     end
     
-    -- Auto-healing hook: We could also log latency here to 'alb_state' dict if needed,
-    -- but SCG Adaptive LB polls metrics directly from backend `/actuator/prometheus`,
-    -- so we don't necessarily need to aggregate latency in Kong for the score calculation.
-    -- The backend provides its own percentiles.
+    -- Tăng đếm tổng số request hoàn thành để Dynamic Weight tính RPS
+    scores_dict:incr("__global_completed__", 1, 0)
   end
 end
 
