@@ -56,7 +56,7 @@ function _M.update_weights(scores, rps, config)
   avg_q = avg_q / n
   avg_c = avg_c / n
 
-  if avg_q < 0.2 and avg_c < 0.5 and (max_l - min_l) < 0.1 then
+  if avg_q < 0.08 and avg_c < 0.08 and (max_l - min_l) < 0.12 then
     _M.reset_weights()
     return
   end
@@ -64,7 +64,7 @@ function _M.update_weights(scores, rps, config)
   -- Tính EWM
   local ewm = mcdm.calculate_entropy_weights_from_scores(scores, n)
   
-  local blend = 0.5
+  local blend = 0.70
   local target_alpha = blend * ewm[1] + (1 - blend) * AHP_ALPHA
   local target_beta = blend * ewm[2] + (1 - blend) * AHP_BETA
   local target_gamma = blend * ewm[3] + (1 - blend) * AHP_GAMMA
@@ -75,16 +75,16 @@ function _M.update_weights(scores, rps, config)
   target_gamma = target_gamma / sum_target
 
   local delta = (math.abs(target_alpha - current_alpha) + math.abs(target_beta - current_beta) + math.abs(target_gamma - current_gamma)) / 3.0
-  local ema_alpha = 0.05 + (0.2 - 0.05) * clamp(delta * 3.0, 0.0, 1.0)
+  local ema_alpha = 0.08 + (0.22 - 0.08) * clamp(delta * 3.0, 0.0, 1.0)
 
   local new_a = ema_alpha * target_alpha + (1 - ema_alpha) * current_alpha
   local new_b = ema_alpha * target_beta + (1 - ema_alpha) * current_beta
   local new_c = ema_alpha * target_gamma + (1 - ema_alpha) * current_gamma
 
   -- Soft bounds
-  new_a = clamp(new_a, 0.3, 0.85)
-  new_b = clamp(new_b, 0.1, 0.5)
-  new_c = clamp(new_c, 0.05, 0.35)
+  new_a = clamp(new_a, 0.15, 0.70)
+  new_b = clamp(new_b, 0.08, 0.45)
+  new_c = clamp(new_c, 0.08, 0.35)
 
   local sum_new = new_a + new_b + new_c
   current_alpha = new_a / sum_new

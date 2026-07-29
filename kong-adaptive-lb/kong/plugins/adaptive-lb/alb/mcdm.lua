@@ -1,5 +1,15 @@
 local _M = {}
 
+local _M = {}
+
+local AHP_WEIGHTS = { 0.648, 0.230, 0.122 }
+
+local function clamp01(v)
+  if v < 0.0 then return 0.0 end
+  if v > 1.0 then return 1.0 end
+  return v
+end
+
 local function calculate_entropy_weights(matrix, rows)
   local cols = 3 -- Latency, Queue, CPU
   local sum_diversity = 0.0
@@ -22,12 +32,12 @@ local function calculate_entropy_weights(matrix, rows)
     end
     
     local entropy = -k * entropy_sum
-    diversity[j] = 1.0 - entropy
+    diversity[j] = math.max(0.0, 1.0 - entropy)
     sum_diversity = sum_diversity + diversity[j]
   end
   
-  if sum_diversity < eps then
-    return {1.0/3.0, 1.0/3.0, 1.0/3.0}
+  if sum_diversity <= eps then
+    return { AHP_WEIGHTS[1], AHP_WEIGHTS[2], AHP_WEIGHTS[3] }
   end
   
   return {
@@ -37,34 +47,18 @@ local function calculate_entropy_weights(matrix, rows)
   }
 end
 
-local function clamp01(v)
-  if v < 0.0 then return 0.0 end
-  if v > 1.0 then return 1.0 end
-  return v
-end
-
 function _M.calculate_entropy_weights_from_scores(scores_list, n)
   local eps = 1e-9
   local matrix = {}
   for i = 1, n do
     local s = scores_list[i]
     matrix[i] = {
-      math.max(s.nL, eps),
-      math.max(s.nQ, eps),
-      math.max(s.nC, eps)
+      clamp01(s.nL) + eps,
+      clamp01(s.nQ) + eps,
+      clamp01(s.nC) + eps
     }
   end
   return calculate_entropy_weights(matrix, n)
-end
-
-function _M.normalize(val, min_val, max_val, eps)
-  if (max_val - min_val) < eps then
-    return 1.0
-  end
-  local n = (max_val - val) / (max_val - min_val)
-  if n < 0.0 then return 0.0 end
-  if n > 1.0 then return 1.0 end
-  return n
 end
 
 return _M

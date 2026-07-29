@@ -1,24 +1,27 @@
 local _M = {}
 
-function _M.calculate_tau(error_val, tau_min, tau_max, k)
-  -- Tau adapts inversely to error. Larger error = smaller tau (faster response)
-  local alpha = 1.0 - math.exp(-math.abs(error_val) * k)
-  return tau_max - alpha * (tau_max - tau_min)
-end
-
-function _M.smooth(current_ema, new_val, dt, tau_min, tau_max, k, math_eps)
-  if current_ema == nil or current_ema == 0 then return new_val end
+function _M.smooth(current_ema, new_val, dt, tau_min, tau_max, k, fallback_p50)
+  if current_ema == nil or current_ema == 0 then return fallback_p50 end
   
-  -- Prevent division by zero
-  local error_val = new_val - current_ema
-  local relative_error = error_val / (current_ema + math_eps)
+  local deviation = math.abs(new_val - current_ema) / math.max(current_ema, 1.0)
   
-  local tau = _M.calculate_tau(relative_error, tau_min, tau_max, k)
+  local kd = k * deviation
+  local adaptive_tau
+  if kd >= 6.0 then
+    adaptive_tau = tau_min
+  else
+    adaptive_tau = tau_min + (tau_max - tau_min) * math.exp(-kd)
+  end
   
-  -- Calculate alpha for EMA
-  local alpha = 1.0 - math.exp(-dt / tau)
+  local ratio = dt / adaptive_tau
+  local theta
+  if ratio >= 10.0 then
+    theta = 1.0
+  else
+    theta = 1.0 - math.exp(-ratio)
+  end
   
-  return current_ema + alpha * error_val
+  return (theta * new_val) + ((1.0 - theta) * current_ema)
 end
 
 return _M

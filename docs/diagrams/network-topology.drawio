@@ -1,0 +1,122 @@
+<mxfile host="Electron">
+  <diagram id="network_topo" name="Network Topology">
+    <mxGraphModel dx="2826" dy="802" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="win_group" parent="1" style="swimlane;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;startSize=40;fontFamily=Helvetica;fontSize=14;" value="Máy trạm Windows 10 Pro&#xa;(Intel Core i5-6300U, 8GB RAM)" vertex="1">
+          <mxGeometry height="160" width="210" x="-70" y="254" as="geometry" />
+        </mxCell>
+        <mxCell id="jmeter" parent="win_group" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;fontFamily=Helvetica;fontSize=14;" value="Apache JMeter&#xa;(CLI Mode)" vertex="1">
+          <mxGeometry height="60" width="160" x="25" y="66" as="geometry" />
+        </mxCell>
+        <mxCell id="tailscale" parent="1" style="ellipse;shape=cloud;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;fontFamily=Helvetica;fontSize=14;" value="Mạng riêng ảo Tailscale&#xa;(Tunnel mã hóa)" vertex="1">
+          <mxGeometry height="160" width="200" x="220" y="240" as="geometry" />
+        </mxCell>
+        <mxCell id="host_group" parent="1" style="swimlane;whiteSpace=wrap;html=1;fillColor=#eeeeee;strokeColor=#36393d;fontStyle=1;startSize=40;horizontal=0;fontFamily=Helvetica;fontSize=14;align=center;" value="Máy chủ vật lý (Host) - VMware&lt;br&gt;(Intel Core i5-12400)" vertex="1">
+          <mxGeometry height="480" width="600" x="540" y="80" as="geometry" />
+        </mxCell>
+        <mxCell id="ubuntu_group" parent="host_group" style="swimlane;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;startSize=40;fontFamily=Helvetica;fontSize=14;" value="Máy ảo Ubuntu 26.04 LTS&#xa;(8 vCPU, 11 GiB RAM)" vertex="1">
+          <mxGeometry height="440" width="540" x="40" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="docker_group" parent="ubuntu_group" style="swimlane;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;startSize=40;fontFamily=Helvetica;fontSize=14;" value="Docker Engine &amp; Docker Compose" vertex="1">
+          <mxGeometry height="360" width="500" x="20" y="60" as="geometry" />
+        </mxCell>
+        <mxCell id="api_gateway" parent="docker_group" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;fontFamily=Helvetica;fontSize=14;" value="API Gateway&#xa;(Port: 8080)" vertex="1">
+          <mxGeometry height="60" width="120" x="40" y="150" as="geometry" />
+        </mxCell>
+        <mxCell id="backend1" parent="docker_group" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontFamily=Helvetica;fontSize=14;" value="Instance 1&lt;br&gt;(2.0 vCPU)" vertex="1">
+          <mxGeometry height="60" width="120" x="240" y="60" as="geometry" />
+        </mxCell>
+        <mxCell id="backend2" parent="docker_group" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontFamily=Helvetica;fontSize=14;" value="Instance&amp;nbsp;&amp;nbsp;2&lt;br&gt;(1.5 vCPU)" vertex="1">
+          <mxGeometry height="60" width="120" x="240" y="150" as="geometry" />
+        </mxCell>
+        <mxCell id="backend3" parent="docker_group" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontFamily=Helvetica;fontSize=14;" value="Instance&amp;nbsp;&amp;nbsp;3&lt;br&gt;(1.0 vCPU)" vertex="1">
+          <mxGeometry height="60" width="120" x="240" y="240" as="geometry" />
+        </mxCell>
+        <mxCell id="eureka" parent="docker_group" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=1;fontFamily=Helvetica;fontSize=14;" value="Eureka Server&lt;br&gt;(Port: 8761)" vertex="1">
+          <mxGeometry height="60" width="120" x="40" y="280" as="geometry" />
+        </mxCell>
+        <mxCell id="WYvGLdGLCsk4o0Gpqfs3-5" edge="1" parent="docker_group" source="monitoring" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=1;entryY=0.5;entryDx=0;entryDy=0;dashed=1;elbow=vertical;curved=1;" target="backend1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="460" y="90" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="WYvGLdGLCsk4o0Gpqfs3-11" connectable="0" parent="WYvGLdGLCsk4o0Gpqfs3-5" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="giám sát" vertex="1">
+          <mxGeometry relative="1" x="0.5478" y="27" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="WYvGLdGLCsk4o0Gpqfs3-6" edge="1" parent="docker_group" source="monitoring" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=1;entryY=0.5;entryDx=0;entryDy=0;curved=1;dashed=1;" target="backend2">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="460" y="180" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="WYvGLdGLCsk4o0Gpqfs3-10" connectable="0" parent="WYvGLdGLCsk4o0Gpqfs3-6" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="giám sát" vertex="1">
+          <mxGeometry relative="1" x="0.4657" y="12" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="monitoring" parent="docker_group" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=1;fontFamily=Helvetica;fontSize=14;" value="Prometheus &amp;&#xa;Grafana" vertex="1">
+          <mxGeometry height="60" width="100" x="390" y="280" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_gw_bk1" edge="1" parent="docker_group" source="api_gateway" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#82b366;fontFamily=Helvetica;fontSize=12;" target="backend1" value="Forward">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="190" y="180" />
+              <mxPoint x="190" y="90" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge_gw_bk2" edge="1" parent="docker_group" source="api_gateway" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#82b366;fontFamily=Helvetica;fontSize=12;" target="backend2" value="Forward">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_gw_bk3" edge="1" parent="docker_group" source="api_gateway" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#82b366;fontFamily=Helvetica;fontSize=12;" target="backend3" value="Forward">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="190" y="180" />
+              <mxPoint x="190" y="270" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge_bk_eureka" edge="1" parent="docker_group" source="backend3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;dashed=1;strokeColor=#b85450;fontFamily=Helvetica;fontSize=12;" target="eureka" value="Đăng ký">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="WYvGLdGLCsk4o0Gpqfs3-7" edge="1" parent="docker_group" source="monitoring" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=1.017;entryY=0.431;entryDx=0;entryDy=0;entryPerimeter=0;curved=1;dashed=1;" target="backend3">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="460" y="265.93" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="WYvGLdGLCsk4o0Gpqfs3-9" connectable="0" parent="WYvGLdGLCsk4o0Gpqfs3-7" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="giám sát" vertex="1">
+          <mxGeometry relative="1" x="0.3121" y="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge_jmeter_tailscale" edge="1" parent="1" source="win_group" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=3;strokeColor=#6c8ebf;fontFamily=Helvetica;fontSize=14;fontStyle=1;" target="tailscale" value="Traffic">
+          <mxGeometry relative="1" x="0.1667" y="20" as="geometry">
+            <mxPoint x="-1" as="offset" />
+            <Array as="points">
+              <mxPoint x="180" y="340" />
+              <mxPoint x="180" y="340" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge_tailscale_api" edge="1" parent="1" source="tailscale" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=3;strokeColor=#6c8ebf;fontFamily=Helvetica;fontSize=14;fontStyle=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="api_gateway" value="Proxy (SSH / VPN)">
+          <mxGeometry relative="1" x="-0.5009" y="20" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="520" y="340" />
+              <mxPoint x="520" y="340" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

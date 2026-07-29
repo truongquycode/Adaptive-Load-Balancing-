@@ -1,0 +1,83 @@
+<mxfile host="Electron">
+  <diagram name="Chaos" id="0">
+    <mxGraphModel dx="1676" dy="2142" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="90ldI4mOGTZkz0PQkznZ-3" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="" vertex="1">
+          <mxGeometry height="770" width="740" x="10" y="-40" as="geometry" />
+        </mxCell>
+        <mxCell id="in" parent="1" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" value="Tiếp nhận request" vertex="1">
+          <mxGeometry height="60" width="160" x="300" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="ram" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" value="Cấp phát vfa truy xuấy Heap" vertex="1">
+          <mxGeometry height="50" width="180" x="290" y="100" as="geometry" />
+        </mxCell>
+        <mxCell id="cpu1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" value="Tải CPU cao&lt;br/&gt;(Giai đoạn 1)" vertex="1">
+          <mxGeometry height="50" width="160" x="300" y="170" as="geometry" />
+        </mxCell>
+        <mxCell id="io" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" value="tạo Sleep để trễ I/O" vertex="1">
+          <mxGeometry height="50" width="160" x="300" y="240" as="geometry" />
+        </mxCell>
+        <mxCell id="lat_delay" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" value="Suy thoái mạng" vertex="1">
+          <mxGeometry height="50" width="160" x="300" y="310" as="geometry" />
+        </mxCell>
+        <mxCell id="db" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" value="cấp phát Semaphore&lt;br/&gt;(DB Pool)" vertex="1">
+          <mxGeometry height="60" width="165" x="297.5" y="390" as="geometry" />
+        </mxCell>
+        <mxCell id="db_hold" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" value="Giữ khóa Semaphore&amp;nbsp;&lt;div&gt;(+ Suy thoái phụ thuộc)&lt;/div&gt;" vertex="1">
+          <mxGeometry height="50" width="180" x="290" y="480" as="geometry" />
+        </mxCell>
+        <mxCell id="cpu2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" value="Tải CPU cao&lt;br/&gt;(Giai đoạn 2)" vertex="1">
+          <mxGeometry height="50" width="160" x="300" y="550" as="geometry" />
+        </mxCell>
+        <mxCell id="timeout" parent="1" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" value="Từ chối dịch vụ&lt;div&gt;&amp;nbsp;(503 Timeout)&lt;/div&gt;" vertex="1">
+          <mxGeometry height="60" width="140" x="70" y="385" as="geometry" />
+        </mxCell>
+        <mxCell id="out" parent="1" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" value="Phản hồi thành công&amp;nbsp;&lt;div&gt;(Giải phóng Tài nguyên)&lt;/div&gt;" vertex="1">
+          <mxGeometry height="60" width="180" x="290" y="620" as="geometry" />
+        </mxCell>
+        <mxCell id="cpu_spike" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;dashed=1;dashPattern=1 2;" value="&lt;b&gt;Hàng xóm ồn ào&lt;/b&gt;&lt;br&gt;(Daemon Threads&lt;br&gt;chạy ngầm vắt kiệt CPU)" vertex="1">
+          <mxGeometry height="90" width="160" x="550" y="150" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" edge="1" parent="1" source="in" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" target="ram">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" edge="1" parent="1" source="ram" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" target="cpu1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" edge="1" parent="1" source="cpu1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" target="io">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" edge="1" parent="1" source="io" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" target="lat_delay">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_lat_db" edge="1" parent="1" source="lat_delay" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" target="db">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" edge="1" parent="1" source="db" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.5;entryX=1;entryY=0.5;" target="timeout" value="Quá 12s">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e7" edge="1" parent="1" source="db" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="db_hold" value="Thành công">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e8" edge="1" parent="1" source="db_hold" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" target="cpu2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e9" edge="1" parent="1" source="cpu2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" target="out">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_spike" edge="1" parent="1" source="cpu_spike" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;dashPattern=1 2;exitX=-0.015;exitY=0.549;exitDx=0;exitDy=0;exitPerimeter=0;" target="cpu1" value="Cạnh tranh&lt;br&gt;Tài nguyên">
+          <mxGeometry relative="1" x="0.3824" y="-18" as="geometry">
+            <mxPoint x="10" y="3" as="offset" />
+            <Array as="points">
+              <mxPoint x="510.03" y="199.43" />
+              <mxPoint x="510.03" y="195.03" />
+            </Array>
+            <mxPoint x="930.03" y="200" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

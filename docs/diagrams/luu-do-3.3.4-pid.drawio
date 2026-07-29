@@ -1,0 +1,64 @@
+<mxfile host="Electron">
+  <diagram name="PID" id="0">
+    <mxGraphModel dx="986" dy="613" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="0SBEtOs00Hg_EDlFZZHt-2" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="" vertex="1">
+          <mxGeometry height="670" width="640" x="70" y="10" as="geometry" />
+        </mxCell>
+        <mxCell id="in" parent="1" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=14;fontStyle=0;fontFamily=Comic Sans MS;" value="rawLat(t) &amp;amp; setpoint" vertex="1">
+          <mxGeometry height="60" width="160" x="300" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="err" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=14;fontStyle=0;fontFamily=Comic Sans MS;" value="Sai số e(t) &amp;amp; Deadband" vertex="1">
+          <mxGeometry height="60" width="160" x="300" y="140" as="geometry" />
+        </mxCell>
+        <mxCell id="p" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;fontStyle=0;fontFamily=Comic Sans MS;" value="Tỷ lệ (Proportional)&#xa;P = Kp * E(t)" vertex="1">
+          <mxGeometry height="60" width="160" x="100" y="260" as="geometry" />
+        </mxCell>
+        <mxCell id="i" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;fontStyle=0;fontFamily=Comic Sans MS;" value="Tích phân (Integral)&#xa;Anti-windup &amp;amp; Decay" vertex="1">
+          <mxGeometry height="60" width="160" x="300" y="260" as="geometry" />
+        </mxCell>
+        <mxCell id="d" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;fontStyle=0;fontFamily=Comic Sans MS;" value="Đạo hàm (Derivative)&#xa;Low-pass filter" vertex="1">
+          <mxGeometry height="60" width="160" x="500" y="260" as="geometry" />
+        </mxCell>
+        <mxCell id="sum" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=14;fontStyle=0;fontFamily=Comic Sans MS;" value="Tổng U(t) = P + I + D" vertex="1">
+          <mxGeometry height="60" width="160" x="300" y="380" as="geometry" />
+        </mxCell>
+        <mxCell id="tanh" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=14;fontStyle=0;fontFamily=Comic Sans MS;" value="Hàm Tanh phi tuyến&amp;#xa;Penalty = λ * tanh(κ * max(0, U))" vertex="1">
+          <mxGeometry height="60" width="160" x="300" y="480" as="geometry" />
+        </mxCell>
+        <mxCell id="out" parent="1" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=14;fontStyle=0;fontFamily=Comic Sans MS;" value="Penalty Score" vertex="1">
+          <mxGeometry height="60" width="160" x="300" y="580" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" edge="1" parent="1" source="in" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontSize=14;fontStyle=0;fontFamily=Comic Sans MS;" target="err">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" edge="1" parent="1" source="err" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.5;entryX=0.5;entryY=0;fontSize=14;fontStyle=0;fontFamily=Comic Sans MS;" target="p">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" edge="1" parent="1" source="err" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;fontSize=14;fontStyle=0;fontFamily=Comic Sans MS;" target="i">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" edge="1" parent="1" source="err" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;entryX=0.5;entryY=0;fontSize=14;fontStyle=0;fontFamily=Comic Sans MS;" target="d">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" edge="1" parent="1" source="p" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0;entryY=0.5;fontSize=14;fontStyle=0;fontFamily=Comic Sans MS;" target="sum">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" edge="1" parent="1" source="i" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;fontSize=14;fontStyle=0;fontFamily=Comic Sans MS;" target="sum">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e7" edge="1" parent="1" source="d" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=1;entryY=0.5;fontSize=14;fontStyle=0;fontFamily=Comic Sans MS;" target="sum">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e8" edge="1" parent="1" source="sum" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontSize=14;fontStyle=0;fontFamily=Comic Sans MS;" target="tanh">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e9" edge="1" parent="1" source="tanh" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontSize=14;fontStyle=0;fontFamily=Comic Sans MS;" target="out">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

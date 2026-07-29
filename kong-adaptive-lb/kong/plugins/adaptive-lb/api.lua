@@ -43,14 +43,14 @@ return {
           local ewm_lat = scores:get(k .. "_lat") or 0
           local cur_inf = inflight:get(k) or 0
           
-          table.insert(out, string.format('alb_routing_cost{instance="%s", metric="final_score"} %f', k, final))
-          table.insert(out, string.format('alb_routing_cost{instance="%s", metric="nL"} %f', k, nL))
-          table.insert(out, string.format('alb_routing_cost{instance="%s", metric="nQ"} %f', k, nQ))
-          table.insert(out, string.format('alb_routing_cost{instance="%s", metric="nC"} %f', k, nC))
-          table.insert(out, string.format('alb_routing_cost{instance="%s", metric="base_score"} %f', k, base))
-          table.insert(out, string.format('alb_routing_cost{instance="%s", metric="pid_penalty"} %f', k, pid_pen))
-          table.insert(out, string.format('alb_routing_cost{instance="%s", metric="ewma_lat"} %f', k, ewm_lat))
-          table.insert(out, string.format('alb_routing_cost{instance="%s", metric="inflight"} %f', k, cur_inf))
+          table.insert(out, string.format('alb_routing_cost{backend="%s", metric="final_score"} %f', k, final))
+          table.insert(out, string.format('alb_routing_cost{backend="%s", metric="nL"} %f', k, nL))
+          table.insert(out, string.format('alb_routing_cost{backend="%s", metric="nQ"} %f', k, nQ))
+          table.insert(out, string.format('alb_routing_cost{backend="%s", metric="nC"} %f', k, nC))
+          table.insert(out, string.format('alb_routing_cost{backend="%s", metric="base_score"} %f', k, base))
+          table.insert(out, string.format('alb_routing_cost{backend="%s", metric="pid_penalty"} %f', k, pid_pen))
+          table.insert(out, string.format('alb_routing_cost{backend="%s", metric="ewma_lat"} %f', k, ewm_lat))
+          table.insert(out, string.format('alb_routing_cost{backend="%s", metric="inflight"} %f', k, cur_inf))
         end
       end
       

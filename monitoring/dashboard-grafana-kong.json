@@ -139,7 +139,7 @@
           },
           "editorMode": "code",
           "expr": "alb_routing_cost{metric=\"final_score\"}",
-          "legendFormat": "{{instance}}",
+          "legendFormat": "{{backend}}",
           "range": true,
           "refId": "A"
         }
@@ -172,9 +172,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "editorMode": "code",
           "expr": "alb_routing_cost{metric=\"inflight\"}",
-          "legendFormat": "{{instance}}",
+          "legendFormat": "{{backend}}",
           "range": true,
           "refId": "A"
         }
@@ -207,9 +206,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "editorMode": "code",
           "expr": "alb_routing_cost{metric=\"pid_penalty\"}",
-          "legendFormat": "{{instance}}",
+          "legendFormat": "{{backend}}",
           "range": true,
           "refId": "A"
         }

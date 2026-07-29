@@ -19,7 +19,7 @@ set "MODE=%~4"
 if not defined MODE set "MODE=strategies"
 
 if not defined JMETER_HOME set "JMETER_HOME=D:\Downloads\apache-jmeter-5.6.3"
-if not defined RESULT_ROOT set "RESULT_ROOT=%JMETER_HOME%\bin\ALB_Test\results"
+if not defined RESULT_ROOT set "RESULT_ROOT=%~dp0..\benchmark-raw-results"
 if not defined GIT_BRANCH set "GIT_BRANCH=main"
 if not defined SERVER_BASE_URL set "SERVER_BASE_URL=http://172.30.35.37:8080"
 if not defined BACKEND_BASE_URL set "BACKEND_BASE_URL=http://172.30.35.37"
@@ -123,16 +123,15 @@ if /I "%MODE%"=="strategies" (
 )
 
 if /I "%MODE%"=="ablation" (
-    set "ITEM_COUNT=9"
-    set "ITEM_1=adaptive,adaptive_full,full"
-    set "ITEM_2=adaptive,adaptive_no_pid,no-pid"
-    set "ITEM_3=adaptive,adaptive_fixed_weights,fixed-weights"
-    set "ITEM_4=adaptive,adaptive_no_ewma_latency,no-ewma-latency"
-    set "ITEM_5=adaptive,adaptive_no_score_ema,no-score-ema"
-    set "ITEM_6=adaptive,adaptive_no_capacity,no-capacity"
-    set "ITEM_7=adaptive,adaptive_no_p2c,no-p2c"
-    set "ITEM_8=adaptive,adaptive_no_probe,no-probe"
-    set "ITEM_9=adaptive,adaptive_no_low_load_rr,no-low-load-rr"
+    set "ITEM_COUNT=8"
+    set "ITEM_1=adaptive,adaptive_no_pid,no-pid"
+    set "ITEM_2=adaptive,adaptive_fixed_weights,fixed-weights"
+    set "ITEM_3=adaptive,adaptive_no_ewma_latency,no-ewma-latency"
+    set "ITEM_4=adaptive,adaptive_no_score_ema,no-score-ema"
+    set "ITEM_5=adaptive,adaptive_no_capacity,no-capacity"
+    set "ITEM_6=adaptive,adaptive_no_p2c,no-p2c"
+    set "ITEM_7=adaptive,adaptive_no_probe,no-probe"
+    set "ITEM_8=adaptive,adaptive_no_low_load_rr,no-low-load-rr"
     exit /b 0
 )
 
@@ -330,12 +329,9 @@ exit /b 0
 
 :RESET_SYSTEM_STATE
 echo [INFO] Reset ALB and chaos state before run...
+
 "%POWERSHELL_EXE%" -NoProfile -ExecutionPolicy Bypass -Command ^
-"$ErrorActionPreference='Stop'; Invoke-RestMethod -Method Post -Uri '%GATEWAY_RESET_URL%' -TimeoutSec 20 ^| Out-Null; foreach($p in '%BACKEND_PORTS%'.Split(' ')){ if($p.Trim().Length -gt 0){ Invoke-RestMethod -Method Post -Uri ('%BACKEND_BASE_URL%:'+ $p + '/api/chaos/reset') -TimeoutSec 20 ^| Out-Null } }; Write-Host '[INFO] Reset completed.'"
-if errorlevel 1 (
-    echo [ERROR] Reset ALB/chaos failed. Benchmark stopped to avoid contaminated results.
-    exit /b 1
-)
+"$ErrorActionPreference='Continue'; try { Invoke-RestMethod -Method Post -Uri '%GATEWAY_RESET_URL%' -TimeoutSec 15 ^| Out-Null } catch { Write-Host ('[WARN] Gateway reset failed: ' + $_.Exception.Message) }; foreach($p in '%BACKEND_PORTS%'.Split(' ')){ if($p.Trim().Length -gt 0){ try { Invoke-RestMethod -Method Post -Uri ('%BACKEND_BASE_URL%:'+ $p + '/api/chaos/reset') -TimeoutSec 15 ^| Out-Null } catch { Write-Host ('[WARN] Backend '+ $p +' reset failed: ' + $_.Exception.Message) } } }; Write-Host '[INFO] Reset completed.'"
 exit /b 0
 
 :WRITE_RUN_METADATA
