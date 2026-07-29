@@ -15,7 +15,7 @@ if not exist "%RESULT_ROOT%" mkdir "%RESULT_ROOT%"
 
 REM Định nghĩa 4 thuật toán test
 set STRATEGIES=round-robin least-connections random adaptive
-set RUNS_PER_ITEM=5
+set RUNS_PER_ITEM=3
 
 echo =============================================================
 echo Starting Kong API Gateway Benchmark (CI/CD Git Push mode)
@@ -31,10 +31,10 @@ for %%S in (%STRATEGIES%) do (
     cd /d "%PROJECT_DIR%\kong-adaptive-lb"
     
     if "%%S"=="adaptive" (
-        REM adaptive dùng file kong.yml gốc (tôi lưu tạm là kong.yml.bak)
+        REM adaptive dung file kong.yml goc, luu tam la kong.yml.bak
         if exist kong.yml.bak copy /y kong.yml.bak kong.yml >nul
     ) else (
-        REM backup file kong.yml gốc nếu chưa có
+        REM backup file kong.yml goc neu chua co
         if not exist kong.yml.bak copy /y kong.yml kong.yml.bak >nul
         copy /y kong-%%S.yml kong.yml >nul
     )
@@ -55,12 +55,12 @@ for %%S in (%STRATEGIES%) do (
     
     cd /d "%~dp0"
     
-    echo [INFO] Verifying strategy %%S on remote server (Polling %KONG_GATEWAY_URL%)...
+    echo [INFO] Verifying strategy %%S on remote server - Polling %KONG_GATEWAY_URL% ...
     "%POWERSHELL_EXE%" -NoProfile -ExecutionPolicy Bypass -Command ^
-    "$ErrorActionPreference='Stop'; for($i=1; $i -le 30; $i++){ try { $r=Invoke-RestMethod -Uri '%KONG_GATEWAY_URL%' -TimeoutSec 5; if ($r.message -eq '%%S') { Write-Host ('[INFO] Confirmed strategy active (message='+$r.message+')'); exit 0 } else { Write-Host ('[WARN] Strategy mismatch, expected %%S but got '+$r.message) } } catch { Write-Host ('[WARN] Gateway API unavailable') }; Start-Sleep -Seconds 5 }; exit 1"
+    "$ErrorActionPreference='Stop'; Write-Host ('[CHECK] Polling API: %KONG_GATEWAY_URL%'); for($i=1; $i -le 30; $i++){ Write-Host -NoNewline ('  Attempt ' + $i + '/30: '); try { $r=Invoke-RestMethod -Uri '%KONG_GATEWAY_URL%' -TimeoutSec 5; if ($r.message -eq '%%S') { Write-Host ('SUCCESS! Ubuntu is currently running: [' + $r.message + ']') -ForegroundColor Green; exit 0 } else { Write-Host ('MISMATCH! Expected [%%S], but Ubuntu is running: [' + $r.message + ']') -ForegroundColor Yellow } } catch { Write-Host 'API UNAVAILABLE or TIMEOUT. Waiting for Kong...' -ForegroundColor Red }; Start-Sleep -Seconds 5 }; exit 1"
     
     if errorlevel 1 (
-        echo [ERROR] Failed to verify strategy %%S on Ubuntu server!
+        echo [ERROR] Failed to verify strategy %%S on Ubuntu server.
         echo CI/CD pipeline might have failed, or the Gateway is not starting.
         exit /b 1
     )
